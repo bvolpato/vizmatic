@@ -8,12 +8,11 @@ interface PackResult {
     entryCount?: number
 }
 
-// The full course component build packs to 7,346,603 bytes, or 21,157,943 bytes unpacked.
-// Its 232 files include the new component examples. The growth is in the stage runtime,
-// type declarations, examples and narration tools. The offline assets are unchanged.
+// In Linux CI, the waveform build packs to 7,400,441 bytes. The painters and their
+// declarations fit within 21,250,000 unpacked bytes across the same 232 files.
 const limits = {
-    size: 7_400_000,
-    unpackedSize: 21_200_000,
+    size: 7_420_000,
+    unpackedSize: 21_250_000,
     entryCount: 232,
 }
 

@@ -1,3 +1,4 @@
+import { pcmEnvelope } from '../src/teaching-waveform'
 import { describe, expect, it } from 'vitest'
 import { createTeachingCanvas, type TeachingPainter, type TeachingPathOptions } from '../src/teaching-canvas'
 import type { CanvasBounds } from '../src/canvas-components'
@@ -264,5 +265,31 @@ describe('checked teaching Canvas compositions', () => {
         const second = { ...node, id: 'b', x: 200 }
         expect(() => scene.flowGraph({ nodes: [node, second], edges: [{ from: 'a', to: 'b', gap: Infinity }] })).toThrow('finite')
         expect(host.events).toEqual([])
+    })
+})
+
+describe('measured waveforms', () => {
+    it('keeps signed peaks, the last sample and short clips on their sample clock', () => {
+        const { bins } = pcmEnvelope(Float32Array.of(-1, -.5, .25, 0, .75), { sampleRate: 4, bins: 2 })
+        expect(bins).toEqual([
+            { startSample: 0, endSample: 2, min: -1, max: -.5 },
+            { startSample: 2, endSample: 5, min: 0, max: .75 },
+        ])
+        expect(pcmEnvelope([.5], { sampleRate: 4, bins: 8 }).bins).toHaveLength(1)
+        expect(() => pcmEnvelope([NaN], { sampleRate: 4, bins: 1 })).toThrow()
+    })
+
+    it('places and reveals completed bins on the shared time axis', () => {
+        const { painter, events } = recordingPainter()
+        const envelope = pcmEnvelope([-1, -.5, .5, 1], { sampleRate: 4, bins: 2, startTime: .5 })
+        const options = { x: 10, y: 20, width: 200, height: 100, domain: [0, 2] as const, envelope, reveal: true }
+        const charts = createTeachingCanvas(painter)
+        expect(charts.waveform({ ...options, cursorTime: .99 }).cursorX).toBe(109)
+        expect(events.some(e => e.kind === 'path')).toBe(false)
+        expect(charts.waveform({ ...options, cursorTime: 1 }).cursorX).toBe(110)
+        expect(events.find(e => e.kind === 'path')?.points).toEqual([
+            { x: 60, y: 95 }, { x: 110, y: 95 }, { x: 110, y: 120 }, { x: 60, y: 120 },
+        ])
+        expect(charts.waveform({ ...options, cursorTime: 3 }).cursorX).toBeNull()
     })
 })

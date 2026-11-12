@@ -1,5 +1,5 @@
 import { Axes, NumberPlane, curveOf, endOf, sampleXs, type Curve, type PlaneOptions, type Reactive, type Sampled } from '../objects'
-import { apply, arcPath, circlePath, invert, parametricPath, pathBounds, pathLength, pointAt, polyPath, ring, type Path, type Ring, type Vec } from '../geometry'
+import { apply, arcPath, circlePath, invert, parametricPath, pathBounds, pathLength, pointAt, polyPath, projectToLine, ring, type Path, type Ring, type Vec } from '../geometry'
 import { dynamic, Node, ownLabels, type Side, direction, objectName } from '../node'
 import { brace, dot, line, rect, type ShapeStyle } from '../shapes'
 import { tex, TexNode } from '../tex'
@@ -619,6 +619,25 @@ export function rightAngle(vertex: Vec, a: Vec, b: Vec, options: { size?: number
         [vertex[0] + (ax + bx) * size, vertex[1] + (ay + by) * size],
         [vertex[0] + bx * size, vertex[1] + by * size],
     ])).stroke(options.color ?? 'ink', options.width ?? 2.5), 'right angle mark')
+}
+
+/** Connect a point to its perpendicular foot on an infinite line in stage coordinates. */
+export function projectionMark(point: Vec, origin: Vec, towards: Vec, options: {
+    color?: ColorInput
+    width?: number
+    radius?: number
+} = {}): Node {
+    const { foot } = projectToLine(point, origin, towards)
+    const color = options.color ?? 'yellow', width = options.width ?? 3, radius = options.radius ?? 7
+    const mark = new Node()
+    const gap = Math.hypot(point[0] - foot[0], point[1] - foot[1])
+    if (gap > radius) {
+        mark.add(line(point, foot, { stroke: color, width, dash: [3 * width, 2 * width] }))
+        const along: Vec = [foot[0] + (towards[0] - origin[0]), foot[1] + (towards[1] - origin[1])]
+        mark.add(rightAngle(foot, along, point, { color, width, size: Math.min(2 * radius, gap / 2) }))
+    }
+    mark.add(dot(radius, color).moveTo(foot))
+    return objectName(mark, 'projection mark')
 }
 
 // ── Matrices ────────────────────────────────────────────────────────────────
