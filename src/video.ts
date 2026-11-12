@@ -2,6 +2,7 @@ import { execFile, spawn } from 'child_process'
 import { randomUUID } from 'crypto'
 import { chmod, mkdir, open, rename, rm, stat, writeFile } from 'fs/promises'
 import { connect, createServer, type Socket } from 'net'
+import { createInterface } from 'readline'
 import { basename, dirname, join, resolve } from 'path'
 import { Resvg } from '@resvg/resvg-js'
 import parseCssColor from 'parse-css-color'
@@ -25,6 +26,7 @@ export interface VideoFrameInfo {
 }
 
 export type VideoCodec = 'h264' | 'vp9'
+export type H264Encoder = 'libx264' | 'videotoolbox'
 
 export interface RgbaVideoOptions {
     width: number
@@ -39,6 +41,10 @@ export interface RgbaVideoOptions {
     ffmpegPath?: string
     /** H.264 writes MP4. VP9 writes WebM. */
     codec?: VideoCodec
+    /** Prefer Apple's hardware encoder for standard-quality H.264. The default is libx264. */
+    h264Encoder?: H264Encoder
+    /** Fail before painting if the requested encoder cannot encode this format. */
+    requireH264Encoder?: boolean
     preset?: string
     /** Encoder tuning for H.264, such as "animation" for flat color and line art. */
     tune?: string
@@ -97,6 +103,8 @@ export interface RgbaVideoOutput {
     bytes: number
     outputPath: string
     audioIncluded: boolean
+    /** The encoder that produced the H.264 stream. Absent for other codecs. */
+    h264Encoder?: H264Encoder
 }
 
 export interface AnimationVideoOptions extends Omit<RgbaVideoOptions, 'duration'> {
@@ -362,6 +370,88 @@ async function loopbackPair(): Promise<{ ours: Socket; theirs: Socket } | undefi
 /** Ask each FFmpeg program about an option only once, including during concurrent exports. */
 const ffmpegOptions = new Map<string, Promise<boolean>>()
 
+type H264Format = { width: number; height: number; fps: number }
+
+function videoToolboxArgs({ width, height, fps }: H264Format): string[] {
+    const args = ['-c:v', 'h264_videotoolbox', '-allow_sw', '0', '-profile:v', 'high', '-q:v', '75', '-g', '250']
+    const blocks = Math.ceil(width / 16) * Math.ceil(height / 16)
+    if (blocks <= 8192 && blocks * fps <= 245760) args.push('-level:v', '4.0')
+    else if (blocks <= 8704 && blocks * fps <= 522240) args.push('-level:v', '4.2')
+    return args
+}
+
+/** Check each encoded presentation time before replacing the caller's movie. */
+async function verifyHardwareFrames(ffmpeg: string, path: string, count: number, fps: number, signal?: AbortSignal): Promise<void> {
+    const seen = new Uint8Array(Math.ceil(count / 8))
+    // Stream copy preserves the packet timestamps and avoids a second encode or decode.
+    const child = spawn(ffmpeg, ['-nostdin', '-v', 'error', '-xerror', '-copyts', '-i', path, '-map', '0:v:0',
+        '-c:v', 'copy', '-avoid_negative_ts', 'disabled', '-f', 'framecrc', 'pipe:1'], { stdio: ['ignore', 'pipe', 'pipe'], signal })
+    let timeScale = 0, timeUnit = 0, packets = 0
+    let stderr = '', invalid = false
+    child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-MAX_STDERR_CHARS) })
+    const lines = createInterface({ input: child.stdout })
+    lines.on('line', line => {
+        if (line.startsWith('#')) {
+            const clock = /^#tb 0:\s*(\d+)\/(\d+)$/.exec(line)
+            if (clock) {
+                timeUnit = Number(clock[1])
+                timeScale = Number(clock[2])
+            }
+            return
+        }
+        const pts = /^0,\s*-?\d+,\s*(-?\d+),/.exec(line)
+        const index = pts ? Number(pts[1]) * timeUnit * fps / timeScale : NaN
+        if (!timeScale || !timeUnit || !Number.isSafeInteger(index) || index < 0 || index >= count) {
+            invalid = true
+            return
+        }
+        const byte = Math.floor(index / 8), mask = 1 << (index % 8)
+        if (seen[byte]! & mask) invalid = true
+        seen[byte] = seen[byte]! | mask
+        packets++
+    })
+    await new Promise<void>((done, fail) => {
+        child.once('error', fail)
+        child.once('close', (code, sig) => code === 0 ? done() : fail(describeExit(code, sig, stderr)))
+    })
+    if (invalid || packets !== count) {
+        let missing = 0
+        while (missing < count && (seen[Math.floor(missing / 8)]! & (1 << (missing % 8)))) missing++
+        const detail = missing < count ? `; missing frame ${missing}` : ''
+        throw new Error(`VideoToolbox packet timing mismatch: expected ${count} frames at ${fps} fps, found ${packets}${detail}`)
+    }
+}
+
+const hardwareProbes = new Map<string, Promise<boolean>>()
+
+/** Check that FFmpeg can encode a frame with the requested hardware and format. */
+export async function resolveH264Encoder(
+    requested: H264Encoder = 'libx264',
+    ffmpegPath = 'ffmpeg',
+    format: H264Format = { width: 1920, height: 1080, fps: 30 },
+): Promise<H264Encoder> {
+    if (requested === 'libx264') return requested
+    if (requested !== 'videotoolbox') throw new Error('h264Encoder must be libx264 or videotoolbox')
+    const { width, height, fps } = format
+    if (![width, height].every(value => Number.isSafeInteger(value) && value > 0 && value % 2 === 0)
+        || !Number.isInteger(fps) || fps < 1 || fps > 120) throw new Error('Invalid H.264 probe dimensions or FPS')
+    const key = JSON.stringify([ffmpegPath, width, height, fps])
+    let probe = hardwareProbes.get(key)
+    if (!probe) {
+        probe = new Promise<boolean>((done) => {
+            const args = ['-nostdin', '-v', 'error', '-f', 'lavfi', '-i', `color=size=${width}x${height}:rate=${fps}`,
+                '-frames:v', '1', ...videoToolboxArgs(format), '-pix_fmt', 'yuv420p', '-f', 'null', '-']
+            const child = execFile(ffmpegPath, args, { timeout: 15000, killSignal: 'SIGKILL', maxBuffer: 65536 }, error => {
+                if (error) hardwareProbes.delete(key)
+                done(!error)
+            })
+            child.stdin?.end()
+        })
+        hardwareProbes.set(key, probe)
+    }
+    return await probe ? requested : 'libx264'
+}
+
 function hasFfmpegOption(ffmpegPath: string, component: string, option: string): Promise<boolean> {
     const key = JSON.stringify([ffmpegPath, component, option])
     let answer = ffmpegOptions.get(key)
@@ -443,6 +533,16 @@ export async function renderRgbaVideo(
     }
     if (options.signal?.aborted) throw abortError()
 
+    if (codec !== 'h264' && (options.h264Encoder !== undefined || options.requireH264Encoder))
+        throw new Error('h264Encoder applies only to H.264 output')
+    const requested = options.h264Encoder ?? 'libx264'
+    const useSoftwareSettings = crf !== 18 || options.x264Params !== undefined || (options.tune !== undefined && options.tune !== 'animation')
+    const h264Encoder = requested === 'videotoolbox' && useSoftwareSettings
+        ? 'libx264'
+        : await withAbort(resolveH264Encoder(requested, ffmpegPath, { width, height, fps }), options.signal)
+    if (options.requireH264Encoder && requested !== h264Encoder)
+        throw new Error(`Requested H.264 encoder ${requested} is unavailable for these settings`)
+
     const outputPath = resolve(options.outputPath)
     const outputDirectory = dirname(outputPath)
     await mkdir(outputDirectory, { recursive: true })
@@ -499,6 +599,8 @@ export async function renderRgbaVideo(
     if (codec === 'vp9') {
         // The quality mode needs a zero bitrate. Row threading makes VP9 practical at HD and above.
         args.push('-c:v', 'libvpx-vp9', '-crf', String(crf), '-b:v', '0', '-deadline', 'good', '-cpu-used', '2', '-row-mt', '1', '-threads:v', String(threads))
+    } else if (h264Encoder === 'videotoolbox') {
+        args.push(...videoToolboxArgs({ width, height, fps }))
     } else {
         args.push('-c:v', 'libx264', '-preset', preset)
         if (options.tune) args.push('-tune', options.tune)
@@ -624,6 +726,7 @@ export async function renderRgbaVideo(
         if (exit.error) throw new Error(`Unable to start FFmpeg: ${exit.error.message}`, { cause: exit.error })
         if (exit.code !== 0) throw describeExit(exit.code, exit.signal, stderr)
 
+        if (h264Encoder === 'videotoolbox') await verifyHardwareFrames(ffmpegPath, tempPath, schedule.count, fps, options.signal)
         const outputStat = await stat(tempPath)
         // The temp file is private while it is incomplete. The finished video is a normal file.
         await chmod(tempPath, 0o644)
@@ -637,6 +740,7 @@ export async function renderRgbaVideo(
             bytes: outputStat.size,
             outputPath,
             audioIncluded: options.audioPath !== undefined,
+            ...(codec === 'h264' ? { h264Encoder } : {}),
         }
     } catch (error) {
         await stopEncoder(child, exited)

@@ -154,7 +154,10 @@ The [Fourier film](../films.html) uses these three together.
 | `labeledDot(label)` | A dot with a label, as a graph vertex. |
 | `angleMark(vertex, from, to)` | An arc between two rays. |
 | `rightAngle(vertex, a, b)` | A square corner mark. |
+| `projectionMark(point, origin, towards)` | A dashed perpendicular joins the point to a colored dot on the line through `origin` and `towards`. |
 | `traced(point, from, to)` | The path a moving point left behind. |
+
+To show a dot product with a unit vector, rotate the measuring line while the source point stays fixed. Draw `dynamic(() => projectionMark(point, origin, tip()))` so the foot slides on the rotating line. The two axes must use the same scale for angles to appear correctly. For a numeric readout, call `projectToLine(point, origin, towards)` in data coordinates. Its `signedDistance` is the distance along the line, measured from the origin. It is negative when the foot lies behind the origin. The projection extends past either endpoint.
 
 ```film paired label="A matrix writes itself and a brace labels it"
 import { braceLabel, fadeIn, film, matrix, write } from 'vizmatic/stage'

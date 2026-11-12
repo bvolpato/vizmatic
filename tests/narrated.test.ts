@@ -207,6 +207,21 @@ describe('what the shell does for every film', () => {
         expect(opened['hook']).toBe(0)
     })
 
+    it('cuts to the authored first frame and keeps authored animation and later scene fades', async () => {
+        const first = circle(40).opacity(0.7), animated = circle(20), next = circle(30)
+        const result = await compile({ title: 'Capacity', intro: false, firstSceneTransition: 'cut', scenes: {
+            hook: (s) => { s.add(first); s.play(fadeIn(animated, { duration: 0.4 })) },
+            answer: (s) => { s.add(next) },
+            close: nothing,
+        } })
+        expect(visiblePaths(result, 0)).toBe(1)
+        expect(opacityAt(first, 0)).toBeCloseTo(0.7)
+        expect(opacityAt(animated, 0)).toBe(0)
+        expect(opacityAt(animated, 0.2)).toBeGreaterThan(0)
+        expect(opacityAt(next, 5.05)).toBeGreaterThan(0)
+        expect(opacityAt(next, 5.05)).toBeLessThan(1)
+    })
+
     it('leaves alone a node that the scene fades in itself, and a node that comes on a later word', async () => {
         const own = circle(40), later = circle(40)
         await compile({ scenes: { ...scenes, answer: (s, c) => {

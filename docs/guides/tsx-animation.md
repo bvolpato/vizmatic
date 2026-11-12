@@ -243,7 +243,7 @@ host's paint, containment, or opacity checks.
 
 ### Construct a result before revealing it
 
-The teaching canvas also offers five components for explanations with persistent
+The teaching canvas also offers components for explanations with persistent
 objects and computed intermediate states:
 
 | Method | State and drawing contract |
@@ -251,6 +251,7 @@ objects and computed intermediate states:
 | `vectorAccumulation` | Accumulate ordered weighted vectors. Each term retains its ID, contribution, and endpoints. Use an equal-unit two-dimensional plot or declare a projection. `revealTotal` controls the displayed result independently of construction progress. |
 | `categoricalSampling` | Map supplied uniform draws through a categorical CDF. Declare probabilities or weights, retain draw IDs, and expose the empirical distribution with a separate `showEmpirical` flag after all retained draws arrive. |
 | `routedTransfer` | Plan an orthogonal route around declared obstacles. Clearance includes the stroke and moving marker. An impossible route fails before painting. |
+| `rasterWipe` | Move a divider across two row-major pixel fields. Both fields keep their coordinates as the divider crosses a cell. |
 | `byteDifference` | Compare `Uint8Array` values with stable byte offsets, escaped controls, and explicit gaps. Scanning and the final equality verdict have separate controls. |
 | `tokenHistory` | Align prompt, accepted, processed, KV, and emitted occurrence IDs. Dropping and replaying KV preserve accepted output and rebuild the processed prefix. |
 
@@ -258,6 +259,40 @@ The corresponding pure helpers are `weightedVectorState`,
 `categoricalSampling`, `planTeachingRoutedTransfer`, `byteDifferenceState`, and
 `tokenHistoryState`. They sample explicit inputs and support out-of-order frame
 rendering. The lesson supplies the data, model assumptions, and narration cues.
+
+To show sampling with replacement, use `planSampleCopies` from `vizmatic`. Give each source a stable ID and list the destination of each draw. Draw the source objects once per frame, then paint each copy with the same label and artwork as its source.
+
+```ts
+import { planSampleCopies } from 'vizmatic'
+
+const sample = planSampleCopies(
+    [{ id: 'B', x: 40, y: 80 }],
+    [{ sourceId: 'B', x: 320, y: 40 }, { sourceId: 'B', x: 320, y: 120 }],
+)
+function paintCopies(drawCount: number, drawCard: (label: string, x: number, y: number) => void) {
+    for (const copy of sample.at(drawCount)) {
+        drawCard(copy.sourceId, copy.x, copy.y)
+    }
+}
+```
+
+At 1.5 draws, the first B has landed. The second B is halfway from the original to its slot.
+
+For a pixel comparison, pass flat arrays with the same row and column order. Set `split` to the fraction of the width that should show the left image. The method returns the divider’s x coordinate so you can attach your own pointer. When both colors match, it paints the entire cell once to avoid an antialiasing seam.
+
+```ts
+import { createTeachingCanvas, type TeachingPainter } from 'vizmatic'
+
+export function comparePixels(painter: TeachingPainter, progress: number) {
+    const reference = [24, 96, 48, 32, 112, 64]
+    const reconstruction = [24, 80, 48, 32, 80, 64]
+    return createTeachingCanvas(painter).rasterWipe({
+        x: 40, y: 120, width: 360, height: 240, rows: 2, columns: 3,
+        left: reference, right: reconstruction, split: progress,
+        color: value => `rgb(${value} ${value} ${value})`,
+    })
+}
+```
 
 Provide `painter.measureText(value, size, font)` to size moving token copies with
 the same font metrics used by `painter.text`. The helper adds the label's padding
@@ -384,6 +419,20 @@ Supply `{ x, y, width, height, rows, columns }`; returns
 `{ shape, bounds, cells, cell(row, column) }`. Connect to the painted `shape`;
 cells are label/math geometry. `layoutCellGrid` returns layout without paint.
 
+
+Use `tileTransfer` to follow labeled cells between grid addresses. For example, this load takes two rows from a larger memory grid and places them in a scratch tile. The first row can land while the second is still in flight.
+
+```typescript
+const load = charts.tileTransfer({
+  source: { grid: memory, row: 2, column: 1 },
+  target: { grid: scratch },
+  cells: [[{ label: 8 }, { label: 9 }], [{ label: 12 }, { label: 13 }]],
+  progress: clock, rowStagger: 0.4,
+})
+```
+
+Pass a grid returned by `layoutCellGrid` or `charts.grid` at each endpoint. Omitted row and column offsets start at zero. `rowStagger` gives the fraction of the transfer between the first and last row launches. Set it to zero to move the tile as one block. Use `load.arrived` to count cells at the destination and `load.complete` to advance a transaction counter after the last row lands.
+
 `timeline` draws supplied intervals on named lanes. One `time` controls elapsed
 fills, completion flags, and the axis cursor. Intervals on the same lane must
 not overlap; use separate lanes for concurrent work. Bounds include the lane
@@ -480,3 +529,24 @@ superscripts. It returns baseline metrics for alignment with other labels,
 caches formulas, and isolates macro definitions between calls. Invalid TeX
 throws an error. SVG paths render with local assets and require no browser or
 network access.
+
+### Show a recorded signal
+
+Use `pcmEnvelope` to group normalized mono PCM samples into signed amplitude bins. Build the envelope once. Use the same time domain for the speaker and microphone so a delayed echo stays visible when you resize the chart.
+
+```ts
+import { createTeachingCanvas, pcmEnvelope } from 'vizmatic'
+
+function recordedSignal(samples: Float32Array) {
+    const microphone = pcmEnvelope(samples, { sampleRate: 24000, bins: 160, startTime: 0 })
+    return (painter: Parameters<typeof createTeachingCanvas>[0], elapsedSeconds: number) => {
+        const charts = createTeachingCanvas(painter)
+        charts.waveform({
+            x: 80, y: 120, width: 800, height: 100,
+            envelope: microphone, domain: [0, 1.2], cursorTime: elapsedSeconds, reveal: true,
+        })
+    }
+}
+```
+
+All times are in seconds. Each bin spans consecutive samples and keeps their lowest and highest values on a fixed amplitude scale from −1 to +1. With `reveal: true`, a bin appears when the cursor reaches its end. Omit `cursorTime` and `reveal` to draw the complete signal.

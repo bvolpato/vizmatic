@@ -152,6 +152,7 @@ It does what every film needs, so no scene types a time for it:
 - It lays the measured voice on the stage, with the captions and the chapters.
 - It sets the text font of the film once: text-serif, which stays readable at the size of a phone. `font: 'sans'` names another. Every text with no `font` has it: the labels of the kit, a `text()` of a scene, and the labels that an object draws.
 - It draws the title card from the title, for the `intro` seconds of the script. `intro: { title: 'A cache', subtitle: 'in two scenes' }` gives the card other words, `intro: (s, film) => { ... }` draws a card of your own, and `intro: false` shows none.
+- To show an object on frame zero, set `intro: false` and `firstSceneTransition: 'cut'`, then add the object with `s.add` at the start of the first scene. The shell preserves its authored opacity and animations. Later scenes keep their entrance fades.
 - It calls each scene at the moment that the picture of the scene opens, and fades in what the scene adds there.
 - At the end of a scene, it fades out every node that the scene put on the stage. The picture of the last scene stays while the sound fades.
 
@@ -539,6 +540,11 @@ List the available sounds with `vizmatic sounds`. In `film.json`, place a sound 
 ```
 
 Use `"effects": []` to play only the voice and pad. Films that omit both `effects` and `chimes` use the original title and ending bells. To use the same sound in another mixer, run `vizmatic sounds render latch --out latch.wav`. The WAV file contains just the effect, ready to place on a timeline.
+
+To score an existing recording in another mixer, run `vizmatic sounds bed --voice voice.wav --out bed.wav --palette warm --seed 7`. The output is a stereo 24-bit PCM WAV at the source sample rate with exactly one output frame per input frame. Mix the bed with the original recording at unity gain. It contains only the pad, fades at both ends, and stays about 23 dB below active speech. It rises during longer pauses. Silent recordings produce silence.
+
+Use `warm` for a balanced chord, `open` to bring out separated notes, or `low` for more bass. The seed controls chord and scene texture choices. To time chord changes to the narration, pass `--timing marks.json` with start times in seconds, for example `{"beats":[0,12,24],"scenes":[0,24]}`. Give the command the complete narration track so that adjacent scenes share the same musical timeline.
+
 
 - The pad stays about 21 dB below the voice while the voice speaks. It rises to 15 dB below only in a pause longer than about 1 second, and to 10 dB below under the title card and after the last word.
 - The pad has no loop. The chord changes where a beat of the narration starts, a seeded random walk picks each chord from nine, and each scene has its own texture. `seed` picks the walk. Without a seed, the name of the film picks it, so two films do not share their chords.
