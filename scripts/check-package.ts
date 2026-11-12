@@ -8,11 +8,11 @@ interface PackResult {
     entryCount?: number
 }
 
-// The cue reveal build occupies 21,253,137 bytes unpacked across 232 files on macOS.
-// Its unpacked allowance includes 6,000 bytes for the helper and its declarations.
+// The scalar softmax helpers add 6,713 unpacked bytes of JavaScript and declarations.
+// The macOS build occupies 21,260,444 bytes across 232 files.
 const limits = {
     size: 7_420_000,
-    unpackedSize: 21_256_000,
+    unpackedSize: 21_263_000,
     entryCount: 232,
 }
 
