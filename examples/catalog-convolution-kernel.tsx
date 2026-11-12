@@ -1,5 +1,5 @@
 import {
-    crossCorrelate2d, getThemeColors, Matrix, PixelGrid,
+    crossCorrelate2d, getThemeColors, Matrix, PixelGrid, traceCrossCorrelation2d,
     type RgbPixel, type ThemeMode,
 } from 'vizmatic'
 
@@ -41,9 +41,8 @@ export function convolutionFrame(theme: ThemeMode, state: Readonly<KernelLessonS
     const row = Math.floor(state.cell / 4), col = state.cell % 4
     const tap = Math.min(8, Math.max(0, Math.round(state.term)))
     const kr = Math.floor(tap / 3), kc = tap % 3
-    const response = kernelResponse[row][col]
-    const rowProducts = edgeKernel.map((weights, r) => weights.map((weight, k) => kernelInput[row + r][col + k] * weight))
-    const rowSums = rowProducts.map(values => values.reduce((sum, value) => sum + value, 0))
+    const { terms, sum: response } = traceCrossCorrelation2d(kernelInput, edgeKernel, row, col)
+    const current = terms[kr][kc]
     const knownLabels = (values: number[][]) => values.map((valuesRow, r) => valuesRow.map((value, k) => r * 4 + k < state.filled ? String(value) : '·'))
     const isComputing = state.moving < .01
     const gridX = 46, gridY = 232, pitch = 46
@@ -61,7 +60,7 @@ export function convolutionFrame(theme: ThemeMode, state: Readonly<KernelLessonS
             </div>
             <div style={{ display: 'flex', position: 'absolute', left: gridX, top: gridY, opacity: 1 - reveal }}><PixelGrid c={c} pixels={inputPixels} width={274} height={274} /></div>
             <div style={{ display: 'flex', position: 'absolute', left: gridX, top: gridY, opacity: reveal }}>
-                <Matrix c={c} data={kernelInput} labels={labels(kernelInput)} cellSize={44} fontSize={20} colorize={false} {...(isComputing ? { highlightCell: { row: row + kr, col: col + kc } } : {})} highlightColor={accent} />
+                <Matrix c={c} data={kernelInput} labels={labels(kernelInput)} cellSize={44} fontSize={20} colorize={false} {...(isComputing ? { highlightCell: { row: current.inputRow, col: current.inputColumn } } : {})} highlightColor={accent} />
             </div>
             <div style={{ display: 'flex', position: 'absolute', left: gridX + state.windowCol * pitch - 3, top: gridY + state.windowRow * pitch - 3, width: 142, height: 142, border: `3px solid ${accent}`, borderRadius: 9, boxSizing: 'border-box', opacity: reveal }} />
             <div style={{ display: 'flex', position: 'absolute', left: 345, top: 316, color: c.textSecondary, fontSize: 34, opacity: reveal }}>×</div>
@@ -100,10 +99,10 @@ export function convolutionFrame(theme: ThemeMode, state: Readonly<KernelLessonS
             <div style={{ display: 'flex', position: 'absolute', left: 46, top: 538, width: 1188, height: 132, borderRadius: 14, border: `1px solid ${c.borderSubtle}`, backgroundColor: c.bgCard, opacity: reveal }}>
                 <div style={{ display: 'flex', position: 'absolute', left: 22, top: 16, color: accent, fontFamily: c.fontMono, fontSize: 13, letterSpacing: 1.2 }}>{isComputing ? `OUTPUT [${row}, ${col}] · NINE PIXEL × WEIGHT PRODUCTS` : 'SLIDE THE SAME KERNEL TO THE NEXT PATCH'}</div>
                 <div style={{ display: 'flex', position: 'absolute', left: 22, top: 48, gap: 14, fontFamily: c.fontMono, fontSize: 19, alignItems: 'center' }}>
-                    {rowProducts.map((_, r) => <span key={r} style={{ display: 'flex', padding: '7px 9px', borderRadius: 6, border: `1px solid ${r === kr && isComputing ? accent : c.borderSubtle}`, color: c.textPrimary }}>{kernelInput[row + r][col]}×(−1) + {kernelInput[row + r][col + 1]}×0 + {kernelInput[row + r][col + 2]}×1 = {rowSums[r]}</span>)}
+                    {terms.map((line, r) => <span key={r} style={{ display: 'flex', padding: '7px 9px', borderRadius: 6, border: `1px solid ${r === kr && isComputing ? accent : c.borderSubtle}`, color: c.textPrimary }}>{line[0].inputValue}×(−1) + {line[1].inputValue}×0 + {line[2].inputValue}×1 = {line.reduce((sum, term) => sum + term.product, 0)}</span>)}
                     <span style={{ color: response < 0 ? negative : positive, fontSize: 27, fontWeight: 700 }}>Σ = {response}</span>
                 </div>
-                <span style={{ display: 'flex', position: 'absolute', left: 22, top: 101, color: c.textSecondary, fontSize: 14 }}>Current tap: {kernelInput[row + kr][col + kc]} × ({edgeKernel[kr][kc]}) = {rowProducts[kr][kc]} · ReLU({response}) = {Math.max(0, response)}</span>
+                <span style={{ display: 'flex', position: 'absolute', left: 22, top: 101, color: c.textSecondary, fontSize: 14 }}>Current tap: {current.inputValue} × ({current.weight}) = {current.product} · ReLU({response}) = {Math.max(0, response)}</span>
             </div>
             <span style={{ display: 'flex', position: 'absolute', left: 46, top: 690, color: c.textSecondary, fontSize: 12 }}>One input channel / one filter. Real CNNs learn weights, sum over input channels, and may add a bias. Conv2d uses cross-correlation: weights are not flipped.</span>
         </div>
