@@ -12,8 +12,9 @@ Apply these in order: accuracy, completeness, clarity, brevity. Length follows t
 2. List every section of the source material. Mark each one as taught, with its scenes, or as left out, with a reason. The core of the topic cannot be left out.
 3. Finish the script first. A script change after the film exists repeats the film work.
 4. Teach the problem, then the mechanism, then the limits. Define each term before you use it.
-5. Keep one worked example through the film, and move from it to the general rule. Ask the viewer to predict a result, and resolve it on screen. Near the end, give a new case with new numbers.
-6. Plan one picture per scene. Ask what the viewer sees change when the voice makes its point. If the answer is "a new box appears", find a better picture.
+5. Choose a small event and a fixed reference. When results change rank, hold the numbered slots still. Put a result’s label and score in a `group` and move them together into the new slot. The viewer can follow the same result from third to first. For a filter crossing a seam between two image tiles, hold the grid and footprint still while the seam slides underneath. Highlight the first sample the filter needs from the neighboring tile. Let the viewer predict a result and see it play out. A fresh case can test the rule. Switch examples when the next mechanism needs a different picture.
+6. Sketch the event before you run `vizmatic objects`. Even when the current shot compiles, try a few seconds of a different cut. In an echo lesson, play two notes and draw their recorded waveform as they sound. When the echo returns, draw it on the same time axis and amplitude scale so the viewer can hear the delay and see how long it lasts. Try the same drawing with a second recording, such as a drummer playing two taps at different volumes. If both scenes need sample timing and a shared amplitude scale, put that behavior in a small runnable example for the library maintainer. Keep the choice of notes, colors, and captions in the film.
+7. Plan one picture per scene. Ask what the viewer sees change when the voice makes its point. If the answer is "a new box appears", find a better picture.
 
 ## Keep the screen true
 
@@ -183,4 +184,4 @@ Viewers watch on laptops and phones, so scale for the smaller screen. On a 1920 
 - A checker finds layout and encoding defects. It does not find a wrong explanation or a dull scene.
 - Have a reviewer who did not write the film view every scene of the exact movie. A reviewer who has already seen the film tends to score it higher.
 - A new render needs a new review, unless nothing changed. Record the movie's hash with each decision.
-- You cannot watch a video. Before a film is published, a person must watch it at full speed with sound. Say whether that has happened.
+- Record which passages were checked in stills and which were played at full speed with sound. Before publication, a person must watch the complete film at full speed with sound. Record whether that viewing has happened.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createCueTrack } from '../src/teaching-cues'
+import { assertCueReveal, createCueTrack } from '../src/teaching-cues'
 
 describe('semantic discrete cue tracks', () => {
     it('holds one complete snapshot across beats and commits exactly at its authored cue', () => {
@@ -52,5 +52,42 @@ describe('semantic discrete cue tracks', () => {
         expect(() => track.sample({ beat: 1, beatP: Infinity })).toThrow('progress')
         expect(() => track.sample({ beat: -1, beatP: 0 })).toThrow('nonnegative')
         expect(() => track.sample({ beat: Number.MAX_SAFE_INTEGER, beatP: 1 })).toThrow('safe integer range')
+    })
+})
+
+describe('a result held for a spoken cue', () => {
+    // Body frames from the 30 fps estimated preview of CUDA c15-b12.
+    const mean = { result: 'Mean loss ≈ 0.693', phrase: 'point six nine three', fromFrame: 37664, cueFrame: 37791 }
+
+    it('rejects the rounded mean on “Together the tickets” and locates the corrected cut', () => {
+        // Sample the headline state. The two ticket fractions and the weight can already be on screen.
+        const visibleAt = (reveal: number) => (frame: number) => {
+            const headline = 'Full-batch weight    0 + 1 = 1' + (frame >= reveal ? '      Mean loss ≈ ' + Math.log(2).toFixed(3) : '')
+            return headline.includes(mean.result)
+        }
+        expect(() => assertCueReveal({ ...mean, visibleAt: visibleAt(37635) }))
+            .toThrow(/Mean loss ≈ 0.693.*37664.*point six nine three.*37791/)
+        expect(assertCueReveal({ ...mean, visibleAt: visibleAt(37791) }))
+            .toEqual({ lastHiddenFrame: 37790, firstVisibleFrame: 37791 })
+    })
+
+    it('finds an early flash even if the last prediction frame is clear', () => {
+        expect(() => assertCueReveal({ ...mean, visibleAt: frame => frame === 37701 || frame >= mean.cueFrame }))
+            .toThrow(/37701/)
+    })
+
+    it('allows a declared fade and reports a result still missing at its deadline', () => {
+        const fade = { ...mean, byFrame: 37796 }
+        expect(assertCueReveal({ ...fade, visibleAt: frame => frame === fade.byFrame }))
+            .toEqual({ lastHiddenFrame: 37795, firstVisibleFrame: 37796 })
+        expect(() => assertCueReveal({ ...fade, visibleAt: () => false })).toThrow(/Mean loss ≈ 0.693.*37796/)
+    })
+
+    it('requires a prediction frame, an ordered window, and a definite observation', () => {
+        const visibleAt = () => false
+        for (const invalid of [{ fromFrame: -1 }, { cueFrame: 0.5 }, { fromFrame: mean.cueFrame }, { byFrame: mean.cueFrame - 1 }]) {
+            expect(() => assertCueReveal({ ...mean, ...invalid, visibleAt })).toThrow(/frame/i)
+        }
+        expect(() => assertCueReveal({ ...mean, visibleAt: () => undefined as unknown as boolean })).toThrow(/boolean/)
     })
 })

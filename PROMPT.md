@@ -60,7 +60,7 @@ Rules of the engine:
 
 ### Check, look, and export
 
-An agent cannot watch a video, so judge a film from the check and from stills.
+Use checks and stills to inspect the picture. Play the export at normal speed with sound to judge the rhythm and the way motion meets speech.
 
 ```bash
 npx vizmatic check intro.ts --json
@@ -86,11 +86,11 @@ Motion guidance:
 When a film must teach a topic, [lessons.md](https://bvolpato.github.io/vizmatic/references/lessons.md) has the full method. In short:
 
 - Put accuracy first, then completeness, clarity, and brevity. There is no target length, so keep every passage that teaches.
-- Finish the script before the film. Teach the problem, then the mechanism, then the limits. Keep one worked example throughout.
+- Finish the script before the film. Teach the problem, then the mechanism, then the limits. Carry a small example across a change when continuity helps. Switch examples when a fresh picture makes the next idea easier to see.
 - Compute every number in the film, and check it with `assert`. The voice and the screen use the same values and the same rounding.
 - Keep each title true for as long as it is visible. List every text block with its visible times, and read each one against the picture and the voice.
 - Change pictures cleanly. Old text drops under about 25% opacity before new text reaches it, and something stays on screen through the change.
-- A person must watch the film at full speed with sound before it is published. You cannot do this, so say that it has not happened.
+- Before publication, a person must watch the film at full speed with sound. Report which passages were played with sound and whether this full viewing has happened.
 - Use the computed states from `vizmatic` where they fit: `weightedVectorState`, `categoricalSampling`, `planTeachingRoutedTransfer`, `byteDifferenceState`, and `tokenHistoryState`. Show the limits of each. `check` and `film` accept this import, and `preview` refuses it because it runs in the browser. A project with a checked canvas host can use the same constructions through `createTeachingCanvas(painter)`.
 
 Read a finished film before you write a similar one. `examples/films/` in the package holds them with full source, and the [Films](https://bvolpato.github.io/vizmatic/films.html) page plays them.
@@ -157,4 +157,4 @@ After creating a visual, report:
 - whether `vizmatic check` passed
 - any overflow or layout fixes made
 - for a film, which stills you opened, and whether you scanned the motion
-- anything you could not verify, including that nobody has watched the film with sound
+- what you checked in stills, what you checked in playback, and any remaining review

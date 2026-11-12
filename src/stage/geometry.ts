@@ -10,6 +10,20 @@
  */
 
 export type Vec = readonly [number, number]
+
+/** Orthogonal projection onto the oriented line from origin through towards. */
+export function projectToLine(point: Vec, origin: Vec, towards: Vec): { foot: Vec; signedDistance: number } {
+    const dx = towards[0] - origin[0], dy = towards[1] - origin[1]
+    const length = Math.hypot(dx, dy)
+    if (length === 0) throw new RangeError('A projection line needs two distinct points')
+    const ux = dx / length, uy = dy / length
+    const signedDistance = (point[0] - origin[0]) * ux + (point[1] - origin[1]) * uy
+    const foot: Vec = [origin[0] + signedDistance * ux, origin[1] + signedDistance * uy]
+    if (!Number.isFinite(length) || !Number.isFinite(foot[0]) || !Number.isFinite(foot[1])) {
+        throw new RangeError('Projection coordinates must give a finite line and foot')
+    }
+    return { foot, signedDistance }
+}
 /** 2x3 affine matrix: x' = a*x + c*y + e, y' = b*x + d*y + f. */
 export type Mat = readonly [number, number, number, number, number, number]
 

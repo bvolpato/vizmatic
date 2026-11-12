@@ -608,6 +608,27 @@ describe.skipIf(!ready)('narration tools', () => {
         expect(tool('beats', folder).status).toBe(0)
     }, 120_000)
 
+    it('writes a deterministic bed aligned to an existing voice and lifts it in long pauses', async () => {
+        const dir = await filmFolder()
+        const voice = join(dir, 'voice.wav'), bed = join(dir, 'bed.wav')
+        ffmpeg('-f', 'lavfi', '-i', 'aevalsrc=if(between(t\\,5\\,10)\\,0\\,0.2*sin(2*PI*180*t)):s=24000:d=15.0003', voice)
+        const render = (palette: string) => {
+            const take = tool('soundbed', 'bed', '--voice', voice, '--out', bed, '--seed', '17', '--palette', palette)
+            expect(take.status, take.stderr).toBe(0)
+        }
+        render('low')
+        const original = await readFile(bed)
+        expect(audioSamples(bed).length).toBe(2 * audioSamples(voice).length)
+        const active = loudness(bed, 2, 4), pause = loudness(bed, 7, 9)
+        expect(active).toBeGreaterThan(0)
+        expect(active).toBeLessThan(0.12 * loudness(voice, 2, 4))
+        expect(pause).toBeGreaterThan(1.3 * active)
+        render('low')
+        expect((await readFile(bed)).equals(original)).toBe(true)
+        render('open')
+        expect((await readFile(bed)).equals(original)).toBe(false)
+    }, 120_000)
+
     it('mixes two takes at their places, with the pad under the voice and above silence', async () => {
         const folder = await filmFolder()
         await twoTakes(folder)

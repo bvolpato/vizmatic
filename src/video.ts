@@ -2,6 +2,7 @@ import { execFile, spawn } from 'child_process'
 import { randomUUID } from 'crypto'
 import { chmod, mkdir, open, rename, rm, stat, writeFile } from 'fs/promises'
 import { connect, createServer, type Socket } from 'net'
+import { createInterface } from 'readline'
 import { basename, dirname, join, resolve } from 'path'
 import { Resvg } from '@resvg/resvg-js'
 import parseCssColor from 'parse-css-color'
@@ -379,6 +380,48 @@ function videoToolboxArgs({ width, height, fps }: H264Format): string[] {
     return args
 }
 
+/** Check each encoded presentation time before replacing the caller's movie. */
+async function verifyHardwareFrames(ffmpeg: string, path: string, count: number, fps: number, signal?: AbortSignal): Promise<void> {
+    const seen = new Uint8Array(Math.ceil(count / 8))
+    // Stream copy preserves the packet timestamps and avoids a second encode or decode.
+    const child = spawn(ffmpeg, ['-nostdin', '-v', 'error', '-xerror', '-copyts', '-i', path, '-map', '0:v:0',
+        '-c:v', 'copy', '-avoid_negative_ts', 'disabled', '-f', 'framecrc', 'pipe:1'], { stdio: ['ignore', 'pipe', 'pipe'], signal })
+    let timeScale = 0, timeUnit = 0, packets = 0
+    let stderr = '', invalid = false
+    child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-MAX_STDERR_CHARS) })
+    const lines = createInterface({ input: child.stdout })
+    lines.on('line', line => {
+        if (line.startsWith('#')) {
+            const clock = /^#tb 0:\s*(\d+)\/(\d+)$/.exec(line)
+            if (clock) {
+                timeUnit = Number(clock[1])
+                timeScale = Number(clock[2])
+            }
+            return
+        }
+        const pts = /^0,\s*-?\d+,\s*(-?\d+),/.exec(line)
+        const index = pts ? Number(pts[1]) * timeUnit * fps / timeScale : NaN
+        if (!timeScale || !timeUnit || !Number.isSafeInteger(index) || index < 0 || index >= count) {
+            invalid = true
+            return
+        }
+        const byte = Math.floor(index / 8), mask = 1 << (index % 8)
+        if (seen[byte]! & mask) invalid = true
+        seen[byte] = seen[byte]! | mask
+        packets++
+    })
+    await new Promise<void>((done, fail) => {
+        child.once('error', fail)
+        child.once('close', (code, sig) => code === 0 ? done() : fail(describeExit(code, sig, stderr)))
+    })
+    if (invalid || packets !== count) {
+        let missing = 0
+        while (missing < count && (seen[Math.floor(missing / 8)]! & (1 << (missing % 8)))) missing++
+        const detail = missing < count ? `; missing frame ${missing}` : ''
+        throw new Error(`VideoToolbox packet timing mismatch: expected ${count} frames at ${fps} fps, found ${packets}${detail}`)
+    }
+}
+
 const hardwareProbes = new Map<string, Promise<boolean>>()
 
 /** Check that FFmpeg can encode a frame with the requested hardware and format. */
@@ -439,68 +482,6 @@ function hasMovieTimescale(ffmpegPath: string): Promise<boolean> {
 }
 
 /**
- * True when the environment asks for the pipe with frame times. With it, a frame that is the same
- * array as the frame before is not sent: FFmpeg shows the frame before for longer. It is a
- * prototype, so the default stays one raw frame for each frame of the video.
- */
-function timedPipeRequested(): boolean {
-    const value = (process.env.VIZMATIC_PIPE ?? '').trim().toLowerCase()
-    if (value === '' || value === 'raw') return false
-    if (value === 'timed') return true
-    throw new Error(`VIZMATIC_PIPE must be "timed" or "raw", but it is ${JSON.stringify(process.env.VIZMATIC_PIPE)}.`)
-}
-
-/** One Matroska element: its ID, the length of its data in eight bytes, and the data. */
-function mkvElement(id: number[], ...data: (Uint8Array | number[])[]): Buffer {
-    const body = Buffer.concat(data.map((part) => part instanceof Uint8Array ? part : Buffer.from(part)))
-    return Buffer.concat([Buffer.from(id), mkvSize(body.length), body])
-}
-
-function mkvSize(length: number): Buffer {
-    const size = Buffer.alloc(8)
-    size.writeBigUInt64BE(BigInt(length))
-    size[0] = 0x01
-    return size
-}
-
-function mkvUint(value: number): number[] {
-    const bytes = Buffer.alloc(8)
-    bytes.writeBigUInt64BE(BigInt(value))
-    return [...bytes]
-}
-
-/**
- * The start of a Matroska stream of raw RGBA frames. One tick of its clock is one frame, so the
- * time of a frame is its index. FFmpeg reads the stream from a pipe, and the segment has no end.
- */
-function mkvHeader(width: number, height: number, fps: number): Buffer {
-    const text = (value: string) => Buffer.from(value, 'ascii')
-    const frameNs = Math.round(1e9 / fps)
-    const ebml = mkvElement([0x1a, 0x45, 0xdf, 0xa3],
-        mkvElement([0x42, 0x86], [1]), mkvElement([0x42, 0xf7], [1]), mkvElement([0x42, 0xf2], [4]), mkvElement([0x42, 0xf3], [8]),
-        mkvElement([0x42, 0x82], text('matroska')), mkvElement([0x42, 0x87], [4]), mkvElement([0x42, 0x85], [2]))
-    const info = mkvElement([0x15, 0x49, 0xa9, 0x66],
-        mkvElement([0x2a, 0xd7, 0xb1], mkvUint(frameNs)), mkvElement([0x4d, 0x80], text('vizmatic')), mkvElement([0x57, 0x41], text('vizmatic')))
-    const video = mkvElement([0xe0], mkvElement([0xb0], mkvUint(width)), mkvElement([0xba], mkvUint(height)), mkvElement([0x2e, 0xb5, 0x24], text('RGBA')))
-    const track = mkvElement([0xae],
-        mkvElement([0xd7], [1]), mkvElement([0x73, 0xc5], [1]), mkvElement([0x83], [1]), mkvElement([0x9c], [0]),
-        mkvElement([0x86], text('V_UNCOMPRESSED')), mkvElement([0x23, 0xe3, 0x83], mkvUint(frameNs)), video)
-    const tracks = mkvElement([0x16, 0x54, 0xae, 0x6b], track)
-    // A segment of unknown length: all the bits of its size are set.
-    const segment = Buffer.from([0x18, 0x53, 0x80, 0x67, 0x01, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff])
-    return Buffer.concat([ebml, segment, info, tracks])
-}
-
-/** The bytes that go before the pixels of one frame: a cluster with the time of the frame, and one block. */
-function mkvFrameHead(index: number, pixelBytes: number): Buffer {
-    const time = mkvElement([0xe7], mkvUint(index))
-    // Track 1, no offset from the time of the cluster, and a key frame.
-    const blockStart = Buffer.from([0x81, 0x00, 0x00, 0x80])
-    const block = Buffer.concat([Buffer.from([0xa3]), mkvSize(blockStart.length + pixelBytes), blockStart])
-    return Buffer.concat([Buffer.from([0x1f, 0x43, 0xb6, 0x75]), mkvSize(time.length + block.length + pixelBytes), time, block])
-}
-
-/**
  * Encodes caller-rendered RGBA frames as H.264 MP4 or VP9 WebM, tagged BT.709.
  * Frames are requested and written one at a time, so the caller controls
  * rendering and memory use.
@@ -552,7 +533,6 @@ export async function renderRgbaVideo(
     }
     if (options.signal?.aborted) throw abortError()
 
-    const timed = timedPipeRequested()
     if (codec !== 'h264' && (options.h264Encoder !== undefined || options.requireH264Encoder))
         throw new Error('h264Encoder applies only to H.264 output')
     const requested = options.h264Encoder ?? 'libx264'
@@ -580,9 +560,8 @@ export async function renderRgbaVideo(
         // If the encoder gets no frame, it must fail. Without this flag, it writes a movie with no frames
         // and reports success.
         '-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-abort_on', 'empty_output',
-        ...(timed
-            ? ['-f', 'matroska', '-i', 'pipe:0']
-            : ['-f', 'rawvideo', '-pixel_format', 'rgba', '-video_size', `${width}x${height}`, '-framerate', String(fps), '-i', 'pipe:0']),
+        '-f', 'rawvideo', '-pixel_format', 'rgba', '-video_size', `${width}x${height}`,
+        '-framerate', String(fps), '-i', 'pipe:0',
     ]
     let inputs = 1
     let audioInput = -1
@@ -616,9 +595,7 @@ export async function renderRgbaVideo(
     if (options.audioPath) args.push('-map', `${audioInput}:a:0`, '-af', `asetpts=PTS-STARTPTS,apad,atrim=duration=${seconds}`)
     if (captionInput >= 0) args.push('-map', `${captionInput}:0`, '-c:s', 'mov_text', '-metadata:s:s:0', 'language=eng')
     if (metadataInput >= 0) args.push('-map_metadata', String(metadataInput), '-map_chapters', String(metadataInput))
-    // With frame times, the fps filter fills each hole with the frame before it, so the video keeps its
-    // frame rate. The filter comes after the color conversion, so a picture is converted one time.
-    args.push('-frames:v', String(schedule.count), '-t', seconds, '-vf', timed ? `${COLOR_FILTER},fps=${fps}` : COLOR_FILTER)
+    args.push('-frames:v', String(schedule.count), '-t', seconds, '-vf', COLOR_FILTER)
     if (codec === 'vp9') {
         // The quality mode needs a zero bitrate. Row threading makes VP9 practical at HD and above.
         args.push('-c:v', 'libvpx-vp9', '-crf', String(crf), '-b:v', '0', '-deadline', 'good', '-cpu-used', '2', '-row-mt', '1', '-threads:v', String(threads))
@@ -725,9 +702,7 @@ export async function renderRgbaVideo(
     try {
         const input = frameInput
         if (!input) throw new Error('FFmpeg did not provide a frame input stream')
-        if (timed) input.write(mkvHeader(width, height, fps))
 
-        let previous: Uint8Array | undefined
         for (let index = 0; index < schedule.count; index++) {
             const info = frameInfo(index, schedule, fps)
             const rendered = await withAbort(observeEncoder(Promise.resolve(renderFrame(info)), index, false), options.signal)
@@ -736,18 +711,11 @@ export async function renderRgbaVideo(
             }
             if (inputError) throw describeExit(null, null, inputError.message || stderr)
 
-            // The same array as the frame before is the same picture. FFmpeg repeats the frame before
-            // until the next frame that it gets, so the last frame always goes, to end the last hole.
-            const repeats = timed && rendered === previous && index < schedule.count - 1
-            previous = rendered
-            if (!repeats) {
-                const pixels = Buffer.from(rendered.buffer, rendered.byteOffset, rendered.byteLength)
-                if (timed) input.write(mkvFrameHead(index, pixels.length))
-                const write = new Promise<void>((resolvePromise, rejectPromise) => {
-                    input.write(pixels, (error) => error ? rejectPromise(error) : resolvePromise())
-                })
-                await withAbort(observeEncoder(write, index, true), options.signal)
-            }
+            const pixels = Buffer.from(rendered.buffer, rendered.byteOffset, rendered.byteLength)
+            const write = new Promise<void>((resolvePromise, rejectPromise) => {
+                input.write(pixels, (error) => error ? rejectPromise(error) : resolvePromise())
+            })
+            await withAbort(observeEncoder(write, index, true), options.signal)
             if (options.onProgress) {
                 await withAbort(observeEncoder(Promise.resolve(options.onProgress(info)), index, false), options.signal)
             }
@@ -758,6 +726,7 @@ export async function renderRgbaVideo(
         if (exit.error) throw new Error(`Unable to start FFmpeg: ${exit.error.message}`, { cause: exit.error })
         if (exit.code !== 0) throw describeExit(exit.code, exit.signal, stderr)
 
+        if (h264Encoder === 'videotoolbox') await verifyHardwareFrames(ffmpegPath, tempPath, schedule.count, fps, options.signal)
         const outputStat = await stat(tempPath)
         // The temp file is private while it is incomplete. The finished video is a normal file.
         await chmod(tempPath, 0o644)

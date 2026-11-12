@@ -7,7 +7,6 @@ import { renderRgbaVideo, type H264Encoder, type RgbaVideoOutput, type VideoCode
 import { parseColor } from './color'
 import { frameToSvg, type Frame } from './display'
 import { RasterPool, defaultPoolSize, framesToJob, reportExportStats, sameRasterJob, type RasterJob } from './raster'
-import { CanvasRenderer, type FrameRenderer } from './canvas-raster'
 import { film as defineFilm, isFilm, isSuspend, type CompiledFilm, type CompileOverrides, type FilmDefinition } from './stage'
 import { text } from './text'
 
@@ -21,7 +20,7 @@ export interface FilmRenderOptions extends CompileOverrides {
     h264Encoder?: H264Encoder
     requireH264Encoder?: boolean
     /**
-     * Dither the SVG renderer's bloom, so that soft light on a dark look has no contour lines. Without this option, a movie
+     * Dither the bloom, so that soft light on a dark look has no contour lines. Without this option, a movie
      * has the dither at `high` and `master` and not at `draft` and `standard`, and a PNG has it. A GIF never
      * has it. An MP4 with the dither also gets the encoder settings that keep the grain.
      */
@@ -115,69 +114,6 @@ function backgroundBytes(color: string | null): readonly [number, number, number
     return [rgba[0], rgba[1], rgba[2]]
 }
 
-/** Today's renderer: each frame as SVG text, rasterized by resvg on worker threads, with the bloom in JavaScript. */
-class SvgRenderer implements FrameRenderer {
-    readonly label = 'svg (resvg)'
-    readonly stats = { frames: 0, svgMs: 0 }
-    readonly pool: RasterPool
-    private last?: { job: RasterJob; pixels: Promise<Uint8Array> }
-
-    constructor(workers: number, private readonly dither: boolean) {
-        this.pool = new RasterPool(workers)
-    }
-
-    get size(): number {
-        return this.pool.size
-    }
-
-    render(frames: readonly Frame[], width: number, height: number, options: { reuse?: boolean } = {}): Promise<Uint8Array> {
-        const t0 = performance.now()
-        const job = framesToJob(frames, width, backgroundBytes, height, this.dither)
-        this.stats.frames++
-        this.stats.svgMs += performance.now() - t0
-        const last = this.last
-        const same = options.reuse && last && sameRasterJob(last.job, job)
-        this.pool.stats.mainMs += performance.now() - t0
-        if (same) {
-            this.pool.stats.reused++
-            return last.pixels
-        }
-        const pixels = this.pool.run(job)
-        this.last = options.reuse ? { job, pixels } : undefined
-        return pixels
-    }
-
-    close(): Promise<void> {
-        return this.pool.close()
-    }
-}
-
-/** True when the environment asks for the canvas renderer. It is a prototype, so the default stays the SVG renderer. */
-export function canvasRendererRequested(): boolean {
-    const value = (process.env.VIZMATIC_RENDERER ?? '').trim().toLowerCase()
-    if (value === '' || value === 'svg') return false
-    if (value === 'canvas') return true
-    throw new Error(`VIZMATIC_RENDERER must be "canvas" or "svg", but it is ${JSON.stringify(process.env.VIZMATIC_RENDERER)}.`)
-}
-
-/**
- * Open the renderer of the films. `workers` is the number of frames that the SVG renderer may work on at
- * one time. The canvas renderer has its own count, because a frame in flight costs it less memory.
- */
-function openRenderer(workers: number, dither: boolean, inFlight?: number): FrameRenderer {
-    return canvasRendererRequested() ? new CanvasRenderer(inFlight ?? workers) : new SvgRenderer(workers, dither)
-}
-
-/**
- * How many frames the canvas renderer may hold in flight within the memory budget. Each one holds its
- * pixels, the surface that a thread of the library draws on, and at most one more surface for a sub-frame.
- */
-function canvasInFlight(width: number, height: number, options: { workers?: number; memoryBudget?: number }): number {
-    const budget = options.memoryBudget ?? Math.min(2 * 1024 ** 3, totalmem() * 0.25)
-    const fits = Math.max(1, Math.floor(budget * 0.75 / (width * height * 4 * 3)))
-    return Math.max(1, Math.min(fits, Math.floor(options.workers ?? fits)))
-}
-
 /** Output size for an image. Height follows the film's proportions. */
 function outputSize(film: CompiledFilm, requested?: number): { width: number; height: number } {
     const width = requested ?? film.width
@@ -222,44 +158,62 @@ export function planRender(width: number, height: number, motionBlur: number, op
     return { workers, readAhead: Math.max(workers + 1, Math.min(workers * 2, workers + extra)) }
 }
 
+/** A job and the pixels that it gives. */
+interface Rendered {
+    job: RasterJob
+    pixels: Promise<Uint8Array>
+}
+
 /**
  * Rasterize frames in parallel and hand them out in order, holding only a bounded
  * number at a time. Call `next(i)` with i increasing from 0.
  *
  * A frame that is equal to the frame before takes its pixels, and no worker sees it. The two frames
- * share one buffer, so the caller must not write to the pixels.
+ * share one buffer, so the caller must not write to the pixels. For the comparison, the stream keeps
+ * the SVG text of the last job, and the pixels of the last frame until the stream ends.
  */
 function frameStream(
     film: CompiledFilm,
-    renderer: FrameRenderer,
+    pool: RasterPool,
     timeOf: (index: number) => number,
     size: { width: number; height: number },
     count: number,
     readAhead: number,
     subframes = 1,
     shutterSpan = 0,
-    times?: RenderTimes,
+    dither = true,
 ): (index: number) => Promise<Uint8Array> {
     const inFlight = new Map<number, Promise<Uint8Array>>()
-    const sample = async (index: number): Promise<Frame[]> => {
-        const base = timeOf(index)
-        const frames: Frame[] = []
-        for (let sub = 0; sub < subframes; sub++) {
-            const t0 = performance.now()
-            const sampled = frameAt(film, base + (sub / subframes) * shutterSpan)
-            if (times) times.sampleMs += performance.now() - t0
-            frames.push(await sampled)
-        }
-        return frames
-    }
-    let submitted = Promise.resolve()
+    const stats = pool.stats
+    // The job of the frame before. Jobs are compared in the order of the frames.
+    let before: Promise<Rendered | null> = Promise.resolve(null)
     const submit = (index: number): Promise<Uint8Array> => {
-        // A suspended sample can finish out of order. Compare frames in order while their pixels render in parallel.
-        const started = Promise.all([submitted, sample(index)]).then(([, frames]) => ({
-            pixels: renderer.render(frames, size.width, size.height, { reuse: true }),
-        }))
-        submitted = started.then(() => {}, () => {})
-        return started.then(({ pixels }) => pixels)
+        const previous = before
+        const rendered = (async (): Promise<Rendered> => {
+            const base = timeOf(index)
+            const frames: Frame[] = []
+            for (let sub = 0; sub < subframes; sub++) {
+                const started = performance.now()
+                const frame = frameAt(film, base + (sub / subframes) * shutterSpan)
+                stats.mainMs += performance.now() - started
+                frames.push(await frame)
+            }
+            let started = performance.now()
+            const job = framesToJob(frames, size.width, backgroundBytes, size.height, dither)
+            stats.mainMs += performance.now() - started
+            // A frame before that failed has nothing to share. Its own index reports the failure.
+            const last = await previous.catch(() => null)
+            started = performance.now()
+            const same = last !== null && sameRasterJob(last.job, job)
+            stats.mainMs += performance.now() - started
+            if (same) {
+                stats.reused++
+                return last!
+            }
+            return { job, pixels: pool.run(job) }
+        })()
+        before = rendered
+        return rendered.then((entry) => entry.pixels)
     }
     return async (index) => {
         for (let ahead = index; ahead < Math.min(count, index + readAhead); ahead++) {
@@ -273,28 +227,6 @@ function frameStream(
         inFlight.delete(index)
         return pixels
     }
-}
-
-/** Where a render spends its time, in milliseconds. `VIZMATIC_RENDER_STATS=1` prints it after a movie. */
-interface RenderTimes {
-    /** The film computes its draw lists. This runs on the main thread. */
-    sampleMs: number
-    /** The main thread waits for the pixels of the next frame. */
-    waitMs: number
-    /** The main thread waits for FFmpeg to take a frame. */
-    pipeMs: number
-}
-
-function reportTimes(renderer: FrameRenderer, times: RenderTimes, frames: number, wallMs: number): void {
-    if (!process.env.VIZMATIC_RENDER_STATS) return
-    const round = (value: number) => Math.round(value * 10) / 10
-    const stats = Object.fromEntries(Object.entries(renderer.stats ?? {}).map(([name, value]) => [name, round(value)]))
-    process.stderr.write(`render stats ${JSON.stringify({
-        renderer: renderer.label, inFlight: renderer.size, frames, wallMs: round(wallMs), fps: round(frames * 1000 / wallMs),
-        sampleMs: round(times.sampleMs), waitForPixelsMs: round(times.waitMs), waitForEncoderMs: round(times.pipeMs), ...stats,
-        // The largest memory of this process, with its worker threads. Node reports kilobytes.
-        peakRssMb: Math.round(process.resourceUsage().maxRSS / 1024),
-    })}\n`)
 }
 
 /** Encode a film to H.264 MP4 or VP9 WebM. Frames rasterize in parallel and encode in order. */
@@ -324,22 +256,23 @@ export async function renderFilmVideo(
     const codec = options.codec ?? 'h264'
     const { from, to } = timeRange(compiled, options)
     const plan = planRender(size.width, size.height, motionBlur, options)
-    const dither = options.dither ?? quality.dither
-    const renderer = openRenderer(plan.workers, dither, canvasInFlight(size.width, size.height, options))
+    const pool = new RasterPool(plan.workers)
     try {
         const count = Math.max(1, Math.round((to - from) * fps))
-        const times: RenderTimes = { sampleMs: 0, waitMs: 0, pipeMs: 0 }
-        const next = frameStream(compiled, renderer, (index) => from + index / fps, size, count, readAheadOf(renderer, plan), motionBlur, shutter / fps, times)
-        const started = performance.now()
-        const grain = renderer instanceof SvgRenderer && dither && compiled.bloom > 0 && compiled.look?.dark === true
+        const dither = options.dither ?? quality.dither
+        const next = frameStream(compiled, pool, (index) => from + index / fps, size, count, plan.readAhead, motionBlur, shutter / fps, dither)
+        // Only a dark look has bloom, so only its film has the grain of the dither. A film object with no look
+        // counts as a film with no bloom.
+        const grain = dither && compiled.bloom > 0 && compiled.look?.dark === true
+        const stats = pool.stats
+        // When the export loop took the last frame. From then, it waits for the encoder.
         let handed = 0
         const output = await renderRgbaVideo(async (info) => {
-            // The time between two requests is the time that FFmpeg took to accept the frame before.
             const asked = performance.now()
-            if (handed > 0) times.pipeMs += asked - handed
+            if (handed > 0) stats.encoderWaitMs += asked - handed
             const pixels = await next(info.index)
             handed = performance.now()
-            times.waitMs += handed - asked
+            stats.frameWaitMs += handed - asked
             return pixels
         }, {
             width: size.width, height: size.height, fps, duration: (to - from) * 1000, outputPath,
@@ -360,28 +293,12 @@ export async function renderFilmVideo(
             signal: options.signal,
             onProgress: options.onProgress,
         })
-        const finished = performance.now()
-        if (renderer instanceof SvgRenderer) {
-            const stats = renderer.pool.stats
-            stats.mainMs += times.sampleMs
-            stats.frameWaitMs = times.waitMs
-            stats.encoderWaitMs = times.pipeMs
-            stats.encoderFinishMs = finished - handed
-            reportExportStats(stats)
-        }
-        reportTimes(renderer, times, output.frameCount, finished - started)
-        return { ...output, title: compiled.title, workers: renderer.size, motionBlur, codec }
+        stats.encoderFinishMs = performance.now() - handed
+        reportExportStats(stats)
+        return { ...output, title: compiled.title, workers: pool.size, motionBlur, codec }
     } finally {
-        await renderer.close()
+        await pool.close()
     }
-}
-
-/**
- * How many frames the stream starts before the encoder asks for them. The SVG renderer has a queue
- * in front of its workers. The canvas renderer has none: each frame that it starts is in flight.
- */
-function readAheadOf(renderer: FrameRenderer, plan: RenderPlan): number {
-    return renderer instanceof CanvasRenderer ? renderer.size : plan.readAhead
 }
 
 /** Chapters for a render that starts at `from`. The chapter already running at that moment starts the video. */
@@ -434,14 +351,13 @@ export async function renderFilmGif(film: FilmDefinition | CompiledFilm, outputP
     const count = Math.max(1, Math.round((to - from) * fps))
     const delay = 1000 / fps
     const plan = planRender(size.width, size.height, 1, options)
-    // A GIF palette has too few colors to keep the grain of a dithered bloom.
-    const renderer = openRenderer(plan.workers, false, canvasInFlight(size.width, size.height, options))
+    const pool = new RasterPool(plan.workers)
     try {
         // Build one palette from frames across the film, so colors do not flicker between frames.
         const sampleCount = Math.min(count, GIF_PALETTE_FRAMES)
         const samples = await Promise.all(Array.from({ length: sampleCount }, async (_, i) => {
             const index = Math.floor((i + 0.5) * count / sampleCount)
-            return renderer.render([await frameAt(compiled, from + index / fps)], size.width, size.height)
+            return pool.run(framesToJob([await frameAt(compiled, from + index / fps)], size.width, backgroundBytes, size.height, false))
         }))
         const perFrame = Math.max(1, Math.floor(GIF_PALETTE_PIXELS / sampleCount))
         const combined = new Uint8Array(perFrame * sampleCount * 4)
@@ -454,7 +370,8 @@ export async function renderFilmGif(film: FilmDefinition | CompiledFilm, outputP
         })
         const palette = gifApi.quantize(combined, 256, { format: 'rgb565' })
         const gif = gifApi.GIFEncoder()
-        const next = frameStream(compiled, renderer, (index) => from + index / fps, size, count, readAheadOf(renderer, plan))
+        // A palette of 256 colors cannot hold the grain of a dithered bloom, so a GIF gets the plain write.
+        const next = frameStream(compiled, pool, (index) => from + index / fps, size, count, plan.readAhead, 1, 0, false)
         const repeat = options.loop === false ? -1 : 0
         let previous: Uint8Array | null = null
         let pending: { index: Uint8Array; region: { x: number; y: number; width: number; height: number }; delay: number } | null = null
@@ -487,10 +404,10 @@ export async function renderFilmGif(film: FilmDefinition | CompiledFilm, outputP
         for (let i = 0; i < count; i++) {
             options.signal?.throwIfAborted()
             const pixels = await next(i)
-            // A renderer that knows that a frame repeats gives the same array again, and no scan is needed.
-            const region: { x: number; y: number; width: number; height: number } | null = previous
-                ? (previous === pixels ? null : changedRegion(previous, pixels, size.width, size.height))
-                : { x: 0, y: 0, width: size.width, height: size.height }
+            // A frame that is equal to the frame before arrives as the same buffer.
+            const region: { x: number; y: number; width: number; height: number } | null = !previous
+                ? { x: 0, y: 0, width: size.width, height: size.height }
+                : previous === pixels ? null : changedRegion(previous, pixels, size.width, size.height)
             if (!region) {
                 // Nothing changed, so the previous frame simply holds longer.
                 if (pending) pending.delay += delay
@@ -510,7 +427,7 @@ export async function renderFilmGif(film: FilmDefinition | CompiledFilm, outputP
         await writeFile(path, gif.bytesView())
         return { width: size.width, height: size.height, frameCount: count, duration: count * delay, fps, bytes: (await stat(path)).size, outputPath: path, title: compiled.title }
     } finally {
-        await renderer.close()
+        await pool.close()
     }
 }
 
@@ -518,16 +435,17 @@ export async function renderFilmGif(film: FilmDefinition | CompiledFilm, outputP
 export async function renderFilmFrame(film: FilmDefinition | CompiledFilm, time: number, outputPath: string, options: FilmRenderOptions = {}): Promise<{ width: number; height: number; outputPath: string }> {
     const compiled = await resolveFilm(film, options)
     const { width, height } = outputSize(compiled, options.width)
-    const renderer = openRenderer(1, options.dither !== false)
+    const pool = new RasterPool(1)
     try {
         const frame = await frameAt(compiled, time)
-        const pixels = await renderer.render([frame], width, height)
+        // A still is for a look at the picture, so it has the dither unless the export turns it off.
+        const pixels = await pool.run(framesToJob([frame], width, backgroundBytes, height, options.dither !== false))
         const path = resolve(outputPath)
         await mkdir(dirname(path), { recursive: true })
         await writeFile(path, encodePng({ width, height, data: pixels, depth: 8, channels: 4 }))
         return { width, height, outputPath: path }
     } finally {
-        await renderer.close()
+        await pool.close()
     }
 }
 
@@ -536,20 +454,20 @@ export async function renderFilmFrames(film: FilmDefinition | CompiledFilm, time
     const compiled = await resolveFilm(film, options)
     const { width, height } = outputSize(compiled, options.width)
     const plan = planRender(width, height, 1, options)
-    const renderer = openRenderer(plan.workers, options.dither !== false)
+    const pool = new RasterPool(plan.workers)
     try {
         await mkdir(dirname(resolve(outputPrefix)), { recursive: true })
         // Frames are sampled one at a time because the engine's clock is shared.
         const frames: Frame[] = []
         for (const time of times) frames.push(await frameAt(compiled, time))
         return await Promise.all(frames.map(async (frame, index) => {
-            const pixels = await renderer.render([frame], width, height)
+            const pixels = await pool.run(framesToJob([frame], width, backgroundBytes, height, options.dither !== false))
             const path = resolve(`${outputPrefix}${String(index).padStart(3, '0')}.png`)
             await writeFile(path, encodePng({ width, height, data: pixels, depth: 8, channels: 4 }))
             return path
         }))
     } finally {
-        await renderer.close()
+        await pool.close()
     }
 }
 
@@ -601,12 +519,12 @@ export async function renderFilmSheet(film: FilmDefinition | CompiledFilm, times
     const height = rows * (tile.height + band) + (rows + 1) * gap
     const corner = (index: number) => ({ x: gap + (index % columns) * (tile.width + gap), y: gap + Math.floor(index / columns) * (tile.height + band + gap) })
     const plan = planRender(tile.width, tile.height, 1, options)
-    const renderer = openRenderer(plan.workers, options.dither !== false)
+    const pool = new RasterPool(plan.workers)
     try {
         // Frames are sampled one at a time because the engine's clock is shared.
         const frames: Frame[] = []
         for (const time of times) frames.push(await frameAt(compiled, time))
-        const tiles = await Promise.all(frames.map((frame) => renderer.render([frame], tile.width, tile.height)))
+        const tiles = await Promise.all(frames.map((frame) => pool.run(framesToJob([frame], tile.width, backgroundBytes, tile.height, options.dither !== false))))
         // The times are a film frame of their own, so they use the film's look and its fonts.
         const labels = await defineFilm({ width, height, look: compiled.look, background: 'surface', bloom: 0 }, (stage) => {
             times.forEach((time, index) => {
@@ -614,7 +532,7 @@ export async function renderFilmSheet(film: FilmDefinition | CompiledFilm, times
                 stage.add(text(sheetStamp(time), { font: 'mono', size: band * 0.6, color: 'dim' }).at(at.x + tile.width / 2 - width / 2, at.y + tile.height + band / 2 - height / 2))
             })
         }).compile({})
-        const sheet = await renderer.render([await frameAt(labels, 0)], width, height)
+        const sheet = await pool.run(framesToJob([await frameAt(labels, 0)], width, backgroundBytes, height))
         tiles.forEach((pixels, index) => {
             const at = corner(index)
             for (let row = 0; row < tile.height; row++) {
@@ -626,7 +544,7 @@ export async function renderFilmSheet(film: FilmDefinition | CompiledFilm, times
         await writeFile(path, encodePng({ width, height, data: sheet, depth: 8, channels: 4 }))
         return { width, height, columns, rows, times: [...times], outputPath: path }
     } finally {
-        await renderer.close()
+        await pool.close()
     }
 }
 

@@ -30,7 +30,7 @@ For pnpm 11, allow esbuild's install script with `allowBuilds: { esbuild: true }
    ```bash
    npx vizmatic check intro.ts --json
    ```
-4. Look at it. You cannot watch a video, so render stills at the end of each beat and open them.
+4. Inspect the picture. Render stills at the end of each beat and open them.
    ```bash
    npx vizmatic film intro.ts --frame 2,5.5,9,12 --width 1280 --out stills
    ```
@@ -58,7 +58,7 @@ When a film must teach, read `references/lessons.md` before you write the script
 
 The package computes some mechanisms for you, with helpers such as `weightedVectorState` and `tokenHistoryState`. `references/lessons.md` lists them, the limits of each, and how to use them in a film or a canvas host.
 
-Report what you could not verify. You cannot watch a video, so a person must watch a lesson at full speed with sound before it is published.
+Report which passages you played with sound and which you checked in stills. A person must watch the complete lesson at full speed with sound before it is published.
 
 ## Judge your own output
 

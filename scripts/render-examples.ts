@@ -1,20 +1,18 @@
-import { access, readFile, readdir, writeFile } from 'fs/promises'
+import { access, readFile, writeFile } from 'fs/promises'
 import { spawnSync } from 'child_process'
 import { basename, join } from 'path'
-import { codeToHtml } from 'shiki'
+import { exampleTitle, listGalleryExamples } from './gallery-examples'
 
 const examplesDir = 'examples'
 const examplesReadmePath = join(examplesDir, 'README.md')
 const outDir = 'docs/assets/examples'
 const galleryAssetUrl = 'https://bvolpato.github.io/vizmatic/assets/examples'
 const themes = ['dark', 'light'] as const
-const files = (await readdir(examplesDir))
-    .filter((file) => file.endsWith('.tsx'))
-    .sort()
+const examples = await listGalleryExamples()
 const onlyArgument = process.argv.slice(2).find((argument) => argument.startsWith('--only='))
 const selected = onlyArgument ? new Set(onlyArgument.slice(7).split(',').filter(Boolean)) : undefined
 if (selected) {
-    const names = new Set(files.map((file) => basename(file, '.tsx')))
+    const names = new Set(examples.map((example) => example.name))
     if (!selected.size || [...selected].some((name) => !names.has(name))) {
         throw new Error('--only requires comma-separated example names without the .tsx extension')
     }
@@ -22,21 +20,7 @@ if (selected) {
 let rendered = 0
 
 const manifest: Array<{ name: string; source: string; outputs: string[] }> = []
-const sources: Array<{ name: string; title: string; source: string; code: string; html: Record<(typeof themes)[number], string> }> = []
 const animatedSources: string[] = []
-const titleWords: Record<string, string> = {
-    gif: 'GIF',
-    ml: 'ML',
-    nccl: 'NCCL',
-    rag: 'RAG',
-}
-
-function titleFor(name: string): string {
-    return name
-        .split('-')
-        .map((part) => titleWords[part] ?? part.charAt(0).toUpperCase() + part.slice(1))
-        .join(' ')
-}
 
 function previewFor(outputs: string[], theme: (typeof themes)[number]): string {
     return outputs.find((output) => output.endsWith(`_${theme}.gif`))
@@ -45,17 +29,9 @@ function previewFor(outputs: string[], theme: (typeof themes)[number]): string {
         ?? ''
 }
 
-function sourceForGallery(code: string): string {
-    if (!code.includes('createScenes') && !code.includes('createAnimation')) return code
-    return code
-        .replace(/\nexport function create\(theme: ThemeMode = 'dark'\) \{\n    return buildFrame\(theme, stages\.length - 1\)\n\}\n(?=\nexport function createScenes)/, '\n')
-        .replace(/\nexport default create\('dark'\)\n?$/, '\n')
-        .replace(/\n{3,}/g, '\n\n')
-}
-
 function generateExamplesReadme(entries: typeof manifest): string {
     const rows = entries.map((entry) => {
-        const title = titleFor(entry.name)
+        const title = exampleTitle(entry.name)
         const sourceFile = basename(entry.source)
         const dark = previewFor(entry.outputs, 'dark')
         const light = previewFor(entry.outputs, 'light')
@@ -77,9 +53,7 @@ function generateExamplesReadme(entries: typeof manifest): string {
     ].join('\n')
 }
 
-for (const file of files) {
-    const source = join(examplesDir, file)
-    const name = basename(file, '.tsx')
+for (const { name, source } of examples) {
     const renderArgs = [
         'dist/cli.js',
         'render',
@@ -100,25 +74,7 @@ for (const file of files) {
         rendered++
     }
 
-    const code = sourceForGallery(await readFile(source, 'utf8'))
-    const html = Object.fromEntries(await Promise.all(themes.map(async (theme) => [
-        theme,
-        await codeToHtml(code, {
-            lang: 'tsx',
-            theme: theme === 'light' ? 'github-light-high-contrast' : 'github-dark-high-contrast',
-            // Embedded image strings must retain the same grammar state on slower CI runners.
-            tokenizeTimeLimit: 0,
-        }),
-    ]))) as Record<(typeof themes)[number], string>
-
-    sources.push({
-        name,
-        title: titleFor(name),
-        source,
-        code,
-        html,
-    })
-
+    const code = await readFile(source, 'utf8')
     const outputs = themes.map((theme) => `${name}_${theme}.png`)
 
     if (code.includes('createScenes') || code.includes('createAnimation')) {
@@ -178,6 +134,5 @@ if (animatedSources.length > 0) {
 }
 
 await writeFile(join(outDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
-await writeFile(join(outDir, 'sources.json'), `${JSON.stringify(sources, null, 2)}\n`)
 await writeFile(examplesReadmePath, generateExamplesReadme(manifest))
-console.log(`rendered ${rendered} example frames in ${themes.join('/')} themes; indexed ${files.length}`)
+console.log(`rendered ${rendered} example frames in ${themes.join('/')} themes; indexed ${examples.length}`)

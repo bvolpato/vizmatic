@@ -8,12 +8,11 @@ interface PackResult {
     entryCount?: number
 }
 
-// The full course component build packs to 7,346,603 bytes, or 21,157,943 bytes unpacked.
-// Its 232 files include the new component examples. The growth is in the stage runtime,
-// type declarations, examples and narration tools. The offline assets are unchanged.
+// The cue reveal build occupies 21,253,137 bytes unpacked across 232 files on macOS.
+// Its unpacked allowance includes 6,000 bytes for the helper and its declarations.
 const limits = {
-    size: 7_400_000,
-    unpackedSize: 21_200_000,
+    size: 7_420_000,
+    unpackedSize: 21_256_000,
     entryCount: 232,
 }
 

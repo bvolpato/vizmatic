@@ -199,6 +199,7 @@ function usageText() {
   vizmatic looks [--json]
   vizmatic sounds [list]
   vizmatic sounds render <name> --out <file.wav>
+  vizmatic sounds bed --voice <recording> --out <bed.wav> [--seed N] [--palette warm|open|low] [--timing <file.json>]
   vizmatic objects [--json]
 
 Frames:

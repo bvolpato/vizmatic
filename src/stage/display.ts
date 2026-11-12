@@ -384,20 +384,10 @@ export type Canvas2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContex
 
 const path2dCache = new WeakMap<Path & object, Path2D>()
 
-let pathClass: typeof Path2D | undefined
-
-/**
- * Give the painter the `Path2D` class of a canvas library. A browser has this class as a global.
- * Node has none, so the Node export gives the class that belongs to its canvas.
- */
-export function usePath2D(path2d: typeof Path2D): void {
-    pathClass = path2d
-}
-
 function ringsToPath2D(path: Path): Path2D {
     let cached = path2dCache.get(path as Path & object)
     if (cached) return cached
-    cached = new (pathClass ?? Path2D)()
+    cached = new Path2D()
     for (const r of path as readonly Ring[]) {
         const p = r.p
         if (p.length < 2) continue
@@ -433,34 +423,30 @@ export interface ImageLookup {
 /** The last dim copy of each picture. A light is still for most frames, so the next frame asks for the same copy. */
 const dimCopies = new WeakMap<object, { key: string; copy: CanvasImageSource }>()
 
-function browserImageContext(width: number, height: number): Canvas2D {
-    const canvas = typeof OffscreenCanvas === 'undefined' ? Object.assign(document.createElement('canvas'), { width, height }) : new OffscreenCanvas(width, height)
-    return canvas.getContext('2d') as Canvas2D
-}
-
 /**
  * A copy of a picture, or of its crop, with each pixel mixed toward the backdrop. It paints the backdrop
  * over the picture and keeps the alpha of the picture, which is what the color matrix of the SVG does.
  */
-function dimCopy(source: CanvasImageSource, image: StageImage, dim: number, backdrop: Rgba, createContext: typeof browserImageContext): CanvasImageSource {
+function dimCopy(source: CanvasImageSource, image: StageImage, dim: number, backdrop: Rgba): CanvasImageSource {
     const crop = image.crop
     const width = Math.max(1, Math.ceil(crop?.width ?? image.asset?.width ?? image.width)), height = Math.max(1, Math.ceil(crop?.height ?? image.asset?.height ?? image.height))
     const key = [dim, backdrop[0], backdrop[1], backdrop[2], crop?.x, crop?.y, width, height].join(' ')
     const kept = dimCopies.get(source)
     if (kept?.key === key) return kept.copy
-    const pen = createContext(width, height)
+    const copy = typeof OffscreenCanvas === 'undefined' ? Object.assign(document.createElement('canvas'), { width, height }) : new OffscreenCanvas(width, height)
+    const pen = copy.getContext('2d') as Canvas2D
     if (crop) pen.drawImage(source, crop.x, crop.y, crop.width, crop.height, 0, 0, width, height)
     else pen.drawImage(source, 0, 0, width, height)
     pen.globalCompositeOperation = 'source-atop'
     pen.globalAlpha = 1 - dim
     pen.fillStyle = css([backdrop[0], backdrop[1], backdrop[2], 1])
     pen.fillRect(0, 0, width, height)
-    dimCopies.set(source, { key, copy: pen.canvas })
-    return pen.canvas
+    dimCopies.set(source, { key, copy })
+    return copy
 }
 
 /** Paint a frame to a 2D context at a device scale. Same result as the SVG backend. */
-export function paintFrame(ctx: Canvas2D, frame: Frame, scale = 1, images?: ImageLookup, createImageContext = browserImageContext): void {
+export function paintFrame(ctx: Canvas2D, frame: Frame, scale = 1, images?: ImageLookup): void {
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.globalAlpha = 1
     ctx.globalCompositeOperation = 'source-over'
@@ -480,7 +466,7 @@ export function paintFrame(ctx: Canvas2D, frame: Frame, scale = 1, images?: Imag
             ctx.globalAlpha = op.alpha
             ctx.globalCompositeOperation = 'source-over'
             const crop = op.image.crop
-            if (op.dim !== undefined && op.dim < 1 && op.backdrop) ctx.drawImage(dimCopy(source, op.image, op.dim, op.backdrop, createImageContext), 0, 0, op.image.width, op.image.height)
+            if (op.dim !== undefined && op.dim < 1 && op.backdrop) ctx.drawImage(dimCopy(source, op.image, op.dim, op.backdrop), 0, 0, op.image.width, op.image.height)
             else if (crop) ctx.drawImage(source, crop.x, crop.y, crop.width, crop.height, 0, 0, op.image.width, op.image.height)
             else ctx.drawImage(source, 0, 0, op.image.width, op.image.height)
             ctx.restore()
