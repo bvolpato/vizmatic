@@ -8,11 +8,11 @@ interface PackResult {
     entryCount?: number
 }
 
-// In Linux CI, the waveform build packs to 7,400,441 bytes. The painters and their
-// declarations fit within 21,250,000 unpacked bytes across the same 232 files.
+// The cue reveal build occupies 21,253,137 bytes unpacked across 232 files on macOS.
+// Its unpacked allowance includes 6,000 bytes for the helper and its declarations.
 const limits = {
     size: 7_420_000,
-    unpackedSize: 21_250_000,
+    unpackedSize: 21_256_000,
     entryCount: 232,
 }
 
