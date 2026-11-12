@@ -35,7 +35,7 @@ both pinned hashes before updating the photo block.
 
 ## RGB PNG codec dependencies
 
-The raster helpers use `fast-png` 8.0.0, `iobuffer` 6.0.1, and `fflate` 0.7.5,
+The raster helpers use `fast-png` 8.0.0, `iobuffer` 6.0.1, and `fflate` 0.8.3,
 each under the MIT License. Their full notices are in
 [`licenses/raster-codecs-MIT.txt`](licenses/raster-codecs-MIT.txt).
 
@@ -46,7 +46,7 @@ The unmodified source is available at
 https://github.com/vercel/satori/tree/a7e9338e15fec771b7e2cfb90df737789104edeb.
 Its bundled dependencies retain their MIT and ISC licenses. Full licenses and
 upstream notices are in [`licenses/satori-NOTICES.txt`](licenses/satori-NOTICES.txt).
-Satori uses the package's patched `fflate` 0.7.5 dependency.
+Satori uses the package's `fflate` 0.8.3 dependency.
 
 ## Fonts
 
