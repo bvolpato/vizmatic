@@ -300,6 +300,7 @@ export const catalogUtilities = [
     'cropRgbImage',
     'flattenRgbImage',
     'crossCorrelate2d',
+    'traceCrossCorrelation2d',
     'gaussianKernel',
     'decodeRgbPng',
     'encodeRgbPng',

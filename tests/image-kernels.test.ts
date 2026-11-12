@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { crossCorrelate2d, gaussianKernel } from '../src/primitives/image-kernels'
+import { crossCorrelate2d, gaussianKernel, traceCrossCorrelation2d } from '../src/primitives/image-kernels'
 
 describe('2D image kernels', () => {
     it('uses the unflipped kernel orientation used by deep-learning cross-correlation', () => {
@@ -22,6 +22,38 @@ describe('2D image kernels', () => {
         ]
 
         expect(crossCorrelate2d(input, [[1]], { stride: 2 })).toEqual([[1, 3], [9, 11]])
+    })
+
+    it('moves the signed stencil across a seam and keeps odd SAME_UPPER padding on the right', () => {
+        const input = Array.from({ length: 5 }, () => [0, 0, 1, 1])
+        const kernel = [[-1, 0, 1], [-1, 0, 1], [-1, 0, 1]]
+        const options = { padding: 'same', stride: 2 } as const
+        const map = crossCorrelate2d(input, kernel, options)
+        expect(map).toEqual([[2, -2], [3, -3], [2, -2]])
+
+        const first = traceCrossCorrelation2d(input, kernel, 0, 0, options)
+        const last = traceCrossCorrelation2d(input, kernel, 2, 1, options)
+        for (const [trace, rows, cols] of [
+            [first, [-1, 0, 1], [0, 1, 2]],
+            [last, [3, 4, 5], [2, 3, 4]],
+        ] as const) {
+            expect(trace.terms).toEqual(rows.map((inputRow, r) => cols.map((inputColumn, c) => {
+                const pixel = input[inputRow]?.[inputColumn]
+                const weight = kernel[r][c]
+                return { inputRow, inputColumn, inputValue: pixel ?? 0, weight,
+                    padded: pixel === undefined, product: pixel === undefined ? 0 : pixel * weight }
+            })))
+            expect(trace.sum).toBe(map[trace.outputRow][trace.outputColumn])
+            expect(trace.terms.flat().reduce((sum, term) => sum + term.product, 0)).toBe(trace.sum)
+        }
+        expect([first.outputRow, first.outputColumn, first.sum]).toEqual([0, 0, 2])
+        expect([last.outputRow, last.outputColumn, last.sum]).toEqual([2, 1, -2])
+    })
+
+    it('rejects a selected cell outside the discrete output grid', () => {
+        for (const [row, column] of [[-1, 0], [1, 0], [0, 1], [0, 0.5], [NaN, 0]]) {
+            expect(() => traceCrossCorrelation2d([[1]], [[1]], row, column)).toThrow('output cell')
+        }
     })
 
     it('uses SAME_UPPER zero padding and ceil-sized outputs for same mode', () => {
