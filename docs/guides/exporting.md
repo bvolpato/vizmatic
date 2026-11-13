@@ -150,3 +150,18 @@ pnpm benchmark:export examples/films/lorenz.ts --from 5 --to 15 --quality standa
 ```
 
 It prints the frames per second, the count of frames that a worker computed, the count of frames that took the pixels of the frame before, and the time in each step: the main thread, the raster, the average of the shutter samples, the bloom, and the waits for frames and for the encoder. The load of the machine changes the numbers, so compare two runs only at a similar load.
+
+## Reuse encoded GOPs in an MP4
+
+Use `planAvcSplice` to copy complete groups of pictures from compatible constant-frame-rate AVC MP4s. Each range uses zero-based display frames and an exclusive end. Cuts inside a source must land on IDR pictures. The planner compares the AVC decoder configuration, presentation format and packet clocks. It runs FFmpeg in stream-copy mode and checks each outgoing picture packet against its source. It reads local files with FFprobe and FFmpeg on your PATH. Keep the inputs immutable from planning through muxing.
+
+```ts
+import { planAvcSplice } from 'vizmatic'
+
+const { concatScript, frameCount } = await planAvcSplice([
+    { path: 'opening.mp4', startFrame: 0, endFrame: 48 },
+    { path: 'master.mp4', startFrame: 48, endFrame: 240 },
+])
+```
+
+Give `concatScript` to FFmpeg as a concat input with `-copyts -f concat -safe 0 -auto_convert 0 -protocol_whitelist file,pipe -i pipe:0`. Map `0:v:0` with `-c:v copy`. For a finished movie, supply the separately approved audio, subtitles, metadata and chapters as explicit mux inputs. Verify those tracks and the final MP4 against the intended timeline. The example uses a 48-frame boundary shared by both sources.

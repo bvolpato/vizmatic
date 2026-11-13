@@ -8,11 +8,10 @@ interface PackResult {
     entryCount?: number
 }
 
-// Bugfixes, sandbox hardening, and synced README/PROMPT/skill docs bring the build
-// to ~7,422 KB compressed / ~21,298 KB unpacked across 232 files.
+// The AVC splice planner ships in the ESM, CJS and declaration bundles.
 const limits = {
     size: 7_435_000,
-    unpackedSize: 21_310_000,
+    unpackedSize: 21_340_000,
     entryCount: 232,
 }
 
