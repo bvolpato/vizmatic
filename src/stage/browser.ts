@@ -30,6 +30,9 @@ export function loadFilm(src: string, options: FilmLoadOptions = {}): Promise<Co
                 overrides.background = options.background
             }
             return compileFilm(module.default, overrides)
+        }).catch((error) => {
+            compiled.delete(key)
+            throw error
         })
         compiled.set(key, film)
     }

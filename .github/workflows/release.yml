@@ -43,6 +43,11 @@ jobs:
         run: |
           VERSION="$(node -p "require('./package.json').version")"
           test "${RELEASE_TAG}" = "v${VERSION}"
+      - uses: actions/cache@v6
+        with:
+          path: ~/.github-actionlint
+          key: actionlint-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: actionlint-${{ runner.os }}-
       - run: pnpm verify
       # The website is built here but not committed: .gitignore names each of its files. This step
       # fails when committed output changed, or when the build wrote a file with no rule.

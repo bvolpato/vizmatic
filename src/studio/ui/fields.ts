@@ -1,4 +1,4 @@
-import { buildOps, css, parseColor, paintFrame, Suspend, tex, type Rgba } from '../../stage/index'
+import { buildOps, css, isSuspend, parseColor, paintFrame, tex, type Rgba } from '../../stage/index'
 import type { Field } from '../catalog'
 import { exprProblem } from '../expr'
 import type { PropValue } from '../model'
@@ -129,7 +129,7 @@ function texControl(field: Field, host: FieldHost): FieldControl {
                 problem.textContent = ''
                 return
             } catch (error) {
-                if (error instanceof Suspend) {
+                if (isSuspend(error)) {
                     await error.promise
                     if (mine !== token) return
                     continue

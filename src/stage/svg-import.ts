@@ -10,13 +10,23 @@ interface XmlElement {
     text: string
 }
 
+function safeCodePoint(code: number): string {
+    if (!Number.isInteger(code) || code < 1 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) {
+        return '\uFFFD'
+    }
+    return String.fromCodePoint(code)
+}
+
 function decode(value: string): string {
     return value
         .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'")
-        .replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
-        .replace(/&#x([\da-fA-F]+);/g, (_, code: string) => String.fromCodePoint(parseInt(code, 16)))
+        .replace(/&#(\d+);/g, (_, code: string) => safeCodePoint(Number(code)))
+        .replace(/&#x([\da-fA-F]+);/g, (_, code: string) => safeCodePoint(parseInt(code, 16)))
         .replace(/&amp;/g, '&')
 }
+
+const MAX_SVG_DEPTH = 64
+const MAX_SVG_NODES = 10_000
 
 /** A small XML reader, enough for SVG. It has no DOM dependency, so it runs anywhere. */
 function parseXml(source: string): XmlElement {
@@ -233,29 +243,41 @@ export function fromSvg(source: string, options: FromSvgOptions = {}): SvgNode {
     const splitting = options.splitGlyphs ?? true
     const keepBackground = options.background ?? false
     let firstShape = true
+    let expandedNodes = 0
 
-    const gradientOf = (id: string, m: Mat, path: Path): Paint | null => {
+    const gradientOf = (id: string, m: Mat, path: Path, seen: ReadonlySet<string> = new Set()): Paint | null => {
+        if (seen.has(id) || seen.size >= MAX_SVG_DEPTH) return null
         const element = defs.get(id)
         if (!element) return null
+        const nextSeen = new Set(seen)
+        nextSeen.add(id)
         if (element.name === 'pattern') {
             // Satori wraps gradients in a pattern: the fill spans the shape's own box.
             const inner = element.children.find((child) => child.name === 'linearGradient')
-            if (inner) return linear(inner, m, path, true)
+            if (inner) return linear(inner, m, path, true, nextSeen)
             const fill = element.children.find((child) => child.attrs['fill']?.startsWith('url(#'))
             const nested = fill?.attrs['fill']?.match(/url\(#([^)]+)\)/)?.[1]
-            return nested ? gradientOf(nested, m, path) : null
+            return nested ? gradientOf(nested, m, path, nextSeen) : null
         }
-        if (element.name === 'linearGradient') return linear(element, m, path, element.attrs['gradientUnits'] !== 'userSpaceOnUse')
+        if (element.name === 'linearGradient') return linear(element, m, path, element.attrs['gradientUnits'] !== 'userSpaceOnUse', nextSeen)
         if (element.name === 'radialGradient') {
-            const stops = stopsOf(element)
+            const stops = stopsOf(element, nextSeen)
             return stops.length ? stops[stops.length - 1]![1] : null
         }
         return null
     }
 
-    const stopsOf = (element: XmlElement): (readonly [number, Rgba])[] => {
-        const inherited = element.attrs['href'] ?? element.attrs['xlink:href']
-        const source = element.children.some((child) => child.name === 'stop') || !inherited ? element : defs.get(inherited.replace(/^#/, '')) ?? element
+    const stopsOf = (element: XmlElement, seen: ReadonlySet<string> = new Set()): (readonly [number, Rgba])[] => {
+        let source = element
+        const visited = new Set(seen)
+        for (let hop = 0; hop < MAX_SVG_DEPTH && !source.children.some((child) => child.name === 'stop'); hop++) {
+            const inherited = (source.attrs['href'] ?? source.attrs['xlink:href'] ?? '').replace(/^#/, '')
+            if (!inherited || visited.has(inherited)) break
+            visited.add(inherited)
+            const next = defs.get(inherited)
+            if (!next) break
+            source = next
+        }
         return source.children.filter((child) => child.name === 'stop').map((stop) => {
             const style = parseStyle(stop.attrs['style'])
             const offsetRaw = stop.attrs['offset'] ?? '0'
@@ -266,8 +288,8 @@ export function fromSvg(source: string, options: FromSvgOptions = {}): SvgNode {
         })
     }
 
-    const linear = (element: XmlElement, m: Mat, path: Path, objectBox: boolean): Paint | null => {
-        const stops = stopsOf(element)
+    const linear = (element: XmlElement, m: Mat, path: Path, objectBox: boolean, seen: ReadonlySet<string> = new Set()): Paint | null => {
+        const stops = stopsOf(element, seen)
         if (stops.length === 0) return null
         const coordinate = (value: string | undefined, fallback: number) => {
             if (value === undefined) return fallback
@@ -386,7 +408,16 @@ export function fromSvg(source: string, options: FromSvgOptions = {}): SvgNode {
         })
     }
 
-    const walk = (element: XmlElement, parent: Node, inherited: InheritedStyle, parentMatrix: Mat): void => {
+    const walk = (
+        element: XmlElement,
+        parent: Node,
+        inherited: InheritedStyle,
+        parentMatrix: Mat,
+        depth = 0,
+        useStack: ReadonlySet<string> = new Set(),
+    ): void => {
+        if (depth > MAX_SVG_DEPTH) throw new Error(`fromSvg exceeds the maximum nesting depth (${MAX_SVG_DEPTH}).`)
+        if (++expandedNodes > MAX_SVG_NODES) throw new Error(`fromSvg exceeds the ${MAX_SVG_NODES}-node budget.`)
         if (NOT_DRAWN.has(element.name)) return
         // Filter groups in Satori output hold soft shadows that need a blur to look right.
         if (element.attrs['filter']) return
@@ -400,19 +431,23 @@ export function fromSvg(source: string, options: FromSvgOptions = {}): SvgNode {
             if (opacity < 1) group.base.opacity = opacity
             register(group)
             parent.add(group)
-            for (const child of element.children) walk(child, group, style, m)
+            for (const child of element.children) walk(child, group, style, m, depth + 1, useStack)
             return
         }
         if (element.name === 'use') {
             const href = (element.attrs['href'] ?? element.attrs['xlink:href'] ?? '').replace(/^#/, '')
+            if (!href) return
+            if (useStack.has(href)) throw new Error(`fromSvg encountered a circular <use> reference to #${href}.`)
             const referenced = defs.get(href)
             if (!referenced) return
+            const nextUseStack = new Set(useStack)
+            nextUseStack.add(href)
             const placed = mul(m, [1, 0, 0, 1, parseFloat(element.attrs['x'] ?? '0') || 0, parseFloat(element.attrs['y'] ?? '0') || 0])
             const group = new Node()
             if (opacity < 1) group.base.opacity = opacity
             parent.add(group)
-            if (referenced.name === 'symbol') for (const child of referenced.children) walk(child, group, style, placed)
-            else walk(referenced, group, style, placed)
+            if (referenced.name === 'symbol') for (const child of referenced.children) walk(child, group, style, placed, depth + 1, nextUseStack)
+            else walk(referenced, group, style, placed, depth + 1, nextUseStack)
             return
         }
         if (element.name === 'image') {

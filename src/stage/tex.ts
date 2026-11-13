@@ -54,6 +54,9 @@ function requireEngine(): MathEngine {
     if (engine) return engine
     loading ??= import('../math').then((module) => {
         engine = (tex, display) => module.renderMathSvg(tex, { fontSize: 1000, display, color: '#000000' }).svg
+    }).catch((error) => {
+        loading = null
+        throw error
     })
     throw new Suspend(loading)
 }

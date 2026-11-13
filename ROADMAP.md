@@ -13,9 +13,10 @@ This page states what Vizmatic can do now and what comes next. Vizmatic aims to 
 - Five looks, gradient strokes, glow, and bloom.
 - `<vz-film>`, a live, seekable player for any page, with chapters and a stepped presentation mode.
 - `fromSvg` and `fromComponent`, which turn any SVG or TSX figure into shapes that films can animate.
-- Export to MP4 and WebM with BT.709 color, GIF with a shared palette, PNG, and SVG. Frames rasterize on worker threads with a memory limit, with optional motion blur.
-- `vizmatic new`, `preview`, `check`, `film`, `looks`, and `objects`. Preview reloads on save and keeps the playhead.
-- `vizmatic check` for films: off-canvas marks, overlapping text, and strokes through text, with times and bounding boxes as JSON. `--motion` inspects every frame for collisions and blank gaps between pictures.
+- Export to MP4 and WebM with BT.709 color, GIF with a shared palette, PNG, and SVG. Frames rasterize on worker threads with a memory limit, with optional motion blur, embedded MP4 chapter and caption tracks, and WebVTT sidecars.
+- `vizmatic new`, `preview`, `check`, `film`, `narrated`, `sounds`, `looks`, and `objects`. Preview reloads on save and keeps the playhead.
+- Narrated teaching films with `vizmatic narrated`: spoken beat takes, `timing.json` synchronization, background pads and cue sound effects (`vizmatic sounds`), transcript verification, and audio lag checks.
+- `vizmatic check` for films: off-canvas marks, overlapping text, strokes through text, crowded text, small labels, and empty canvas space, with times and bounding boxes as JSON. `--motion` inspects every frame for collisions and blank gaps between pictures.
 - The Studio, which builds and exports a film in the browser.
 
 ### Figures
@@ -34,7 +35,7 @@ This page states what Vizmatic can do now and what comes next. Vizmatic aims to 
 
 ### Films
 
-- Burned-in captions and audio-synchronized timing from a narration script. Today captions export as a VTT sidecar.
+- Optional burned-in open captions rendered onto video frames. Synchronized narration timing, embedded MP4 caption tracks, and WebVTT sidecars are available now.
 - ProRes and 4:4:4 masters for video editors. MP4 and WebM use 4:2:0 today for browser compatibility.
 - Frame caching for faster incremental renders.
 - Parity tests between the canvas and SVG backends, which today share one display list but use separate painters.

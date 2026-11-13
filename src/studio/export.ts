@@ -4,8 +4,9 @@
  * is. This module runs in the Studio page and inside the code sandbox.
  */
 import * as gifenc from 'gifenc'
+import { paintCanvasBloom, type BloomLayer } from '../stage/bloom-canvas'
 import { FilmPlayer } from '../stage/player'
-import { Suspend, type CompiledFilm } from '../stage/index'
+import { isSuspend, type CompiledFilm, type Frame } from '../stage/index'
 import { muxMp4, muxWebm, vp9Config, type Mp4Sample, type VideoCodec } from './mp4'
 
 export type ExportFormat = 'mp4' | 'webm' | 'gif' | 'png' | 'svg'
@@ -74,20 +75,21 @@ function nextTask(): Promise<void> {
 }
 
 /** Paints frames at any resolution, including bloom and optional motion blur. */
-class FramePainter {
+export class FramePainter {
     readonly canvas = document.createElement('canvas')
     private readonly player: FilmPlayer
     private readonly accumulate: HTMLCanvasElement | null
     private readonly accumulateCtx: CanvasRenderingContext2D | null
+    private bloomLayers: BloomLayer[] = []
 
     constructor(private readonly film: CompiledFilm, readonly width: number, readonly height: number, private readonly blur: number) {
-        this.player = new FilmPlayer(this.canvas, film, { pixelRatio: width / film.width })
+        this.player = new FilmPlayer(this.canvas, film, { pixelRatio: width / film.width, bloom: blur <= 1 })
         if (this.canvas.height !== height) this.canvas.height = height
         if (blur > 1) {
             this.accumulate = document.createElement('canvas')
             this.accumulate.width = width
             this.accumulate.height = height
-            this.accumulateCtx = this.accumulate.getContext('2d')!
+            this.accumulateCtx = this.accumulate.getContext('2d', { alpha: film.background === null })!
         } else {
             this.accumulate = null
             this.accumulateCtx = null
@@ -99,27 +101,53 @@ class FramePainter {
             await this.seek(time)
             return this.canvas
         }
+        const ctx = this.accumulateCtx
+        ctx.setTransform(1, 0, 0, 1, 0, 0)
+        ctx.globalCompositeOperation = 'source-over'
+        ctx.globalAlpha = 1
+        ctx.clearRect(0, 0, this.width, this.height)
         const shutter = 0.5 / fps
+        let lastFrame: Frame | null = null
         for (let i = 0; i < this.blur; i++) {
-            await this.seek(time + (i / this.blur) * shutter)
-            this.accumulateCtx.globalAlpha = 1 / (i + 1)
-            this.accumulateCtx.drawImage(this.canvas, 0, 0)
+            lastFrame = await this.seek(time + (i / this.blur) * shutter)
+            if (i === 0) {
+                ctx.globalCompositeOperation = 'source-over'
+                ctx.globalAlpha = 1
+                ctx.drawImage(this.canvas, 0, 0)
+            } else {
+                // Scale accumulated premultiplied pixels by i / (i + 1) and add 1 / (i + 1) of
+                // this subframe, so transparent subframes attenuate prior marks instead of ghosting.
+                ctx.globalCompositeOperation = 'destination-in'
+                ctx.globalAlpha = i / (i + 1)
+                ctx.fillStyle = '#000000'
+                ctx.fillRect(0, 0, this.width, this.height)
+                ctx.globalCompositeOperation = 'lighter'
+                ctx.globalAlpha = 1 / (i + 1)
+                ctx.drawImage(this.canvas, 0, 0)
+            }
         }
-        this.accumulateCtx.globalAlpha = 1
+        ctx.globalAlpha = 1
+        ctx.globalCompositeOperation = 'source-over'
+        if (lastFrame && lastFrame.bloom > 0 && lastFrame.dark) {
+            this.bloomLayers = paintCanvasBloom(this.accumulate, ctx, lastFrame.bloom, lastFrame.background, this.bloomLayers)
+        }
         return this.accumulate
     }
 
-    private async seek(time: number): Promise<void> {
+    private async seek(time: number): Promise<Frame> {
+        let frame: Frame | null = null
         for (let attempt = 0; attempt < 8; attempt++) {
             try {
-                this.film.frame(time)
+                frame = this.film.frame(time)
                 break
             } catch (error) {
-                if (!(error instanceof Suspend)) throw error
+                if (!isSuspend(error)) throw error
                 await error.promise
             }
         }
+        if (!frame) frame = this.film.frame(time)
         this.player.seek(time)
+        return frame
     }
 
     destroy(): void {
@@ -288,6 +316,7 @@ async function exportGif(film: CompiledFilm, settings: ExportSettings, control: 
     try {
         for (let index = 0; index < total; index++) {
             if (control.signal?.aborted) throw new ExportCancelled()
+            ctx.clearRect(0, 0, width, height)
             ctx.drawImage(await painter.paint(settings.from + index / fps, fps), 0, 0)
             const pixels = new Uint8Array(ctx.getImageData(0, 0, width, height).data.buffer)
             const palette = gifApi.quantize(pixels, 256, { format: 'rgb565' })

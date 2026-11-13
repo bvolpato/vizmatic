@@ -9,20 +9,33 @@ export function setAssetBase(url: string): void {
     assetBase = url
 }
 
-const isNode = typeof process !== 'undefined' && !!process.versions?.node && typeof (globalThis as { document?: unknown }).document === 'undefined'
+function isNodeRuntime(): boolean {
+    return typeof process !== 'undefined' && process.release?.name === 'node'
+}
+
+export function filePathToUrl(filePath: string): string {
+    const normalized = filePath.replace(/\\/g, '/')
+    const encoded = encodeURI(normalized).replace(/#/g, '%23').replace(/\?/g, '%3F')
+    return encoded.startsWith('/') ? `file://${encoded}` : `file:///${encoded}`
+}
 
 function moduleUrl(): string {
     // The CommonJS build defines import.meta.url as undefined, and __filename exists instead.
     const url: string | undefined = import.meta.url
     if (url) return url
-    return `file://${typeof __filename !== 'undefined' ? __filename : ''}`
+    return typeof __filename !== 'undefined' ? filePathToUrl(__filename) : 'file:///'
 }
 
 async function nodeRead(relative: string): Promise<ArrayBuffer> {
     // A computed specifier keeps browser bundlers from following Node modules.
     const fsName = 'node:fs/promises', pathName = 'node:path', urlName = 'node:url'
     const [fs, path, url] = await Promise.all([import(fsName), import(pathName), import(urlName)])
-    let directory: string = path.dirname(url.fileURLToPath(moduleUrl()))
+    const currentFile: string = import.meta.url
+        ? url.fileURLToPath(import.meta.url)
+        : typeof __filename !== 'undefined'
+            ? url.fileURLToPath(url.pathToFileURL(__filename).href)
+            : url.fileURLToPath(moduleUrl())
+    let directory: string = path.dirname(currentFile)
     for (let depth = 0; depth < 6; depth++) {
         const candidate = path.join(directory, 'assets', relative)
         try {
@@ -37,7 +50,7 @@ async function nodeRead(relative: string): Promise<ArrayBuffer> {
 }
 
 export async function loadBinaryAsset(relative: string): Promise<ArrayBuffer> {
-    if (isNode) return nodeRead(relative)
+    if (isNodeRuntime() && (assetBase === null || assetBase.startsWith('file:'))) return nodeRead(relative)
     const base = assetBase ?? new URL('./assets/', moduleUrl()).href
     const response = await fetch(new URL(relative, base))
     // Static hosts often answer a missing file with an HTML page and a 200 status.

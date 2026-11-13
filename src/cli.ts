@@ -41,6 +41,7 @@ import {
 } from './film-cli'
 import { runNarratedCommand, runSoundsCommand } from './narrated-cli'
 import type { LookName } from './stage/look'
+import { isSuspend } from './stage/stage'
 
 interface FrameModule {
     width?: number
@@ -327,7 +328,7 @@ function resolveStageImportSpecifier(subpath: 'stage' | 'stage/export'): string 
     const moduleDir = dirname(fileURLToPath(import.meta.url))
     const bundled = join(moduleDir, subpath === 'stage' ? 'stage.js' : 'stage-export.js')
     if (existsSync(bundled)) return pathToFileURL(bundled).href
-    const source = join(moduleDir, subpath === 'stage' ? 'stage/index.ts' : 'stage/export.ts')
+    const source = join(moduleDir, subpath === 'stage' ? 'stage/index.ts' : 'stage-export.ts')
     if (existsSync(source)) return pathToFileURL(source).href
     return `vizmatic/${subpath}`
 }
@@ -342,7 +343,7 @@ function resolveStageEntry(subpath: 'stage' | 'stage/export'): string | undefine
     const moduleDir = dirname(fileURLToPath(import.meta.url))
     for (const candidate of subpath === 'stage'
         ? ['stage.cjs', 'stage/index.ts']
-        : ['stage-export.cjs', 'stage/export.ts']) {
+        : ['stage-export.cjs', 'stage-export.ts']) {
         const path = join(moduleDir, candidate)
         if (existsSync(path)) return path
     }
@@ -1237,6 +1238,7 @@ async function importFrame(filePath: string): Promise<FrameModule> {
             const mod = await importWithOptionalReactBinding(() => import(url) as Promise<FrameModule>)
             if (!isBareFrame || mod.create || mod.default || mod.createScenes || mod.createAnimation) return mod
         } catch (nativeError) {
+            if (isSuspend(nativeError)) throw nativeError
             loadError = nativeError
         }
     }
@@ -1245,6 +1247,7 @@ async function importFrame(filePath: string): Promise<FrameModule> {
         const mod = await importWithOptionalReactBinding(() => importWithTsx<FrameModule>(url))
         if (!isBareFrame || mod.create || mod.default || mod.createScenes || mod.createAnimation) return mod
     } catch (tsxError) {
+        if (isSuspend(tsxError)) throw tsxError
         loadError = tsxError
         // Fall through to CLI-owned module loading.
     }
@@ -1258,6 +1261,7 @@ async function importFrame(filePath: string): Promise<FrameModule> {
         const mod = await importWithOptionalReactBinding(() => importRewrittenFrame(filePath, source))
         if (!isBareFrame || mod.create || mod.default || mod.createScenes || mod.createAnimation) return mod
     } catch (rewrittenError) {
+        if (isSuspend(rewrittenError)) throw rewrittenError
         if (!isBareFrame) throw rewrittenError
     }
 

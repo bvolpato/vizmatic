@@ -1,4 +1,4 @@
-import { parseColor, setColorTokens, type Rgba } from './color'
+import { getColorTokens, parseColor, setColorTokens, type Rgba } from './color'
 import { smooth, type Ease } from './ease'
 import { buildOps, frameToSvg, type Frame } from './display'
 import { resolveLook, type Look, type LookName } from './look'
@@ -161,6 +161,7 @@ export class Stage {
      */
     private claim(): void {
         if (building(this)) {
+            setColorTokens(this.look.colors)
             clock.font = this.font
             clock.canvas = this
         }
@@ -411,6 +412,9 @@ export class CompiledFilm {
             pending = resolveLegacyImage(image.src, this.allowImageNetwork).then(asset => {
                 this.imageAssets.set(image.src, asset)
                 return asset
+            }).catch(error => {
+                this.imageLoads.delete(image.src)
+                throw error
             })
             this.imageLoads.set(image.src, pending)
         }
@@ -432,7 +436,7 @@ export class CompiledFilm {
     frame(time: number): Frame {
         const t = Math.max(0, Math.min(this.duration, time))
         const stage = this.stage
-        const previous = { mode: clock.mode, now: clock.now, font: clock.font, canvas: clock.canvas }
+        const previous = { mode: clock.mode, now: clock.now, font: clock.font, canvas: clock.canvas, colors: getColorTokens() }
         setColorTokens(stage.look.colors)
         clock.mode = 'render'
         clock.now = t
@@ -458,6 +462,7 @@ export class CompiledFilm {
             })
             return { width: stage.width, height: stage.height, background: this.background, bloom: this.bloom, dark: stage.look.dark, ops: preparedOps }
         } finally {
+            setColorTokens(previous.colors)
             clock.mode = previous.mode
             clock.now = previous.now
             clock.font = previous.font
@@ -474,7 +479,13 @@ export class CompiledFilm {
 /** A film whose callback runs now, and the clock that it found when it started. */
 interface Build {
     readonly stage: Stage
-    found: { mode: typeof clock.mode; now: number; font: FontFamily | null; canvas: typeof clock.canvas }
+    found: {
+        mode: typeof clock.mode
+        now: number
+        font: FontFamily | null
+        canvas: typeof clock.canvas
+        colors: Readonly<Record<string, string>>
+    }
 }
 
 /**
@@ -489,8 +500,12 @@ function building(stage: Stage): boolean {
 
 /** The callback of a film starts: the film takes the clock, and keeps what it found. */
 function begin(stage: Stage): Build {
-    const build: Build = { stage, found: { mode: clock.mode, now: clock.now, font: clock.font, canvas: clock.canvas } }
+    const build: Build = {
+        stage,
+        found: { mode: clock.mode, now: clock.now, font: clock.font, canvas: clock.canvas, colors: getColorTokens() },
+    }
     builds.push(build)
+    setColorTokens(stage.look.colors)
     clock.mode = 'compile'
     clock.now = 0
     clock.font = stage.font
@@ -506,6 +521,7 @@ function end(build: Build): void {
     const later = builds[index]
     if (!later) {
         // No film that started after this one still builds: put back the clock that this film found.
+        setColorTokens(build.found.colors)
         clock.mode = build.found.mode
         clock.now = build.found.now
         clock.font = build.found.font
@@ -514,10 +530,12 @@ function end(build: Build): void {
     }
     // A film that started later still builds, because the two callbacks await. It found the clock of this
     // film, which is of no use now. It takes what this film found, so the last film to end puts back the
-    // clock from before them all. Until its next call, the clock has the font of the newest film.
+    // clock from before them all. Until its next call, the clock has the font and colors of the newest film.
     later.found = build.found
-    clock.font = builds[builds.length - 1]!.stage.font
-    clock.canvas = builds[builds.length - 1]!.stage
+    const current = builds[builds.length - 1]!.stage
+    setColorTokens(current.look.colors)
+    clock.font = current.font
+    clock.canvas = current
 }
 
 const TWO_ENGINES = 'Two copies of vizmatic/stage built this film, so a part of it is on another timeline. '
@@ -533,18 +551,18 @@ export async function compileFilm(definition: FilmDefinition, overrides: Compile
     }
     for (let attempt = 0; attempt < 64; attempt++) {
         const stage = new Stage(options)
-        setColorTokens(stage.look.colors)
         const build = begin(stage)
         try {
             // A callback that is not async is done when it returns. Do not await it: the clock then goes
             // back before any other film can start, so two such films never have the clock of each other.
             const pending = definition.build(stage) as unknown
             if (pending !== null && typeof pending === 'object' && typeof (pending as PromiseLike<void>).then === 'function') await pending
+            setColorTokens(stage.look.colors)
             // The timeline is complete, so each check and each light can ask what was on the stage at a time.
             for (const check of stage.checks) check()
             settleLights(stage)
-            end(build)
             const compiled = new CompiledFilm(stage, options, overrides)
+            end(build)
             await compiled.preloadImages()
             // Drawings can ask for assets too, so sample across the timeline before returning.
             await probe(compiled)

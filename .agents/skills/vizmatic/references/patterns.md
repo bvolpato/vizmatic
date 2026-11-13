@@ -22,6 +22,9 @@ Figures render at the `dense` density by default. Keep the default for documents
 - Decision regions: `QuadrantChart` with raw numeric domains, policy thresholds, visible ticks, and `emphasis: true` on the desired region.
 - Timeline or schedule: `Timeline`, `IntervalPlot`, `ProgressRow`, `StatusRow`, and `BadgePill`.
 - Hierarchy or ownership: `TreeDiagram` for parent/child structure; use `GraphDiagram` when edges are non-hierarchical.
+- Relational schema: `EntityRelationshipDiagram` with tables, typed columns, primary/foreign keys, and cardinality edges.
+- Scientific and ML mechanisms: `ConvolutionKernel`, `ImageTensor`, `MoleculeDiagram`, `FreeBodyDiagram`, and `GeometryDiagram` (see `SCIENCE.md` in the package).
+- Existing Mermaid or D2 graphs: `importMermaid(source)` and `importD2(source)` convert text graphs into `GraphDiagram` props with diagnostics.
 - Small visual anchors: `Icon` inside cards, callouts, compact rows, and presentation frames.
 - Code or terminal state: `WindowFrame`, `CodeBlock`, `KeyValueList`, and `StatusList`.
 
@@ -114,5 +117,6 @@ export default create("dark")
 ```
 
 ```bash
-vizmatic gif ./frames/chunk-transfer.tsx --out ./public/vizmatic --theme dark,light --fps 20
+npx vizmatic gif ./frames/chunk-transfer.tsx --out ./public/vizmatic --theme dark,light --fps 20
+npx vizmatic video ./frames/chunk-transfer.tsx --out ./public/vizmatic --theme dark --fps 60
 ```

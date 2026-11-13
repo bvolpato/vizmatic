@@ -56,7 +56,20 @@ jobs:
       # The command line loads a film as a project does: from the built package.
       - run: pnpm build
       - name: Test the tools, the one command of a film, the film shell, and the movie export
-        run: pnpm exec vitest run tests/narrated-tools.test.ts tests/narrated-cli.test.ts tests/narrated.test.ts tests/video.test.ts
+        run: >-
+          pnpm exec vitest run
+          tests/narrated-tools.test.ts
+          tests/narrated-cli.test.ts
+          tests/narrated.test.ts
+          tests/narration-hold.test.ts
+          tests/video.test.ts
+          tests/video-socket.test.ts
+          tests/cli-video.test.ts
+          tests/cli-film.test.ts
+          tests/stage-export.test.ts
+          tests/stage-frame-reuse.test.ts
+          tests/scene-renderer.test.ts
+          tests/studio-mp4.test.ts
 
   playground:
     name: playground browser (Node 22)

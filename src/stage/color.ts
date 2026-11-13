@@ -40,6 +40,11 @@ export function setColorTokens(next: Readonly<Record<string, string>>): void {
     tokens = next
 }
 
+/** Read the active named color tokens so nested or interleaved builds can restore them. */
+export function getColorTokens(): Readonly<Record<string, string>> {
+    return tokens
+}
+
 export function parseColor(input: string): Rgba {
     const token = tokens[input]
     const value = token ?? input

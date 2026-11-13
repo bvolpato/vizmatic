@@ -211,7 +211,7 @@ describe('the steps of vizmatic narrated', () => {
 
     it('gives the options and the words of a single step to its tool', () => {
         expect(words(plan(['check', '.', '--motion', '--json', '--content-top', '200'], { check: ['--text-margin', '30'] }))).toEqual(['vizmatic check film.ts --look midnight --text-margin 30 --motion --json --content-top 200'])
-        expect(words(plan(['check', '.', '--text-size', '26', '--empty-space', '0.5', '--empty-seconds', '2']))).toEqual(['vizmatic check film.ts --look midnight --text-size 26 --empty-space 0.5 --empty-seconds 2'])
+        expect(words(plan(['check', '.', '--text-gap', '0.3', '--text-size', '26', '--empty-space', '0.5', '--empty-seconds', '2']))).toEqual(['vizmatic check film.ts --look midnight --text-gap 0.3 --text-size 26 --empty-space 0.5 --empty-seconds 2'])
         expect(words(plan(['beats', '.', '--words', 'hook', '1']))).toEqual(['uv run tools/narration/beats.py . hook 1 --words'])
         expect(words(plan(['voice', '.']))).toEqual(['uv run tools/narration/voice.py .'])
         expect(words(plan(['resound', '.', '--draft']))).toEqual(['uv run tools/narration/resound.py . --draft'])
@@ -233,7 +233,7 @@ describe('the steps of vizmatic narrated', () => {
         expect(() => parseNarratedArgs(['voice', '.', '--scene', 'question'])).toThrow('Unknown option --scene for vizmatic narrated voice. Its options are: --dry-run')
         expect(() => parseNarratedArgs(['mix', '.', '--seed', '3'])).toThrow('Unknown option --seed for vizmatic narrated mix. Its options are: --dry-run')
         expect(() => parseNarratedArgs(['lag', '.', '--draft'])).toThrow('Unknown option --draft for vizmatic narrated lag')
-        expect(() => parseNarratedArgs(['check', '.', '--text-gap', '0.3'])).toThrow('Unknown option --text-gap for vizmatic narrated check')
+        expect(() => parseNarratedArgs(['check', '.', '--draft'])).toThrow('Unknown option --draft for vizmatic narrated check')
         expect(() => parseNarratedArgs(['stills', '.', '--every', '3'])).toThrow('Unknown option --every for vizmatic narrated stills')
         // A step that takes no word after the folder says so, and a step that takes words keeps them.
         expect(() => parseNarratedArgs(['mix', '.', 'hook'])).toThrow('vizmatic narrated mix takes the folder and no other word, but received "hook"')
