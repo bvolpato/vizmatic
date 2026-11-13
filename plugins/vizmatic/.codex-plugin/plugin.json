@@ -11,6 +11,9 @@
   "license": "MIT",
   "keywords": [
     "visualization",
+    "animation",
+    "films",
+    "video",
     "diagrams",
     "codex",
     "skills",
@@ -20,8 +23,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Vizmatic",
-    "shortDescription": "Make explainer films, diagrams, and charts from code",
-    "longDescription": "Use Vizmatic to write vector animation films and dense technical figures, check them for layout defects, and render MP4, WebM, GIF, PNG, and SVG.",
+    "shortDescription": "Make explainer films, narrated lessons, and dense figures",
+    "longDescription": "Use Vizmatic to write vector explainer films, narrated lessons, and dense technical figures from code, check them for layout and motion defects, and render MP4, WebM, GIF, PNG, and SVG.",
     "developerName": "Bruno Volpato",
     "category": "Productivity",
     "capabilities": [
@@ -29,8 +32,8 @@
     ],
     "websiteURL": "https://bvolpato.github.io/vizmatic/",
     "defaultPrompt": [
-      "Use @vizmatic to create an architecture diagram and render dark and light PNG files.",
-      "Use $vizmatic to turn this workflow into a docs figure."
+      "Use $vizmatic to explain this mechanism with a short animated film, check it, and export MP4.",
+      "Use $vizmatic to create a dense architecture diagram and render dark and light PNG files."
     ],
     "brandColor": "#7C3AED"
   }

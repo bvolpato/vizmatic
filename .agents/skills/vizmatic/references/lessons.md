@@ -39,13 +39,23 @@ const label = text(shares[0].toFixed(3), { font: 'text-serif', size: 44 })
 
 For some mechanisms, Vizmatic computes the intermediate states for you, so that labels and geometry follow one calculation. The film supplies the data, the model assumptions, and the cues.
 
-| Pure helper | Canvas method | Use it for |
+| Pure helper (`vizmatic`) | Canvas method | Use it for |
 |---|---|---|
 | `weightedVectorState` | `vectorAccumulation` | Ordered weighted vectors, such as momentum and a gradient. Each term keeps its contribution and endpoints. |
 | `categoricalSampling` | `categoricalSampling` | Supplied uniform draws mapped through a categorical CDF, such as a rare category that disappears from a sample. |
+| `planSampleCopies` | - | Animated copies of named source items moving along an explicit draw sequence. |
 | `planTeachingRoutedTransfer` | `routedTransfer` | An orthogonal route around declared obstacles. An impossible route fails before painting. |
 | `byteDifferenceState` | `byteDifference` | A changed byte, with stable offsets and escaped control characters. |
-| `tokenHistoryState` | `tokenHistory` | Prompt, accepted, processed, KV, and emitted tokens when a cache drops and rebuilds. `assertTokenHistoryTransition` checks an authored transition. |
+| `tokenHistoryState`, `assertTokenHistoryTransition` | `tokenHistory` | Prompt, accepted, processed, KV, and emitted tokens when a cache drops and rebuilds. |
+| `pcmEnvelope` | `waveform` | Signed min/max PCM sample bins and a time-synced waveform with a playback cursor. |
+| `layoutCellGrid` | `grid`, `tileTransfer`, `rasterWipe` | Checked cell-grid coordinates, staggered tile transfers between grids, and raster-order wipes. |
+| `layoutAllocation` | `allocation` | Proportional capacity and share bars from verified numeric parts. |
+| `valueChangeState` | `valueChange`, `changeCue` | Stateless numeric transition state (`previous`, `target`, `delta`, `emphasis`) sampled at any frame. |
+| `softmaxTileMass`, `combineSoftmaxMass`, `stableSoftmax` | - | Numerically stable softmax and online tile mass summaries (`reference`, `mass`, `weightedSum`). |
+| `traceCrossCorrelation2d` | - | Step-by-step 2D kernel windows, elementwise products, and output patches. |
+| `createCueTrack`, `assertCueReveal` | - | Discrete simulation snapshots held across cues, plus frame-exact verification that an answer never appears before its spoken phrase. |
+
+For audio demonstrations inside a beat's silence window, `renderNarrationHold` from `vizmatic/stage/export` fits a narration take to its speech frames, appends normalized mono PCM audio at the start of the hold, and pads the remaining hold with silence into a 48 kHz stereo FLAC segment.
 
 **In a stage film,** import a pure helper from `vizmatic`, and draw its state with stage objects. `check` and `film` accept this. `preview` runs in the browser and refuses any import from `vizmatic`, so preview such a film with stills, or compute the values in a separate step.
 
@@ -57,11 +67,11 @@ For some mechanisms, Vizmatic computes the intermediate states for you, so that 
   - `categoricalSampling` uses only the draws you supply and runs no hidden random experiment.
   - `tokenHistory` models ordinary autoregressive decoding, with at most one accepted token awaiting processing. Speculative decoding needs its own contract.
 - Render the prediction, the moving state, and the settled result at delivery size. Check moving marks against the actual glyphs, as well as the declared card bounds.
-- `examples/_teaching/` in the package shows each construction. `teaching-byte-diff.ts` also runs by itself: `npx tsx node_modules/vizmatic/examples/_teaching/teaching-byte-diff.ts > byte-diff.svg`.
+- `examples/_teaching/` in the package shows each construction, plus `layerStack` lessons (`layer-stack-transformer.ts`, `layer-stack-tiny-gpt.ts`, `layer-stack-recurrence.ts`, `layer-stack-connector.ts`). `teaching-byte-diff.ts` also runs by itself: `npx tsx node_modules/vizmatic/examples/_teaching/teaching-byte-diff.ts > byte-diff.svg`.
 
 ## Follow a voice
 
-For a whole narrated film, start from the template: `npx vizmatic new <name> --template narrated`. It writes a folder with a script and two scenes. One command brings the film up to date, from the script to the movie: `npx vizmatic narrated build <folder> --draft` makes the voice on this machine, the sound mix, the layout check, and a draft movie, and it runs only the steps that have work to do. Without `--draft`, it makes the delivered movie. `narrated({ title, timing, scenes })` is the entry file: it draws the title card, calls each scene when its picture opens, fades in what the scene adds there, and fades the scene out at its end. `sceneKit()` makes the labels and the frame that the scenes share. Read the [narrated films guide](https://bvolpato.github.io/vizmatic/docs/narrated-films.html) first: it has the folder, the script format, the clock, the kit, the checks before a full render, and the review method. The rest of this section is the layer under it.
+For a whole narrated film, start from the template: `npx vizmatic new <name> --template narrated`. It writes a folder with a script and two scenes. One command brings the film up to date, from the script to the movie: `npx vizmatic narrated build <folder> --draft` makes the voice on this machine, the sound mix, the layout check, and a draft movie, and it runs only the steps that have work to do. Without `--draft`, it makes the delivered movie. `narrated({ title, timing, scenes })` is the entry file: it draws the title card, calls each scene when its picture opens, fades in what the scene adds there, and fades the scene out at its end. `sceneKit()` makes the labels and the frame that the scenes share. Use `npx vizmatic narrated beats <folder> --words` to inspect spoken words for cues, `transcribe` to check TTS pronunciation against `script.json`, `sync` and `lag` to verify audio alignment in the rendered MP4, `probe` to inspect streams, chapters, captions, and hash, and `resound` to swap a new `narration.wav` into an existing MP4 without re-rendering frames. `npx vizmatic sounds` lists and renders subtle cues (`tap`, `slide`, `latch`, `resolve`, `bell`) and stereo ambient beds (`vizmatic sounds bed --voice ... --out ...`). Read the [narrated films guide](https://github.com/bvolpato/vizmatic/blob/main/docs/guides/narrated-films.md) first: it has the folder, the script format, the clock, the kit, the checks before a full render, and the review method. The rest of this section is the layer under it.
 
 Measure the speech first. Record each beat of the script as one take, and save its length and the time of each word. Most speech engines report word times, and a transcription tool can measure them from any recording. Then `narration` places the scenes, and each change runs when the voice reaches a phrase.
 
@@ -150,7 +160,7 @@ The scan cannot see that one block replaces another, so decide each warning your
 - Two more rules are off until you ask for them. `--text-size 26` reports text under 26 px on a frame that is 1080 high, which is too small on a phone. `--empty-space 0.5` reports more than a half of the frame that stays empty in one piece for 4 seconds or more. For a narrated film, put them in the `check` list of `film.json`.
 - A frame with one small mark counts as visible, so a nearly empty frame can pass. A blank shorter than 0.2 seconds is not reported. Read the frames at each handover in the delivered movie.
 
-The scan does not replace a look at the picture. A contact sheet shows a frame at about a quarter of its size, so it is good for the pace of a film and it hides layout defects. Read one full-size still for each beat, one at a time: `npx vizmatic narrated stills <folder>` writes them for a narrated film, and the [narrated films guide](https://bvolpato.github.io/vizmatic/docs/narrated-films.html) lists the defects to look for. Then read the whole film as contact sheets, and not a sample of it.
+The scan does not replace a look at the picture. A contact sheet shows a frame at about a quarter of its size, so it is good for the pace of a film and it hides layout defects. Read one full-size still for each beat, one at a time: `npx vizmatic narrated stills <folder>` writes them for a narrated film, and the [narrated films guide](https://github.com/bvolpato/vizmatic/blob/main/docs/guides/narrated-films.md) lists the defects to look for. Then read the whole film as contact sheets, and not a sample of it.
 
 ```bash
 npx vizmatic film lesson.ts --every 3 --sheet --out stills

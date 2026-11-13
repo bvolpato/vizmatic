@@ -1,5 +1,6 @@
+import { paintCanvasBloom, type BloomLayer } from './bloom-canvas'
 import { paintFrame, type Frame } from './display'
-import { Suspend, type CompiledFilm } from './stage'
+import { isSuspend, type CompiledFilm } from './stage'
 import type { StageImage } from './node'
 import { browserImageSource, ImageAssetError } from './image'
 
@@ -11,6 +12,8 @@ export interface PlayerOptions {
     stepped?: boolean
     /** Device pixels per CSS pixel. Defaults to the display's ratio, capped for speed. */
     pixelRatio?: number
+    /** Paint bloom onto the canvas. Set false when a caller averages subframes before blooming. */
+    bloom?: boolean
     onTime?: (time: number) => void
     onState?: (state: { playing: boolean }) => void
 }
@@ -26,7 +29,7 @@ export class FilmPlayer {
     private currentTime = 0
     private playing = false
     private scale = 1
-    private bloomLayers: { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D; factor: number; weight: number }[] = []
+    private bloomLayers: BloomLayer[] = []
     private observer: ResizeObserver | null = null
     speed: number
 
@@ -170,63 +173,16 @@ export class FilmPlayer {
         try {
             frame = this.film.frame(this.currentTime)
         } catch (error) {
-            if (error instanceof Suspend) {
+            if (isSuspend(error)) {
                 void error.promise.then(() => this.paint())
                 return
             }
             throw error
         }
         paintFrame(this.ctx, frame, this.scale, this.lookupImage)
-        if (frame.bloom > 0 && frame.dark) this.applyBloom(frame)
-    }
-
-    /** Bright marks spill soft light. The layers hold marks only, so the background never lifts. */
-    private applyBloom(frame: Frame): void {
-        if (this.bloomLayers.length === 0) {
-            const { width, height } = this.canvas
-            this.bloomLayers = ([[4, 0.55], [8, 0.3], [16, 0.15]] as const).map(([factor, weight]) => {
-                const canvas = document.createElement('canvas')
-                canvas.width = Math.max(1, Math.round(width / factor))
-                canvas.height = Math.max(1, Math.round(height / factor))
-                return { canvas, ctx: canvas.getContext('2d')!, factor, weight }
-            })
+        if (this.options.bloom !== false && frame.bloom > 0 && frame.dark) {
+            this.bloomLayers = paintCanvasBloom(this.canvas, this.ctx, frame.bloom, frame.background, this.bloomLayers)
         }
-        const { width } = this.canvas
-        const hasFilter = 'filter' in this.ctx
-        // The first layer copies the finished picture and subtracts the background, so busy
-        // frames are not painted twice. Blurring small layers is far cheaper than blurring
-        // the full canvas. The widths match the exporter's blur at the same output size.
-        const sigmas = [2.83, 3.65, 3.65]
-        let source: HTMLCanvasElement = this.canvas
-        this.bloomLayers.forEach((layer, index) => {
-            const { ctx, canvas } = layer
-            ctx.setTransform(1, 0, 0, 1, 0, 0)
-            ctx.globalCompositeOperation = 'source-over'
-            ctx.clearRect(0, 0, canvas.width, canvas.height)
-            ctx.imageSmoothingEnabled = true
-            ctx.imageSmoothingQuality = 'medium'
-            if (hasFilter) ctx.filter = `blur(${(sigmas[index]! * width / 1920).toFixed(2)}px)`
-            ctx.drawImage(source, 0, 0, canvas.width, canvas.height)
-            if (hasFilter) ctx.filter = 'none'
-            if (index === 0 && frame.background) {
-                ctx.globalCompositeOperation = 'difference'
-                ctx.fillStyle = frame.background
-                ctx.fillRect(0, 0, canvas.width, canvas.height)
-                ctx.globalCompositeOperation = 'source-over'
-            }
-            source = canvas
-        })
-        const main = this.ctx
-        main.setTransform(1, 0, 0, 1, 0, 0)
-        main.globalCompositeOperation = 'screen'
-        main.imageSmoothingEnabled = true
-        main.imageSmoothingQuality = 'high'
-        for (const layer of this.bloomLayers) {
-            main.globalAlpha = Math.min(1, frame.bloom * layer.weight * 2.4)
-            main.drawImage(layer.canvas, 0, 0, this.canvas.width, this.canvas.height)
-        }
-        main.globalAlpha = 1
-        main.globalCompositeOperation = 'source-over'
     }
 }
 

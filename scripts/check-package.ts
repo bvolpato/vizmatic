@@ -8,11 +8,11 @@ interface PackResult {
     entryCount?: number
 }
 
-// The authored WAV mixer and guide add 3,824 unpacked bytes.
-// The macOS build occupies 21,264,268 bytes across 232 files.
+// Bugfixes, sandbox hardening, and synced README/PROMPT/skill docs bring the build
+// to ~7,422 KB compressed / ~21,298 KB unpacked across 232 files.
 const limits = {
-    size: 7_420_000,
-    unpackedSize: 21_267_000,
+    size: 7_435_000,
+    unpackedSize: 21_310_000,
     entryCount: 232,
 }
 

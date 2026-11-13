@@ -29,6 +29,7 @@ import {
 } from './playground-render-context'
 import { createRetryableInitializer } from './retryable-initializer'
 import { initializeHarfbuzzRuntime } from './playground-harfbuzz'
+import { disableUserCodeCapabilities } from './playground-sandbox'
 import { addSvgAccessibility, prepareAccessibleSvg } from './svg-accessibility'
 import interRegular from '../assets/fonts/Inter-Regular.ttf'
 import interSemiBold from '../assets/fonts/Inter-SemiBold.ttf'
@@ -87,93 +88,7 @@ interface PlaygroundRuntime {
 let runtime: Promise<PlaygroundRuntime> | undefined
 const initializeSatoriRuntime = createRetryableInitializer(initSatori)
 const initializeResvgRuntime = createRetryableInitializer(initWasm)
-let capabilitiesDisabled = false
 const compileUserFunction = Function
-const dynamicFunctionPrototypes = [
-    Function.prototype,
-    Object.getPrototypeOf(async function () {}),
-    Object.getPrototypeOf(function* () {}),
-    Object.getPrototypeOf(async function* () {}),
-]
-
-function disableUserCodeCapabilities(): void {
-    if (capabilitiesDisabled) return
-    capabilitiesDisabled = true
-    const denied = () => {
-        throw new Error('Network, dynamic code, and browser storage APIs are disabled in the Vizmatic playground.')
-    }
-    const globals = globalThis as unknown as Record<string, unknown>
-    for (const name of [
-        'fetch',
-        'XMLHttpRequest',
-        'WebSocket',
-        'WebSocketStream',
-        'WebTransport',
-        'EventSource',
-        'BroadcastChannel',
-        'RTCPeerConnection',
-        'webkitRTCPeerConnection',
-        'importScripts',
-        'Worker',
-        'SharedWorker',
-        'indexedDB',
-        'caches',
-        'eval',
-        'Function',
-    ]) {
-        try {
-            Object.defineProperty(globals, name, {
-                configurable: false,
-                writable: false,
-                value: denied,
-            })
-        } catch {
-            try {
-                globals[name] = denied
-            } catch {
-                // Some browser globals are non-configurable. Shared source still
-                // requires an explicit Run action before this worker starts.
-            }
-        }
-    }
-
-    const navigatorApi = globals.navigator as Record<string, unknown> | undefined
-    const restrictedNavigatorApis: Array<[unknown, string[]]> = [
-        [navigatorApi, ['sendBeacon']],
-        [navigatorApi?.storage, ['getDirectory']],
-        [navigatorApi?.storageBuckets, ['delete', 'keys', 'open']],
-    ]
-    for (const [api, methods] of restrictedNavigatorApis) {
-        if (!api || typeof api !== 'object') continue
-        for (const method of methods) {
-            try {
-                Object.defineProperty(api, method, {
-                    configurable: false,
-                    writable: false,
-                    value: denied,
-                })
-            } catch {
-                try {
-                    (api as Record<string, unknown>)[method] = denied
-                } catch {
-                    // Browser-owned APIs can be non-configurable.
-                }
-            }
-        }
-    }
-
-    for (const prototype of dynamicFunctionPrototypes) {
-        try {
-            Object.defineProperty(prototype, 'constructor', {
-                configurable: false,
-                writable: false,
-                value: denied,
-            })
-        } catch {
-            // Already locked by this worker runtime.
-        }
-    }
-}
 
 async function loadStaticAsset(path: string): Promise<ArrayBuffer> {
     const url = new URL(path, self.location.href)
@@ -362,19 +277,24 @@ interface PlaygroundWorkerScope {
     postMessage(message: unknown, transfer?: Transferable[]): void
 }
 
-const workerScope = self as unknown as PlaygroundWorkerScope
+const workerScope = typeof self !== 'undefined' ? (self as unknown as PlaygroundWorkerScope) : null
+const postWorkerMessage = workerScope && typeof workerScope.postMessage === 'function'
+    ? workerScope.postMessage.bind(workerScope)
+    : null
 
-workerScope.onmessage = async (event: MessageEvent<PlaygroundRenderRequest>) => {
-    const request = event.data
-    try {
-        const response = request.exportGif ? await exportGif(request) : await render(request)
-        workerScope.postMessage(response, ['gif' in response ? response.gif : response.png])
-    } catch (error) {
-        const response: PlaygroundErrorResponse = {
-            id: request.id,
-            ok: false,
-            error: error instanceof Error ? error.message : String(error),
+if (workerScope && postWorkerMessage) {
+    workerScope.onmessage = async (event: MessageEvent<PlaygroundRenderRequest>) => {
+        const request = event.data
+        try {
+            const response = request.exportGif ? await exportGif(request) : await render(request)
+            postWorkerMessage(response, ['gif' in response ? response.gif : response.png])
+        } catch (error) {
+            const response: PlaygroundErrorResponse = {
+                id: request.id,
+                ok: false,
+                error: error instanceof Error ? error.message : String(error),
+            }
+            postWorkerMessage(response)
         }
-        workerScope.postMessage(response)
     }
 }

@@ -1,4 +1,4 @@
-import { compileFilm, film, Suspend, rect, type CompiledFilm, type FilmDefinition, type Node, type Stage, type Value } from '../stage/index'
+import { compileFilm, film, isSuspend, rect, type CompiledFilm, type FilmDefinition, type Node, type Stage, type Value } from '../stage/index'
 import { BEATS, DEFAULT_EASE, EASES, type BeatBuild } from './beats'
 import { KINDS, type BuildContext } from './catalog'
 import { projectDuration, VALUE_TRACK, type Beat, type StudioObject, type StudioProject } from './model'
@@ -51,7 +51,7 @@ function message(error: unknown): string {
 }
 
 function rethrowSuspend(error: unknown): void {
-    if (error instanceof Suspend) throw error
+    if (isSuspend(error)) throw error
 }
 
 /** Turn a project into a film. `onBuilt` runs after each successful authoring pass. */

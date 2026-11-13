@@ -38,7 +38,7 @@ function pixelAt(image: ReturnType<typeof pngPixels>, x: number, y: number): num
 
 afterEach(async () => {
     vi.restoreAllMocks()
-    await Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true })))
+    await Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 })))
 })
 
 describe('safe scene rasterization', () => {

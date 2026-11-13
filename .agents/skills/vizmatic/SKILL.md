@@ -1,126 +1,129 @@
 ---
 name: vizmatic
-description: Create and render theme-aware diagrams, charts, docs figures, animated explainer films, narrated lesson videos, GIFs, and MP4 videos from code. Use when a request needs a mathematical or technical animation, a teaching video, an architecture diagram, a process flow, an evaluation dashboard, a presentation, or any figure for documentation.
+description: Create and render theme-aware diagrams, dense TSX figures, explainer films, narrated lessons, decks, GIFs, and MP4 videos from code. Use for technical or math animations, teaching videos, architecture diagrams, charts, and docs figures.
 ---
 
 # Vizmatic
 
-Vizmatic makes two kinds of output. Choose first.
+Choose the output surface before writing code:
 
-- **Film**: anything that moves to explain something. Write TypeScript with `vizmatic/stage`. Vector geometry, TeX, morphs, 3D, frame-exact MP4.
-- **Figure**: a still for a document or a slide. Write TSX with typed components from `vizmatic`. Dense by default, dark and light from one source.
+- **Film** (`vizmatic/stage`): anything that moves to explain a mechanism, proof, system trace, or talk. Real Bezier geometry, TeX, morphs, 3D, domain objects, live `<vz-film>` player, and frame-exact MP4, WebM, GIF, PNG, or SVG.
+- **Figure** (`vizmatic` TSX): a dense still for documentation, an engineering paper, or a slide. Renders dark and light PNG and SVG from one source.
 
-Use a TSX animation (`createAnimation`) only to animate a figure that already exists. Use `createTeachingCanvas(painter)` only when a project already has a checked canvas host. For new motion, write a film.
+Use `createAnimation` (`vizmatic gif` or `vizmatic video`) only to animate an existing TSX figure. Use `createTeachingCanvas(painter)` only when a repository already provides a checked canvas host. Use `vizmatic-scene` (`vizmatic/scene-runtime`) only to evaluate untrusted bare TSX inside an offline QuickJS sandbox. For any new motion, write a film.
 
 ## Setup
 
-Confirm Node.js 20 or newer, then install or reuse the package. MP4 and WebM also need FFmpeg with `libx264` and `libvpx-vp9`.
+Reuse an existing CLI or project dependency first (`npx --no-install vizmatic --help` or `command -v vizmatic`). Ask before adding dependencies to an existing repository or installing globally.
+
+- **Runtime**: Node.js 20 or newer.
+- **Video and audio**: FFmpeg with `libx264`, `libvpx-vp9`, and `aac` for MP4, WebM, and audio muxing.
+- **Local speech and sound**: `uv` on `PATH` for `vizmatic narrated` (local Kokoro TTS and Whisper transcription) and `vizmatic sounds`.
+- **pnpm 11**: allow esbuild's install script in the root `pnpm-workspace.yaml` with `allowBuilds: { esbuild: true }` so the CLI can compile films and frames.
 
 ```bash
 npm install vizmatic
 ```
 
-For pnpm 11, allow esbuild's install script with `allowBuilds: { esbuild: true }` in the root `pnpm-workspace.yaml`. The CLI uses esbuild to compile films and frames.
-
 ## Film workflow
 
-1. Start from `assets/starter-film.ts`, or run `npx vizmatic new intro --template explainer`. Templates are `explainer`, `equation`, `architecture`, `chart`, and `deck`. The `narrated` template writes a folder for a film that follows a recorded voice.
-2. Read `references/films.md` for the engine rules and patterns. Lay each picture out with `row`, `column`, `grid`, `place` and `beside` before you type a coordinate: see "Layout" there. Run `npx vizmatic objects` for the object catalog and `npx vizmatic looks` for the looks.
-3. Check it, and fix every error. Each finding has times, a `box` in canvas pixels, and a `stage` center in authoring coordinates.
+1. Start from `assets/starter-film.ts`, or scaffold with `npx vizmatic new intro --template explainer`. Templates are `explainer`, `equation`, `architecture`, `chart`, `deck`, and `narrated` (writes a folder for a voice-driven lesson).
+2. Read `references/films.md` for engine rules, relational layout, and domain objects. Lay out every scene with `sceneKit`, `sceneArea`, `row`, `column`, `grid`, `place`, `beside`, `between`, `fitted`, and `boxOf` before typing coordinates; use raw coordinates only for data-driven marks. Run `npx vizmatic objects` and `npx vizmatic looks` to inspect the installed catalog and looks (`midnight`, `paper`, `blueprint`, `chalk`, `neon`).
+3. Check static and motion frames, and fix reported errors. Each finding includes timestamps, `box` in canvas pixels, and `stage` center in authoring coordinates.
    ```bash
    npx vizmatic check intro.ts --json
+   npx vizmatic check intro.ts --motion --text-gap 0.3 --text-size 26 --empty-space 0.5 --json
    ```
-4. Inspect the picture. Render stills at the end of each beat and open them.
+   `--motion` scans every frame for crossfade collisions (`film.text_overlap`), blank gaps (`film.blank`), and flashes too short to read (`film.text_brief`). Pass `--content-top 200` when a pinned heading stays visible, `--stepped` for chapter decks, and `--look midnight,paper` to verify multiple looks.
+4. Inspect rendered stills and contact sheets visually before full video encoding:
    ```bash
    npx vizmatic film intro.ts --frame 2,5.5,9,12 --width 1280 --out stills
+   npx vizmatic film intro.ts --every 4 --sheet --out stills
    ```
-   To read a whole film in a few images, add `--sheet`. It joins the stills into contact sheets, with the time under each tile. `--every 5` samples the film every 5 seconds in place of a list of times.
+   `--sheet` joins sampled frames into timestamped contact sheets (`--columns <n>` sets grid width). Use full-size stills for layout review and sheets for pacing.
+5. Export when layout and pacing pass inspection:
    ```bash
-   npx vizmatic film intro.ts --every 5 --sheet --out stills
+   npx vizmatic film intro.ts --out dist/films --look midnight,paper --quality high --poster
    ```
-5. Export when the stills are right.
-   ```bash
-   npx vizmatic film intro.ts --out dist/films --quality high
-   ```
+   Useful flags: `--format mp4,webm,gif,png,svg`, `--quality draft|standard|high|master`, `--dither|--no-dither`, `--range 12:18`, `--audio narration.wav`, `--workers <n>`, and `--json`. `film-manifest.json` lists every generated artifact. MP4 output uses QuickTime-compatible H.264, embeds chapters and toggleable captions, and writes a sidecar `.vtt` file when captions exist.
 
-`--format mp4,webm,gif,png,svg` picks formats. `--look midnight,paper` renders each look. `--quality draft` is fast. `--range 12:18` renders part of the timeline. `--poster` adds a poster frame. `--audio narration.wav` adds sound, padded or trimmed to the film's length. Add `--json` for a machine-readable report. `film-manifest.json` lists all outputs. MP4 output is H.264 with settings that QuickTime can play. An MP4 carries the film's chapters and captions, and `s.caption` also writes a WebVTT file beside the video.
+For interactive authoring, `npx vizmatic preview intro.ts` opens a live timeline player that reloads on save, and [Studio](https://bvolpato.github.io/vizmatic/studio.html) provides a browser editor with object tracks that writes film source. Agents should edit source directly.
 
-For a person, `npx vizmatic preview intro.ts` gives a live player with a timeline. [Studio](https://bvolpato.github.io/vizmatic/studio.html) is a visual film editor that runs in the browser, with no install. It has a canvas, an inspector, and per-object tracks, and it writes film source. Offer it when someone wants to edit by hand. An agent should write the source instead.
+### Engine and timing traps
 
-### Timing traps
+- **Build nodes inside `film(..., (s) => { ... })`**: bundled fonts and TeX load while the callback runs, so calling `text()` or `tex()` at module top level fails on load.
+- **Outer `duration` stretches every child**: `s.play(a, b, { duration })` stretches both `a` and `b` to fill `duration` and ignores inner `duration` or `retime`. For asymmetric transitions, omit outer `duration` and use `delay`: `s.play(fadeOut(oldText, { duration: 0.15 }), delay(fadeIn(newText, { duration: 0.25 }), 0.1))`. Inside a timed `s.play`, use `seq(fadeOut(a), fadeIn(b))`.
+- **`morph(a, b)` replaces `a` with `b`**: after a morph, `a` is hidden and `b` stays on stage. Direct later animations at `b`.
+- **Never reparent mounted nodes**: do not wrap nodes already on stage in `group()`. Pass arrays to verbs (`fadeOut([a, b])`) and use `spotlight(target, { keep })` instead of manual dimming lists.
+- **Guard hidden `dynamic` nodes**: fading a parent or value does not remove a `dynamic(() => ...)` callback from `check`. Return `[]` when its visibility value is near zero.
+- **Verify math with `assertEqual`**: import `assertEqual` from `vizmatic/stage` rather than `node:assert` so the same film runs in browser `preview`. Note that `vizmatic preview` rejects imports from root `vizmatic`; preview films that import pure helpers from `vizmatic` with stills or precompute the numbers.
 
-- `s.play(a, b, { duration })` stretches both animations to fill the duration. A `duration` inside `a` or `b` has no effect. For different lengths, leave it off `s.play`, set it on each animation, and use `delay` for an offset. Inside a `s.play` that has a duration, `seq(fadeOut(a), fadeIn(b))` makes one text leave before the next arrives.
-- `vizmatic check` inspects moments of rest. A crossfade where two sentences overlap and a blank gap between two pictures both pass it. Before you export, run `npx vizmatic check intro.ts --motion --json`, which inspects every frame. It reports what appears only in motion as warnings, so judge each one. `references/lessons.md` explains the report. An older package rejects `--motion` as an unknown option, so update the package.
+### Lessons, narrated films, and sound
 
-### Lessons and narrated films
+Read `references/lessons.md` before writing a teaching or narrated film. Start narrated lessons from `npx vizmatic new <name> --template narrated` and drive incremental builds with:
 
-When a film must teach, read `references/lessons.md` before you write the script. For a film that follows a recorded voice, start with `npx vizmatic new <name> --template narrated`, and build it with one command: `npx vizmatic narrated build <folder> --draft` for a draft, and without `--draft` for the delivered movie. It makes the voice on this machine, the sound mix, the layout check and the movie, and runs only the steps that have work to do. `narrated({ title, timing, scenes })` draws the title card, opens and ends each scene, and gives each scene a clock that places each change on a spoken phrase. It stops the build if the voice does not say the phrase. The [narrated films guide](https://bvolpato.github.io/vizmatic/docs/narrated-films.html) has the folder, the build, the checks, and the review. Compute every number, check it with `assertEqual`, and keep the voice and the screen in agreement. Keep every title true for as long as it is visible. Change pictures without a collision or a blank, and scan every frame. Accuracy comes before brevity. Do not cut content that teaches to reach a target length.
+```bash
+npx vizmatic narrated build <folder> --draft   # local voice, sound mix, layout check, <name>-draft.mp4
+npx vizmatic narrated build <folder>           # full delivery render
+```
 
-The package computes some mechanisms for you, with helpers such as `weightedVectorState` and `tokenHistoryState`. `references/lessons.md` lists them, the limits of each, and how to use them in a film or a canvas host.
+`narrated({ title, timing, scenes })` renders the title card, manages scene entry and exit fades, attaches chapters and captions, and exposes phrase cues (`c.show`, `c.hide`, `c.swap`, `c.on`) that fail the build if a spoken phrase is missing or ambiguous. Put `{ after: true }` on computed results so numbers appear as the voice finishes saying them rather than spoiling the prediction.
 
-Report which passages you played with sound and which you checked in stills. A person must watch the complete lesson at full speed with sound before it is published.
+Other `vizmatic narrated <step> <folder>` commands (`--dry-run` previews any step):
+- `draft`: estimate `timing.json` without audio for early visual layout.
+- `voice` / `mix` / `resound`: synthesize speech, mix `narration.wav`, or remux updated audio into an existing MP4 without re-rendering frames.
+- `beats --words`: print beat timestamps and spoken words to pick exact cues.
+- `check --motion` / `stills` / `sheet`: run layout scans (`--scene <id,...>` scopes stills and sheets).
+- `transcribe` / `sync` / `lag` / `probe`: verify TTS pronunciation against `script.json`, check rendered audio-to-video alignment, and inspect streams, chapters, captions, and file hash.
 
-## Judge your own output
+Generate subtle sound effects (`tap`, `slide`, `latch`, `resolve`, `bell`) or ambient beds with `npx vizmatic sounds list`, `npx vizmatic sounds render <name> --out cue.wav`, and `npx vizmatic sounds bed --voice narration.wav --out bed.wav --palette warm --timing timing.json`. Read the [narrated films guide](https://github.com/bvolpato/vizmatic/blob/main/docs/guides/narrated-films.md) for the full folder contract.
 
-The check finds defects. It does not find weak work. For each still, ask:
-
-- Can a reader get the point of this frame in three seconds?
-- Is the eye drawn to the thing being explained? Is one color doing one job?
-- Is there a clipped label, a line through text, or an arrow that misses its target?
-- Is the space used well? Fill a figure with useful detail, or make the one idea large. Avoid a few small boxes in a large empty frame.
-- Does text read at the output size? On a 1920 stage, keep labels at 18 or more, unless the film is meant to be paused and studied.
-
-If the answer to any of these is wrong, change the film and look again. Report the stills you checked.
+Compute every displayed number, check invariants with `assertEqual`, and keep every visible heading true for its entire lifetime on screen. Report which passages were played with sound and which were reviewed as stills; a person must watch the complete lesson at full speed with sound before publication.
 
 ## Figure workflow
 
-1. Start with a bare `.tsx` frame or `assets/starter-frame.tsx`. Omit `width` and `height` while exploring. Output starts at 960x540 and grows to fit. Read `references/patterns.md` for how to choose components.
-2. Check both themes, and fix reported errors.
+1. Start from a bare `.tsx` frame or `assets/starter-frame.tsx`. Omit `width` and `height` while iterating: output starts at `960x540` and auto-grows to fit. Read `references/patterns.md` to choose components, or use `importMermaid` / `importD2` to convert existing diagrams into `GraphDiagram` props.
+2. Check both themes and fix every error:
    ```bash
    npx vizmatic check ./frames/diagram.tsx --theme dark,light --json
    ```
-3. Render.
+3. Render PNG, SVG, or both:
    ```bash
-   npx vizmatic ./frames/diagram.tsx --out ./public/vizmatic --theme dark,light --format both
+   npx vizmatic render ./frames/diagram.tsx --out ./public/vizmatic --theme dark,light --format both
    ```
-4. Open the PNG, and fix clipping, overlap, low contrast, and uneven spacing. When an asset appears on a page, verify that page too.
+   PNG and SVG outputs are alpha-transparent by default; add `--background theme` (or `background={c.bg}`) for an opaque canvas, `--no-crop` to preserve outer margins, and `preset = "engineering";` with `--theme light` for flat technical article figures.
+4. Open the rendered PNGs (and any host page embedding them) to verify zero clipped labels, line crossings, low-contrast text, or wasted space.
 
-PNG and SVG output is transparent by default. Add `--background theme` for an opaque canvas.
+Figures default to `dense` (10 to 12 px detail type, hairlines, tight gutters): pack real rates, schemas, p99 latencies, ports, and limits into each element. Switch to `density="presentation"` (or `--density presentation`) only for slides viewed across a room.
 
-### Density
+## Judge your own output
 
-Figures default to `dense`: 10 to 12 pixel small type, hairlines, and tight gutters. Pack in useful information such as runtimes, rates, schemas, and limits. A figure with three large boxes reads like a slide, so add what a reader would need to act on it.
+`vizmatic check` catches geometric defects, not weak composition. On every still or figure, verify:
 
-Change the density only for the destination: `density="presentation"` on a `Scene`, or `density` in a render option, for a room. The densities are `dense`, `compact`, `comfortable`, `presentation`, or a number such as `1.25`.
+- Can a reader grasp the main point in three seconds?
+- Does one color mean one concept throughout, using look tokens (`blue`, `teal`, `yellow`, `ink`, `dim`) in films and semantic tones in figures?
+- Are all labels unclipped, clear of strokes, and attached to what they name?
+- Is frame space earned with concrete detail or one large central mechanism rather than small boxes floating in empty canvas?
+- Is text legible at target viewing size (`>= 26` px on a 1920x1080 lesson watched on phones, `>= 18` px on desktop stills)?
 
-## Design rules
-
-- Give color a meaning and keep it. Use the look tokens (`blue`, `teal`, `yellow`, `ink`, `dim`) in films, and semantic tones in figures, so every theme works.
-- Move the thing being explained. Hold after each reveal. Avoid decorative motion and logo reveals.
-- Use real data and exact labels. Remove marketing filler.
-- Use `preset = "engineering";` with `--theme light` for flat article figures.
-- Return the generated paths, the exact command, and the result of the check.
+If any answer fails, revise the layout and inspect fresh renders. Return generated file paths, exact commands run, check output summary, and which stills or frames you inspected.
 
 ## Common requests
 
-- "Explain this math or algorithm" -> film with `axes`, `plane`, `tex`, and `morphMatching`. Drive motion with `s.value` and `dynamic`.
-- "Make a lesson that teaches this topic" -> narrated film. Follow `references/lessons.md`.
-- "Animate this system or request path" -> film with `infoBox`, `connector`, and `pulse`, or the `architecture` template.
-- "Make a talk or deck" -> film with one `s.chapter` per step, or the `deck` template. Present it with `<vz-film stepped>`.
-- "Create an architecture diagram" -> figure with `GraphDiagram`, nested groups, technical icons, and labeled relationship kinds.
-- "Show request interactions" -> figure with `SequenceDiagram`, messages, activations, and fragments.
-- "Show data provenance" -> figure with `DataflowDiagram`, schemas, and batch or stream edges.
-- "Show where services run" -> figure with `DeploymentDiagram`, boundaries, ports, and trust direction.
-- "Turn this eval data into a figure" -> figure with `DataTable`, `LineChart`, and `BarChart`.
-- "Compare score and cost" -> figure with `ParetoChart`, with a logarithmic cost axis when needed.
-- "Add a docs visual" -> put output under the repository's docs or public path and verify the page.
+- "Explain this math, proof, or optimization" -> film (`vizmatic/stage`) with `axes`, `plane`, `projectionMark`, `tex`, `morphMatching`, or `scene3d`, driven by `s.value` and `dynamic`.
+- "Teach this topic with voiceover" -> narrated film (`npx vizmatic new <name> --template narrated`). Follow `references/lessons.md`.
+- "Animate a systems trace, queue, or protocol" -> film with `lanes`, `pipeline`, `requestQueue`, `ringBuffer`, `boundary`, `stateGrid`, `bitField`, `eventLog`, `terminal`, or `connector.send`.
+- "Animate a model, tokenizer, or eval table" -> film with `layerStack`, `tokens`, `attentionMatrix`, `heatmap`, `matrixProduct`, `barChart`, `scatter`, `tree`, or `table`.
+- "Examine claims, quotes, or history" -> film with `passage`, `quote`, `quotePair`, `dateLine`, `tagTrack`, and `sceneKit`.
+- "Make a talk or stepped deck" -> film with one `s.chapter` per step (`deck` template), presented via `<vz-film stepped>` and checked with `--stepped`.
+- "Create an architecture, sequence, lineage, deployment, or ER diagram" -> TSX figure with `GraphDiagram`, `SequenceDiagram`, `DataflowDiagram`, `DeploymentDiagram`, `TransformerTopology`, or `EntityRelationshipDiagram`.
+- "Turn metrics or tradeoffs into a docs figure" -> TSX figure with `DataTable`, `LineChart`, `BarChart`, `ParetoChart`, `QuadrantChart`, and `MetricCard`.
 
 ## Starting points
 
-- `assets/starter-film.ts`: a film with a graph, a moving value, and an equation.
-- `assets/starter-frame.tsx`: a static figure.
-- `assets/animated-frame.tsx`: a TSX animation for a GIF.
-- `references/films.md`: engine rules, film patterns, check codes, and common mistakes.
-- `references/lessons.md`: how to plan, narrate, scan, and deliver a film that teaches.
-- `references/patterns.md`: how to choose figure components.
-- `examples/films/` in the package: finished films with full source. `references/films.md` says what each one shows.
+- `assets/starter-film.ts`: stage film with `axes`, a live `s.value` secant-to-tangent limit, and `tex`.
+- `assets/starter-frame.tsx`: dense static TSX figure.
+- `assets/animated-frame.tsx`: TSX timeline animation (`defineAnimation`) for `vizmatic gif` or `vizmatic video`.
+- `references/films.md`: stage engine rules, relational layout, worked `examples/films/` index, domain object patterns, and check codes.
+- `references/lessons.md`: planning, checked teaching helpers, phrase-synced narration, motion scanning, and delivery verification.
+- `references/patterns.md`: TSX figure component selection, bare vs module frames, Mermaid/D2 import, and timeline animations.

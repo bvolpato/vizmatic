@@ -84,8 +84,7 @@ rejects embedded ICC profiles. Raster operations also cap dimensions at
 accepts σ ≥ 0 and integer radius 0–64, and defaults the radius to `ceil(3σ)`.
 An explicit radius at σ = 0 keeps the matching valid crop while leaving its
 pixels unchanged. These helpers are not part of the bare QuickJS author-code
-environment. The helpers are in this source checkout; consumers need a
-Vizmatic release that includes them.
+environment.
 
 See [PyTorch Conv2d](https://docs.pytorch.org/docs/stable/generated/torch.nn.Conv2d.html)
 for learned spatial filters and [OpenCV image filtering](https://docs.opencv.org/4.x/d4/d86/group__imgproc__filter.html)

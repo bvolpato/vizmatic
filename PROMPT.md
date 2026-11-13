@@ -15,10 +15,11 @@ For pnpm 11, allow esbuild's install script with `allowBuilds: { esbuild: true }
 
 ## Films
 
-Start from a template, or write the function yourself. Templates are `explainer`, `equation`, `architecture`, `chart`, and `deck`.
+Start from a template, or write the function yourself. Templates are `explainer`, `equation`, `architecture`, `chart`, `deck`, and `narrated`.
 
 ```bash
 npx vizmatic new intro --template explainer
+npx vizmatic new lesson --template narrated
 ```
 
 ```ts
@@ -70,9 +71,9 @@ npx vizmatic film intro.ts --out dist/films --look midnight,paper --quality high
 
 `vizmatic check` samples the moments where the film comes to rest. It reports `film.off_canvas`, `film.text_edge`, `film.text_overlap`, `film.text_crossed`, and `film.missing_glyph`, each with times, a `box` in canvas pixels, and a `stage` center in authoring coordinates. Fix every error, then open the stills and look at them. `vizmatic preview intro.ts` opens a live player with a timeline for a person to review. The [Studio](https://bvolpato.github.io/vizmatic/studio.html) is a visual film editor in the browser for a person who wants to edit by hand.
 
-The check does not look at motion, so a crossfade where two sentences overlap and a blank gap between two pictures both pass it. Add `--motion` to inspect every frame: `npx vizmatic check intro.ts --motion --json`. It reports a problem that appears only in motion as a warning, 0.2 seconds or more with nothing visible as `film.blank`, and text that leaves before a viewer can read it as `film.text_brief`. Judge each warning, because the check cannot tell a collision from one picture that replaces another. `--content-top <px>` sets where the content starts, so that a heading that stays up does not hide a blank. `--text-gap 0.3` also reports `film.text_crowded`: text that is nearer to a line, a shape, or an image than 0.3 of its font size, such as a caption that touches its figure, and text that runs past the edge of the shape behind it.
+The check does not look at motion, so a crossfade where two sentences overlap and a blank gap between two pictures both pass it. Add `--motion` to inspect every frame: `npx vizmatic check intro.ts --motion --json`. It reports a problem that appears only in motion as a warning, 0.2 seconds or more with nothing visible as `film.blank`, and text that leaves before a viewer can read it as `film.text_brief`. Judge each warning, because the check cannot tell a collision from one picture that replaces another. `--content-top <px>` sets where the content starts, so that a heading that stays up does not hide a blank. `--text-gap 0.3` also reports `film.text_crowded`: text that is nearer to a line, a shape, or an image than 0.3 of its font size, such as a caption that touches its figure, and text that runs past the edge of the shape behind it. `--text-size 26` flags unreadable small labels, `--empty-space 0.5` flags persistent large unused canvas areas, and `--stepped` checks chapter-stepped decks.
 
-`--audio narration.wav` adds sound, padded or trimmed to the film's length, so hold until the voice ends. `s.caption(text, seconds)` writes a WebVTT file beside the video and draws nothing into the picture. MP4 output is H.264 with settings that QuickTime can play. To join a clip to a film without encoding it again, encode the clip with `filmEncoderSettings(quality)` from `vizmatic/stage/export`.
+`--audio narration.wav` adds sound, padded or trimmed to the film's length, so hold until the voice ends. `s.caption(text, seconds)` writes a WebVTT sidecar and embeds a timed text track inside MP4 output while drawing nothing into the picture. For spoken lessons with `script.json`, `vizmatic narrated` (`build`, `voice`, `draft`, `mix`, `check`, `stills`, `sheet`, `beats`, `transcribe`, `sync`, `lag`, `probe`, `resound`) synthesizes per-beat takes, mixes background pads and cues (`vizmatic sounds list|export|bed`), checks every frame, and verifies voice-to-picture alignment. MP4 output is H.264 with settings that QuickTime can play. To join a clip to a film without encoding it again, encode the clip with `filmEncoderSettings(quality)` or `renderNarrationHold` from `vizmatic/stage/export`.
 
 Motion guidance:
 
@@ -87,7 +88,7 @@ When a film must teach a topic, [lessons.md](https://bvolpato.github.io/vizmatic
 
 - Put accuracy first, then completeness, clarity, and brevity. There is no target length, so keep every passage that teaches.
 - Finish the script before the film. Teach the problem, then the mechanism, then the limits. Carry a small example across a change when continuity helps. Switch examples when a fresh picture makes the next idea easier to see.
-- Compute every number in the film, and check it with `assert`. The voice and the screen use the same values and the same rounding.
+- Compute every number in the film, and check it with `assertEqual` from `'vizmatic/stage'` (never Node's `assert`, which breaks browser preview). The voice and the screen use the same values and the same rounding.
 - Keep each title true for as long as it is visible. List every text block with its visible times, and read each one against the picture and the voice.
 - Change pictures cleanly. Old text drops under about 25% opacity before new text reaches it, and something stays on screen through the change.
 - Before publication, a person must watch the film at full speed with sound. Report which passages were played with sound and whether this full viewing has happened.

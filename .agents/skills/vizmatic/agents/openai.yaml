@@ -1,7 +1,7 @@
 interface:
   display_name: "Vizmatic"
-  short_description: "Make explainer films, diagrams, and charts from code"
-  default_prompt: "Use $vizmatic to explain this with a short film or a dense figure, check it, and render it."
+  short_description: "Make explainer films, narrated lessons, and dense figures"
+  default_prompt: "Use $vizmatic to explain this with an animated film or a dense dark/light figure, check it for defects, and render the outputs."
 
 policy:
   allow_implicit_invocation: true

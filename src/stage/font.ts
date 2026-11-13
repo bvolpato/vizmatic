@@ -568,6 +568,9 @@ export function fontFor(family: BundledFamily, weight: FontWeight = 400, italic 
         waiting = loadBinaryAsset(`fonts/${file}`).then((bytes) => {
             fonts.set(file, parseFont(bytes))
             pending.delete(file)
+        }, (error) => {
+            pending.delete(file)
+            throw error
         })
         pending.set(file, waiting)
     }

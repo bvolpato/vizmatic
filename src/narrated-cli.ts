@@ -67,7 +67,7 @@ export const NARRATED_STEPS = {
     check: {
         note: 'Check the layout of the film, at rest and with --motion in every frame.',
         options: {
-            '--motion': '', '--json': '', '--content-top': 'px', '--text-margin': 'px',
+            '--motion': '', '--json': '', '--content-top': 'px', '--text-margin': 'px', '--text-gap': 'part',
             '--text-size': 'px', '--empty-space': 'part', '--empty-seconds': 's', '--reading-speed': 'n', '--stepped': '', ...DRY_RUN,
         },
     },

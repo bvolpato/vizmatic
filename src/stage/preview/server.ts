@@ -49,6 +49,16 @@ const RESERVED_PORT = 4173
 const FIRST_PORT = 4310
 const PORT_ATTEMPTS = 60
 const REBUILD_DELAY_MS = 40
+const MAX_LOG_BODY_BYTES = 64 * 1024
+
+/** Strip terminal escape sequences and control characters from browser-supplied log strings. */
+export function sanitizePreviewLogText(value: unknown): string {
+    return String(value ?? '')
+        .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
+        .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '')
+        .replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, '')
+        .slice(0, 8_000)
+}
 
 function here(): string {
     return typeof __dirname !== 'undefined' ? __dirname : dirname(fileURLToPath(import.meta.url))
@@ -253,6 +263,8 @@ export async function startPreview(options: PreviewOptions): Promise<PreviewHand
         response.end(body)
     }
 
+    let port = 0
+
     const handle = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
         // Only pages on this machine may talk to the server, which protects against DNS rebinding.
         const host = (request.headers.host ?? '').replace(/:\d+$/, '')
@@ -283,14 +295,42 @@ export async function startPreview(options: PreviewOptions): Promise<PreviewHand
             if (bytes) respond(response, 200, TYPES['.js']!, bytes)
             else respond(response, 404, 'text/plain; charset=utf-8', `Not found: ${path}`)
         } else if (path === '/log' && request.method === 'POST') {
+            const fetchSite = request.headers['sec-fetch-site']
+            const origin = request.headers.origin
+            const allowedOrigins = new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`])
+            if ((typeof fetchSite === 'string' && fetchSite !== 'same-origin' && fetchSite !== 'none')
+                || (typeof origin === 'string' && !allowedOrigins.has(origin))) {
+                respond(response, 403, 'text/plain; charset=utf-8', 'Forbidden')
+                return
+            }
             const chunks: Buffer[] = []
-            for await (const chunk of request) chunks.push(chunk as Buffer)
-            const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}') as { kind?: string; message?: unknown }
-            if (body.kind === 'error') log(`Film error:\n${String(body.message)}`)
-            else if (body.kind === 'compiled') {
-                const info = body.message as { ms: number; errors: number; warnings: number; duration: number }
-                const issues = info.errors + info.warnings > 0 ? `, check found ${info.errors} error(s) and ${info.warnings} warning(s)` : ''
-                log(`Compiled in the browser in ${info.ms} ms (${info.duration.toFixed(1)}s long${issues})`)
+            let totalBytes = 0
+            for await (const chunk of request) {
+                const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array)
+                totalBytes += buf.byteLength
+                if (totalBytes > MAX_LOG_BODY_BYTES) {
+                    respond(response, 413, 'text/plain; charset=utf-8', 'Payload too large')
+                    request.destroy()
+                    return
+                }
+                chunks.push(buf)
+            }
+            let body: { kind?: string; message?: unknown }
+            try {
+                body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}') as { kind?: string; message?: unknown }
+            } catch {
+                respond(response, 400, 'text/plain; charset=utf-8', 'Invalid JSON')
+                return
+            }
+            if (body.kind === 'error') log(`Film error:\n${sanitizePreviewLogText(body.message)}`)
+            else if (body.kind === 'compiled' && body.message && typeof body.message === 'object') {
+                const info = body.message as { ms?: unknown; errors?: unknown; warnings?: unknown; duration?: unknown }
+                const ms = Number(info.ms) || 0
+                const errors = Number(info.errors) || 0
+                const warnings = Number(info.warnings) || 0
+                const duration = Number(info.duration) || 0
+                const issues = errors + warnings > 0 ? `, check found ${errors} error(s) and ${warnings} warning(s)` : ''
+                log(`Compiled in the browser in ${Math.round(ms)} ms (${duration.toFixed(1)}s long${issues})`)
             }
             respond(response, 204, 'text/plain; charset=utf-8', '')
         } else {
@@ -305,7 +345,7 @@ export async function startPreview(options: PreviewOptions): Promise<PreviewHand
             else response.end()
         })
     })
-    const port = await bindPort(server, options.port)
+    port = await bindPort(server, options.port)
     await rebuild()
     const url = `http://127.0.0.1:${port}/`
 
@@ -315,7 +355,9 @@ export async function startPreview(options: PreviewOptions): Promise<PreviewHand
         async open() {
             const command = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open'
             const args = process.platform === 'win32' ? ['/c', 'start', '', url] : [url]
-            spawn(command, args, { stdio: 'ignore', detached: true }).unref()
+            const child = spawn(command, args, { stdio: 'ignore', detached: true })
+            child.on('error', (error) => log(`Could not open browser (${command}): ${error.message}`))
+            child.unref()
         },
         async close() {
             if (timer) clearTimeout(timer)
