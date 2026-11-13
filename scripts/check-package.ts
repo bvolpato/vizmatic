@@ -9,9 +9,9 @@ interface PackResult {
 }
 
 // Bugfixes, sandbox hardening, and synced README/PROMPT/skill docs bring the build
-// to ~21,298 KB unpacked across 232 files.
+// to ~7,422 KB compressed / ~21,298 KB unpacked across 232 files.
 const limits = {
-    size: 7_420_000,
+    size: 7_435_000,
     unpackedSize: 21_310_000,
     entryCount: 232,
 }
