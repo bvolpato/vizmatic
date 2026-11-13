@@ -228,9 +228,23 @@ def mix_inputs(found):
     return hashlib.sha256(json.dumps([found.timing, found.mix, tools], sort_keys=True).encode()).hexdigest()[:16]
 
 
-def write_mix_record(found):
+def effect_wavs(found, read):
+    """Read each distinct authored WAV once, for the mixer or its cache check."""
+    wavs = {}
+    for spec in found.mix["effects"] or []:
+        if "wav" in spec and spec["wav"] not in wavs:
+            name = spec["wav"]
+            try:
+                wavs[name] = read(found.root / name)
+            except OSError as error:
+                fail(f"film.json: cannot read mix effect WAV {name}: {error.strerror}")
+    return wavs
+
+
+def write_mix_record(found, wav_hashes=None):
     """Say beside the takes what narration.wav was made from, so that a build can leave a mix that is current."""
-    write_json(mix_record(found.root), {"inputs": mix_inputs(found), "sound": file_hash(found.root / "narration.wav")})
+    write_json(mix_record(found.root), {"inputs": mix_inputs(found), "sound": file_hash(found.root / "narration.wav"),
+                                        "wavs": wav_hashes or {}})
 
 
 def mix_state(found):
@@ -245,6 +259,8 @@ def mix_state(found):
         return False, "no record says what narration.wav was made from"
     if inputs != mix_inputs(found):
         return False, "the timing or the mix of film.json changed after the last mix"
+    if record.get("wavs", {}) != effect_wavs(found, file_hash):
+        return False, "an authored WAV changed after the last mix"
     if written != file_hash(sound):
         return False, "narration.wav is not the file that the last mix wrote"
     return True, "narration.wav is the mix of this timing and of this film.json"

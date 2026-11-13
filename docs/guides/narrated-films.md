@@ -466,7 +466,7 @@ The delivered movie has the `standard` quality: the full size and frame rate, an
 The build runs these steps in the folder, in this order. It skips a step that has no work to do, says why, and stops at the first step that fails.
 
 1. `voice` speaks each beat of the script. It keeps each take by the hash of its voice, its speed and its text, so only the beats that changed are made again. It writes `timing.json`. The build skips it when the script did not change.
-2. `mix` places the recorded voice, background pad, and selected sound effects on the timeline. It writes `narration.wav`. The build reuses that file when the timing and mix are current.
+2. `mix` places the recorded voice, background pad, and selected sound effects on the timeline. It writes `narration.wav`. The build reuses that file while the timing, mix settings, and authored WAVs are current.
 3. `beats` prints where each beat starts and ends, when the timing is new.
 4. `check` checks the layout of the film at rest and in every frame. A finding stops the build before the render, because a render takes minutes. `--allow-findings` builds with them.
 5. The render writes the movie under its name, with the title, the chapters, and the captions inside it.
@@ -538,6 +538,14 @@ List the available sounds with `vizmatic sounds`. In `film.json`, place a sound 
   }
 }
 ```
+
+To play your own recording in the pause after a beat, save a mono WAV with the film source. Give its path relative to `film.json` in the same effects list.
+
+```json
+{ "wav": "assets/clock.wav", "scene": "arrivals", "beat": 0, "edge": "end" }
+```
+
+The clip starts at the measured end of the first take in `arrivals`. A WAV uses the same word anchors, offsets, and `until` cutoff as a catalog sound. Its `gain` defaults to 1, which keeps its recorded level as it enters the effects track. The mixer resamples it to 48 kHz and applies the usual stereo balance and final loudness adjustment. Save an edit to the WAV and the next build updates the mix.
 
 Use `"effects": []` to play only the voice and pad. Films that omit both `effects` and `chimes` use the original title and ending bells. To use the same sound in another mixer, run `vizmatic sounds render latch --out latch.wav`. The WAV file contains just the effect, ready to place on a timeline.
 

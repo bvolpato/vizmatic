@@ -75,7 +75,7 @@ In `script.json`, `timeline.pause` is the silence between the title card and the
 
 The `voice` and `mix` settings have defaults, so a film can leave them out. Without `swells`, the pad rises under the title card, and again a quarter of a second after the last word. When `effects` is omitted, `chimes` keeps its legacy behavior: an explicit list selects the bells, and `[]` removes them. With neither key, a bell rings on the title card when there is one, and a fuller chord rings after the last word.
 
-A swell, a chime, and a named effect each name a time in one of three ways:
+A swell, a chime, and an effect each name a time in one of three ways:
 
 - `"at": 12.5` is a time in the film, in seconds. A negative value counts from the end of the film.
 - `"intro": 0.5` is a share of the title card: 0.5 is its middle.
@@ -87,15 +87,15 @@ A swell also takes `width` (seconds, 2.0 by default), `db` (the level at its top
 
 A chime also takes `gain` (0.11 by default), `notes` (three frequencies in hertz), `full` (a second, lower bell, for the last card), and `until` (a time: the bell fades over half a second and is silent from then on). A legacy chime needs at least one second between its start and `until`. Use `until` when a name follows a chime: a transcript of one film heard a name wrong with a bell under it.
 
-### Named effects
+### Sound effects
 
-Use `mix.effects` to choose named effects explicitly. It is an ordered list of objects, each with a required `sound` and one of the time anchors above. The mixer adds them in the given order. The four new sounds are the recommended choices for new films. For example:
+Each entry in `mix.effects` takes one source and one time anchor. Use `sound` for a catalog name or `wav` for a local mono WAV. The mixer adds the effects in the given order.
 
 ```json
 {
   "mix": {
     "effects": [
-      { "sound": "tap", "scene": "hook", "beat": 0 },
+      { "wav": "assets/clock.wav", "scene": "hook", "beat": 0, "edge": "end" },
       { "sound": "slide", "scene": "hook", "beat": 6, "offset": 0.2, "until": { "scene": "hook", "beat": 6, "offset": 0.35 } },
       { "sound": "latch", "scene": "close", "beat": 0 },
       { "sound": "resolve", "scene": "close", "beat": -1, "edge": "end", "offset": 0.2, "gain": 0.04 }
@@ -105,6 +105,8 @@ Use `mix.effects` to choose named effects explicitly. It is an ordered list of o
 ```
 
 `"effects": []` mixes only the voice and the pad. Named effects are an explicit author choice and are never added automatically. A mix cannot contain both `chimes` and `effects`, even when either list is empty.
+
+Keep authored WAVs with the film source, outside `audio/`, `dist/`, `stills/` and `node_modules/`. Paths are relative to `film.json`. The mixer resamples each WAV to 48 kHz and applies a positive `gain` multiplier (default 1) to its recorded level. It mixes the clip with the voice and pad using the same channel balance and final loudness pass as catalog effects. Editing the WAV rebuilds the mix on the next build.
 
 | `sound` | Description | Duration (seconds) | Default `gain` |
 |---|---|---|---|

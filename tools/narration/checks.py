@@ -33,7 +33,7 @@ SOUND_EFFECTS = {
     "resolve": {"description": "A rounded two-note resolution with a short tail.", "seconds": 0.76, "gain": 0.045},
     "bell": {"description": "The original soft three-note bell.", "seconds": 5.0, "gain": 0.05},
 }
-EFFECT_KEYS = ANCHOR_KEYS | {"sound", "gain", "until"}
+EFFECT_KEYS = ANCHOR_KEYS | {"sound", "wav", "gain", "until"}
 
 # What each step reads beside film.json and script.json: the timing, the takes of the voice, and programs.
 # A build starts with the voice, so it does not need a timing. Its later steps do: "render" is the build
@@ -184,10 +184,32 @@ def check_film(given, root, looks, report):
     before = given.get("before", [])
     if not (isinstance(before, list) and all(isinstance(command, list) and command and all(isinstance(word, str) for word in command) for command in before)):
         report.add(file, "before", "is not a list of commands", 'Give each command as a list of words, such as [["uv", "run", "data/make_numbers.py"]]')
-    check_mix(given.get("mix", {}), file, report)
+    check_mix(given.get("mix", {}), root, file, report)
 
 
-def check_mix(mix, file, report):
+def check_effect_wav(value, root, file, field, report):
+    hint = 'Give a mono WAV in the film folder, such as "assets/clock.wav"'
+    path = Path(value) if isinstance(value, str) else None
+    if not path or path.is_absolute() or ".." in path.parts or path.suffix.lower() != ".wav":
+        return report.add(file, field, f"{shown(value)} is not a relative WAV path", hint)
+    source = root / path
+    try:
+        target = source.resolve().relative_to(root.resolve())
+        generated = {"audio", "dist", "stills", "node_modules", "narration.wav"}
+        if path.parts[0].lower() in generated or (target.parts and target.parts[0].lower() in generated):
+            return report.add(file, field, f"{value} is in generated output or dependencies", hint)
+        if not source.is_file():
+            return report.add(file, field, f"{value} is missing or is not a file", hint)
+        # An existing mix output can also point back to the source through a link.
+        for output in ("narration.wav", "stills/mix-raw.wav", "stills/bed-only.wav", "stills/voice-only.wav"):
+            destination = root / output
+            if destination.is_file() and destination.samefile(source):
+                return report.add(file, field, f"{value} is also the mix output {output}", hint)
+    except (OSError, RuntimeError, ValueError):
+        report.add(file, field, f"{value} does not resolve to a file inside the film folder", hint)
+
+
+def check_mix(mix, root, file, report):
     if not isinstance(mix, dict):
         return report.add(file, "mix", f"{shown(mix)} is not an object", 'Give { "seed": 7 }')
     keys(mix, {"seed", "levels", "swells", "chimes", "effects"}, file, "mix.", report)
@@ -212,8 +234,10 @@ def check_mix(mix, file, report):
             field = f"mix.{name}[{index}]"
             check_anchor(spec, file, field, extra, report)
             if name == "effects" and isinstance(spec, dict):
-                if "sound" not in spec:
-                    report.add(file, f"{field}.sound", "is missing", f"Give a sound name: {', '.join(SOUND_EFFECTS)}")
+                if ("sound" in spec) == ("wav" in spec):
+                    report.add(file, field, "needs one effect source", 'Give either a "sound" name or a "wav" path')
+                if "wav" in spec:
+                    check_effect_wav(spec["wav"], root, file, f"{field}.wav", report)
                 check_effect_anchor(spec, file, field, report)
                 if "until" in spec:
                     check_effect_anchor(spec["until"], file, f"{field}.until", report)

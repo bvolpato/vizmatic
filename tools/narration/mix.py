@@ -13,7 +13,10 @@ It writes narration.wav for the render. An agent cannot hear the result, so it p
 writes the voice alone, the pad alone, and the mix before the loudness pass under stills/.
 
 Usage: mix.py <folder>"""
+import hashlib
+import io
 import subprocess
+from pathlib import Path
 
 import numpy as np
 import soundfile as sf
@@ -139,8 +142,23 @@ def bells(samples, line, chimes):
     return track, placed
 
 
-def effects(samples, line, entries):
-    """Place each procedural clip with its own gain and cutoff, in the order that the author gives."""
+def read_effect_wav(data, where):
+    """Decode the mono source at its authored level and resample it to the mix rate."""
+    try:
+        with sf.SoundFile(io.BytesIO(data)) as source:
+            if source.format not in ("WAV", "WAVEX", "RF64") or source.channels != 1 or not source.frames:
+                film.fail(f"{where}: give a nonempty mono WAV")
+            rate = source.samplerate
+            samples = source.read(dtype="float32")
+    except (ValueError, RuntimeError) as error:
+        film.fail(f"{where}: cannot read the WAV ({error})")
+    if not np.isfinite(samples).all():
+        film.fail(f"{where}: the WAV contains nonfinite samples")
+    return resample_poly(samples, RATE, rate) if rate != RATE else samples
+
+
+def effects(samples, line, entries, wavs):
+    """Place each clip with its own gain and cutoff, in the order the author gives."""
     track, placed = np.zeros(samples, dtype=np.float32), []
     for index, spec in enumerate(entries):
         where = f"film.json: mix.effects[{index}]"
@@ -152,8 +170,14 @@ def effects(samples, line, entries):
             film.fail(f"{where}: the effect starts at {at:.2f} s and must be silent from {until:.2f} s. Give an until time after the start")
         start = int(at * RATE)
         end = int(min(line.total, until) * RATE) if until is not None else samples
-        clip = soundbed.sound_effect(spec["sound"], RATE)[:max(0, end - start)].copy()
-        clip *= spec.get("gain", checks.SOUND_EFFECTS[spec["sound"]]["gain"])
+        if "wav" in spec:
+            name = spec["wav"]
+            clip = read_effect_wav(wavs[name], f"{where}.wav ({name})")
+            gain = spec.get("gain", 1.0)
+        else:
+            clip = soundbed.sound_effect(spec["sound"], RATE)
+            gain = spec.get("gain", checks.SOUND_EFFECTS[spec["sound"]]["gain"])
+        clip = clip[:max(0, end - start)] * gain
         # A cut fades only this clip. It must not change effects that already occupy the track.
         if len(clip) and end - start <= len(clip):
             fade = min(len(clip), int(0.02 * RATE))
@@ -213,8 +237,10 @@ def main(found, _words, _options):
     bed = pad * (level * 10 ** (soundbed.decibels(voice[spoke]) / 20))[:, None]
 
     named = settings["effects"] is not None
+    # Decode and fingerprint the same bytes even if the author edits a WAV during the mix.
+    wavs = film.effect_wavs(found, Path.read_bytes)
     if named:
-        track, chime_times = effects(samples, line, settings["effects"])
+        track, chime_times = effects(samples, line, settings["effects"], wavs)
     else:
         chimes = settings["chimes"] if settings["chimes"] is not None else default_chimes(line)
         track, chime_times = bells(samples, line, chimes)
@@ -225,7 +251,7 @@ def main(found, _words, _options):
         mix = mix / peak * 0.97
     write_sound(root, mix, voice, bed)
     # A build reads this record, and leaves a mix that is made from the timing and the film.json of now.
-    film.write_mix_record(found)
+    film.write_mix_record(found, {name: hashlib.sha256(data).hexdigest() for name, data in wavs.items()})
     report(line, levels, mix, voice, bed, level, spoke, track, parts, swell_times, chime_times, named)
     under = soundbed.decibels(voice[spoke]) - soundbed.decibels(bed[spoke, 0])
     summary = f"narration.wav is written: {line.total:.2f} s, {len(line.beats)} takes, the pad {under:.1f} dB under the voice."
