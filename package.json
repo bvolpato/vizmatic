@@ -1,6 +1,6 @@
 {
   "name": "vizmatic",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "Code-driven animation, diagrams, and charts: vector films that play live in a browser and export to MP4, with typed components for dense technical figures.",
   "type": "module",
   "license": "MIT",
