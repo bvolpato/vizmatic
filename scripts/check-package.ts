@@ -8,11 +8,11 @@ interface PackResult {
     entryCount?: number
 }
 
-// The scalar softmax helpers add 6,713 unpacked bytes of JavaScript and declarations.
-// The macOS build occupies 21,260,444 bytes across 232 files.
+// The authored WAV mixer and guide add 3,824 unpacked bytes.
+// The macOS build occupies 21,264,268 bytes across 232 files.
 const limits = {
     size: 7_420_000,
-    unpackedSize: 21_263_000,
+    unpackedSize: 21_267_000,
     entryCount: 232,
 }
 
