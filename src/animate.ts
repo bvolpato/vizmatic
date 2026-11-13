@@ -6,6 +6,7 @@ import * as gifenc from 'gifenc'
 import parseCssColor from 'parse-css-color'
 import { wrapWithWatermark, type WatermarkInput } from './brand'
 import type { CropRegion, OverflowResult } from './autocrop'
+import { measureRegionChange } from './region-change'
 import { CanvasOverflowError, getFonts, loadAdditionalAsset, type AnimationOverflowContext } from './render'
 import { withRenderContext, type RenderBackground } from './renderContext'
 import { satori, type SatoriNode } from './satori'
@@ -256,34 +257,6 @@ function sharedPalette(frames: readonly Pick<PixelFrame, 'pixels'>[]): GifPalett
     return quantize(combined, 256, { format: 'rgba4444', oneBitAlpha: true })
 }
 
-function changedBounds(previous: Uint8Array, current: Uint8Array, width: number, height: number): CropRegion | undefined {
-    let minX = width
-    let minY = height
-    let maxX = -1
-    let maxY = -1
-    for (let index = 0; index < current.length; index += 4) {
-        if (
-            previous[index] === current[index]
-            && previous[index + 1] === current[index + 1]
-            && previous[index + 2] === current[index + 2]
-            && previous[index + 3] === current[index + 3]
-        ) continue
-        const pixel = index / 4
-        const x = pixel % width
-        const y = Math.floor(pixel / width)
-        minX = Math.min(minX, x)
-        minY = Math.min(minY, y)
-        maxX = Math.max(maxX, x)
-        maxY = Math.max(maxY, y)
-    }
-    return maxX < minX ? undefined : {
-        x: minX,
-        y: minY,
-        width: maxX - minX + 1,
-        height: maxY - minY + 1,
-    }
-}
-
 function cropFramePixels(pixels: Uint8Array, canvasWidth: number, region: CropRegion): Uint8Array {
     const output = new Uint8Array(region.width * region.height * 4)
     for (let y = 0; y < region.height; y += 1) {
@@ -295,7 +268,10 @@ function cropFramePixels(pixels: Uint8Array, canvasWidth: number, region: CropRe
 
 function deltaPixelFrame(frame: PixelFrame, previous: Uint8Array | undefined, enabled: boolean): PixelFrame {
     if (!enabled || !previous) return frame
-    const bounds = changedBounds(previous, frame.pixels, frame.width, frame.height)
+    const { width, height } = frame
+    const { bounds } = measureRegionChange(previous, frame.pixels, {
+        width, height, region: { x: 0, y: 0, width, height }, tolerance: 0,
+    })
     if (!bounds || (bounds.width === frame.width && bounds.height === frame.height)) return frame
     return {
         ...frame,

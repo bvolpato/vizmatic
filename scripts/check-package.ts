@@ -8,11 +8,11 @@ interface PackResult {
     entryCount?: number
 }
 
-// The authored WAV mixer and guide add 3,824 unpacked bytes.
-// The macOS build occupies 21,264,268 bytes across 232 files.
+// With the region change API and shared GIF scan, the macOS build occupies
+// 21,269,988 unpacked bytes across 232 files.
 const limits = {
     size: 7_420_000,
-    unpackedSize: 21_267_000,
+    unpackedSize: 21_272_000,
     entryCount: 232,
 }
 

@@ -518,6 +518,28 @@ function checkTicketMean(
 
 The check samples each frame from `fromFrame` until it observes the result. An early appearance reports the offending frame. For a fade, set `byFrame` to the last frame by which the result should be visible. The default is a cut on `cueFrame`. Use final pixels to check the finished picture, or a state predicate to check the model. The observer must return a boolean and should throw if it cannot identify the result. The returned pair describes the first appearance in the chosen interval.
 
+To check a moving object in finished video, use `measureRegionChange` on decoded RGBA frames. Choose a rectangle around its path, clear of captions and unrelated motion. Keep a copy of the starting frame so gradual changes accumulate. For example, this review looks for the top edge of a request card moving during its entrance at 480 × 270.
+
+```ts
+import { measureRegionChange } from 'vizmatic'
+
+const options = {
+  width: 480, height: 270,
+  region: { x: 250, y: 4, width: 24, height: 40 },
+  tolerance: 12,
+}
+const start = decodedFrame(120).slice()
+for (let frame = 121; frame < 160; frame++) {
+  const { changedPixels, bounds } = measureRegionChange(start, decodedFrame(frame), options)
+  if (changedPixels >= 12) {
+    console.log('Inspect the card at frame', frame, bounds)
+    break
+  }
+}
+```
+
+A pixel counts once if any RGBA channel changes by more than the tolerance (default 12 on a 0 to 255 scale). Bounds use frame coordinates. A still region returns zero changed pixels and `undefined` bounds. Calibrate the tolerance and pixel count on a known still passage at the same decode size. For an intentional prediction or reading hold, use the first frame of the hold as the reference and expect the count to stay below your threshold. Inspect the flagged frames to identify what moved. Use `assertCueReveal` when the check depends on the identity of a result or its spoken cue.
+
 Numerical helpers include `seededRandom(seed)`, `lerpArray`, `dotProduct`,
 `multiplyMatrices`, `stableSoftmax(values, temperature)`, `entropy`,
 `normalizeVector`, `sampleFunction`, `gaussian(mean, sigma, x)`, and
