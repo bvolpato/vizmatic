@@ -12,10 +12,13 @@ the seed and the levels of the film. Everything is synthesized here: no sample i
 Run this script with `list` to see the effects, or `render NAME --out PATH.wav` to audition one.
 """
 import argparse
+import io
 import json
 import os
 import tempfile
 import sys
+import struct
+from contextlib import contextmanager
 from math import gcd
 from numbers import Integral
 from pathlib import Path
@@ -264,12 +267,44 @@ def _fade_effect(samples, rate):
 BED_TEXTURES = {"warm": "full", "open": "open", "low": "low"}
 
 
+@contextmanager
+def _bed_writer(output, rate, frames):
+    import soundfile as sf
+
+    if str(output) == "-":
+        frame_bytes = 2 * 3
+        data_bytes = frames * frame_bytes
+        if data_bytes > 0xffffffff - 36:
+            raise ValueError("The stereo PCM24 bed exceeds the WAV stream size limit.")
+        # The voice scan supplies both RIFF lengths before synthesis starts.
+        header = struct.pack("<4sI4s4sIHHIIHH4sI", b"RIFF", 36 + data_bytes, b"WAVE", b"fmt ", 16,
+                             1, 2, rate, rate * frame_bytes, frame_bytes, 24, b"data", data_bytes)
+        stream = sys.stdout.buffer
+        stream.write(header)
+        # Pack one synthesis block with the same converter used for the WAV file.
+        # A separate buffer also supports stdout redirected to a seekable file.
+        def write(samples):
+            block = io.BytesIO()
+            with sf.SoundFile(block, "w", rate, 2, format="RAW", subtype="PCM_24", endian="LITTLE") as target:
+                target.write(samples)
+            stream.write(block.getbuffer())
+
+        yield write
+        stream.flush()
+    else:
+        with tempfile.TemporaryDirectory(dir=Path(output).parent) as directory:
+            temporary = Path(directory) / "bed.wav"
+            with sf.SoundFile(temporary, "w", rate, 2, subtype="PCM_24", format="WAV") as target:
+                yield target.write
+            os.replace(temporary, output)
+
+
 def render_bed(voice_path, output, seed=0, palette="warm", beats=(), scenes=(), *, start_sample=0, end_sample=None):
     """Write the requested samples of the bed, using the whole recording for levels and timing."""
     import soundfile as sf
 
     from_stdin = str(voice_path) == "-"
-    if not from_stdin and Path(voice_path).resolve() == Path(output).resolve():
+    if str(output) != "-" and not from_stdin and Path(voice_path).resolve() == Path(output).resolve():
         raise ValueError("The bed and voice must have different paths.")
     with sf.SoundFile(sys.stdin.fileno() if from_stdin else voice_path, closefd=not from_stdin) as voice:
         rate = voice.samplerate
@@ -302,35 +337,31 @@ def render_bed(voice_path, output, seed=0, palette="warm", beats=(), scenes=(), 
     filt = butter(2, 900, "low", fs=rate, output="sos")
     state = np.zeros((len(filt), 2, 2))
     current = 0
-    # Keep the original voice and any previous bed intact if writing fails.
-    with tempfile.TemporaryDirectory(dir=Path(output).parent) as directory:
-        temporary = Path(directory) / "bed.wav"
-        with sf.SoundFile(temporary, "w", rate, 2, subtype="PCM_24", format="WAV") as target:
-            # Prime the 900 Hz filter with one second of the actual preceding chords.
-            for a in range(max(0, start_sample - rate), stop, rate):
-                b = min(a + rate, stop)
-                samples = np.zeros((b - a, 2), dtype=np.float32)
-                while current + 1 < len(parts) and int((parts[current][1] + CROSS / 2) * rate) <= a:
-                    current += 1
-                for k in range(current, len(parts)):
-                    start, end, chord, name = parts[k]
-                    lo, hi = max(a, int((start - CROSS / 2) * rate)), min(b, int((end + CROSS / 2) * rate))
-                    if lo >= b:
-                        break
-                    weights = texture * np.array(TEXTURES[name])
-                    weights /= np.sqrt(0.5 * np.sum(weights ** 2))
-                    _paint_chord(samples[lo-a:hi-a], lo, hi, rate, start, end, chord, weights, k == 0, k == len(parts) - 1)
-                samples, state = sosfilt(filt, samples, axis=0, zi=state)
-                if b <= start_sample:
-                    continue
-                if a < start_sample:
-                    samples = samples[start_sample - a:]
-                    a = start_sample
-                at = np.arange(a, b)
-                envelope = np.minimum(1, np.minimum(at / (1.5 * rate), (n - 1 - at) / (2 * rate)))
-                gain = np.interp(at / hop, centers, gains) * reference * envelope
-                target.write(samples * gain[:, None])
-        os.replace(temporary, output)
+    with _bed_writer(output, rate, stop - start_sample) as write:
+        # Prime the 900 Hz filter with one second of the actual preceding chords.
+        for a in range(max(0, start_sample - rate), stop, rate):
+            b = min(a + rate, stop)
+            samples = np.zeros((b - a, 2), dtype=np.float32)
+            while current + 1 < len(parts) and int((parts[current][1] + CROSS / 2) * rate) <= a:
+                current += 1
+            for k in range(current, len(parts)):
+                start, end, chord, name = parts[k]
+                lo, hi = max(a, int((start - CROSS / 2) * rate)), min(b, int((end + CROSS / 2) * rate))
+                if lo >= b:
+                    break
+                weights = texture * np.array(TEXTURES[name])
+                weights /= np.sqrt(0.5 * np.sum(weights ** 2))
+                _paint_chord(samples[lo-a:hi-a], lo, hi, rate, start, end, chord, weights, k == 0, k == len(parts) - 1)
+            samples, state = sosfilt(filt, samples, axis=0, zi=state)
+            if b <= start_sample:
+                continue
+            if a < start_sample:
+                samples = samples[start_sample - a:]
+                a = start_sample
+            at = np.arange(a, b)
+            envelope = np.minimum(1, np.minimum(at / (1.5 * rate), (n - 1 - at) / (2 * rate)))
+            gain = np.interp(at / hop, centers, gains) * reference * envelope
+            write(samples * gain[:, None])
 
 
 def main():
@@ -342,7 +373,7 @@ def main():
     render.add_argument("--out", type=Path, required=True, help="The output WAV path.")
     bed = commands.add_parser("bed", help="Write a stereo ambient bed under an existing narration.")
     bed.add_argument("--voice", type=Path, required=True, help="Voice recording, or - for a WAV stream on stdin.")
-    bed.add_argument("--out", type=Path, required=True)
+    bed.add_argument("--out", type=Path, required=True, help="Output WAV path, or - for a stereo PCM24 WAV stream on stdout.")
     bed.add_argument("--seed", type=int, default=0)
     bed.add_argument("--palette", choices=BED_TEXTURES, default="warm")
     bed.add_argument("--timing", type=Path, help="JSON with optional beats and scenes arrays, in seconds.")

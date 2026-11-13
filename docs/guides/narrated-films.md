@@ -551,6 +551,8 @@ Use `"effects": []` to play only the voice and pad. Films that omit both `effect
 
 To score an existing recording in another mixer, run `vizmatic sounds bed --voice voice.wav --out bed.wav --palette warm --seed 7`. The output is a stereo 24-bit PCM WAV at the source sample rate with exactly one output frame per input frame. Mix the bed with the original recording at unity gain. It contains only the pad, fades at both ends, and stays about 23 dB below active speech. It rises during longer pauses. Silent recordings produce silence.
 
+To send the same samples directly to another program, pass `--out -`. The WAV header contains the frame count, so the next program can read the bed from a pipe. For example, `vizmatic sounds bed --voice voice.wav --out - | ffmpeg -v error -i pipe:0 bed.flac` writes a lossless FLAC without an intermediate WAV file.
+
 Use `warm` for a balanced chord, `open` to bring out separated notes, or `low` for more bass. The seed controls chord and scene texture choices. To time chord changes to the narration, pass `--timing marks.json` with start times in seconds, for example `{"beats":[0,12,24],"scenes":[0,24]}`. Give the command the complete narration track so that adjacent scenes share the same musical timeline.
 
 To audition a passage, pass `--start-sample` and `--end-sample` in samples per channel at the voice recording's rate. The first sample is included and the end is excluded. The command reads the whole voice for its speech and pause levels, then synthesizes the requested passage on the original musical timeline. To avoid a temporary narration file, pipe a complete PCM WAV stream to `--voice -`. For example, this writes seconds 10 through 12 of the bed for a 24 kHz voice.
