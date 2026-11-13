@@ -38,7 +38,7 @@ const wire = line(boxOf(disk).point('bottom'), boxOf(file).point('top'))   // ma
 - To move a block during a film, place it again inside `to`: `to(block, () => place(block, lower, 'top'))`.
 - `group(a, b).arrange()` stays for the films that have it. Do not use it in a new film: it centers every item, it measures the ink, and one part that fades in shows the whole group.
 
-The [layout guide](https://bvolpato.github.io/vizmatic/docs/layout.html) has the table of the pieces and three examples.
+The [layout guide](https://github.com/bvolpato/vizmatic/blob/main/docs/guides/layout.md) has the table of the pieces and three examples.
 
 ## Timing
 
@@ -65,7 +65,7 @@ An MP4 carries the film's title, its chapters as markers on the player's timelin
 
 For a film that follows a recorded voice, use `narrated({ title, timing, scenes })`. It draws the title card from the title. It calls each scene when its picture opens, fades in what the scene adds there with `s.add`, and fades out every node of the scene at its end, so a scene types no time for that. It gives each scene the clock of its part of the voice. `c.show('a spoken phrase', nodes)` fades nodes in 0.1 seconds before the phrase, in 0.3 seconds, and `c.hide` and `c.swap(cue, out, in)` have the same defaults, so a scene types no time for them. `{ stagger: true }` brings a list one item after another, and an animation in the list plays as it is: `c.show('one host', [draw(frame), title])`. A node shows one time: `c.show` brings a node that is not on the screen, and `{ skipShown: true }` brings the rest of a block whose title is in the first picture. It sees only the lines above the call, so call `s.add` first. A thing that the voice names comes before its phrase, which is the default. A result that the voice reaches, such as a number that it computes, comes when the voice has said it: `c.show('one hundred and sixty times', number, { after: true })`, and the same option for `c.hide` and `c.swap`. `c.on('a spoken phrase', build)` runs `build` when the voice reaches that phrase, for a play of the scene's own. `c.keep(node)` holds a node for the next scene, which takes its own copy with `c.take(node)`. A phrase that the voice does not say stops the build, and so does a phrase that it says two times in the scene (use a longer phrase, or the beat), and a scene that the script or the film does not have. A play that ends after its scene stops the build too, because the film must not run past its narration: give it a shorter duration, an earlier cue, or a longer `hold` in the script. For a course, where a person reviews the script apart from the film, declare the cues in the script: a beat has `"cues": [{ "id": "result", "phrase": "one hundred and sixty times" }]`, a scene names the id where it can name a phrase, `c.show('result', number)`, and a declared cue that no scene uses stops the build. For a short film, type the phrase in the scene. Another tool can write the timing from its own sound, with a `start` for each scene: the guide has its shape. It also adds the captions and one chapter for each titled scene. `narration(s, timing)` is the layer under it, for a film that needs another order of work.
 
-`npx vizmatic new <name> --template narrated` writes the folder of such a film. One command then brings it up to date, from the script to the movie: `npx vizmatic narrated build <folder> --draft` makes the voice on this machine, the sound mix, the layout check, and a draft movie. It runs only the steps that have work to do, and says why. Without `--draft`, it makes the delivered movie. The [narrated films guide](https://bvolpato.github.io/vizmatic/docs/narrated-films.html) covers the folder, the script, the clock, the build, the checks, and the review. `references/lessons.md` has the rules for a film that teaches.
+`npx vizmatic new <name> --template narrated` writes the folder of such a film. One command then brings it up to date, from the script to the movie: `npx vizmatic narrated build <folder> --draft` makes the voice on this machine, the sound mix, the layout check, and a draft movie. It runs only the steps that have work to do, and says why. Without `--draft`, it makes the delivered movie. `npx vizmatic sounds list` lists built-in cues (`tap`, `slide`, `latch`, `resolve`, `bell`), `npx vizmatic sounds render <name> --out cue.wav` writes a quiet 48 kHz mono WAV, `npx vizmatic sounds bed --voice narration.wav --out bed.wav --palette warm --timing timing.json` generates a ducked stereo bed, and `renderNarrationHold` from `vizmatic/stage/export` appends a mono PCM audio demonstration inside a beat's hold window. The [narrated films guide](https://github.com/bvolpato/vizmatic/blob/main/docs/guides/narrated-films.md) covers the folder, the script, the clock, the build, the checks, and the review. `references/lessons.md` has the rules for a film that teaches.
 
 ## Worked films
 
@@ -130,12 +130,14 @@ const eq = s.add(tex('a^2 + b^2 = c^2', { size: 80 }))
 for (const glyph of eq.part('b^2')) glyph.color('yellow')
 ```
 
-A grid that bends under a matrix:
+A grid that bends under a matrix, or a perpendicular projection onto a line:
 
 ```ts
 const grid = s.add(plane({ unit: 90 }))
 s.play(draw(grid, { lag: 0.002 }))
 s.play(applyMatrix(grid, [[1, 1], [0, 1]]), { duration: 3 })
+const drop = s.add(projectionMark([180, -140], [0, 0], [260, -60], { color: 'yellow' }))
+s.play(draw(drop))
 ```
 
 A camera move, with a title that stays put:

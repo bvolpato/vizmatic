@@ -209,11 +209,21 @@ describe('fast bloom', () => {
         }
     }, 60_000)
 
-    it('gives the bytes of the first version for a frame that is lower than a cell of a layer', () => {
-        // The first version read past the end of such a frame, and every color came out as 0.
-        for (const [w, h] of [[1920, 8], [333, 1], [2, 2], [16, 16]] as const) {
-            expect([w, h, firstDifference(noise(w, h), w, h, 0.6, page)]).toEqual([w, h, -1])
-            expect([w, h, firstDifference(marks(w, h), w, h, 0.14, page)]).toEqual([w, h, -1])
+    it('preserves colors and blooms cleanly when a frame is smaller than a default layer cell', () => {
+        expect([16, 16, firstDifference(noise(16, 16), 16, 16, 0.6, page)]).toEqual([16, 16, -1])
+        expect([16, 16, firstDifference(marks(16, 16), 16, 16, 0.14, page)]).toEqual([16, 16, -1])
+        // The first version read past the end of tiny frames and zeroed every RGB channel.
+        // Clamping the layer cell factor to min(w, h, ...) keeps pixels intact and applies bloom.
+        for (const [w, h] of [[1920, 8], [333, 1], [8, 8], [2, 2]] as const) {
+            const input = marks(w, h)
+            const actual = input.slice()
+            fast(actual, w, h, 0.6, page, false)
+            for (let i = 0; i < actual.length; i += 4) {
+                expect(actual[i]!).toBeGreaterThanOrEqual(input[i]!)
+                expect(actual[i + 1]!).toBeGreaterThanOrEqual(input[i + 1]!)
+                expect(actual[i + 2]!).toBeGreaterThanOrEqual(input[i + 2]!)
+                expect(actual[i + 3]!).toBe(input[i + 3]!)
+            }
         }
     })
 

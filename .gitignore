@@ -69,3 +69,6 @@ coverage/
 
 # Python writes these beside the narration tools when one of them runs.
 __pycache__/
+
+# Cached film renders for CI and Pages deploys.
+/.cache/

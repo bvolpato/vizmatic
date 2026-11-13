@@ -36,6 +36,7 @@ export interface ImageOp {
     readonly image: StageImage
     readonly matrix: Mat
     readonly alpha: number
+    readonly blend?: BlendMode
     readonly node?: Node
     /**
      * A dim picture: each pixel keeps this part of its color, and the rest of it is `backdrop`. The alpha of
@@ -97,7 +98,7 @@ function toWorld(node: Node, path: Path, m: Mat): Path {
     return world
 }
 
-function emit(node: Node, path: Path, m: Mat, alpha: number, ops: DrawOp[]): void {
+function emit(node: Node, path: Path, m: Mat, alpha: number, blend: BlendMode, ops: DrawOp[]): void {
     const fill = node.get('fill')
     const stroke = node.get('stroke')
     const fillAlpha = fill ? alpha * node.get('fillOpacity') : 0
@@ -126,7 +127,7 @@ function emit(node: Node, path: Path, m: Mat, alpha: number, ops: DrawOp[]): voi
         dashOffset: node.get('dashOffset') * scale,
         glow: glow * scale,
         glowColor: node.get('glowColor'),
-        blend: node.get('blend'),
+        blend,
         node,
     }
     if (op.stroke && isGradient(op.stroke) && op.stroke.type === 'along') splitAlong(op, op.stroke, ops)
@@ -195,19 +196,21 @@ function markDim(node: Node, marks: ReadonlyMap<Node, Node>): number {
  * `alpha` is the product of the opacities above the node. `dim` is the least `dim` above it: opacities
  * multiply along a branch, and a node in a dim group is not dimmed a second time.
  */
-function walk(node: Node, parent: Mat, alpha: number, dim: number, pass: Pass): void {
+function walk(node: Node, parent: Mat, alpha: number, dim: number, inheritedBlend: BlendMode, pass: Pass): void {
     if (!node.get('visible')) return
     const opacity = node.get('opacity') * alpha
     if (opacity <= 0.002) return
     const { screen, ops, marks } = pass
     const least = Math.min(node.get('dim'), dim, marks ? markDim(node, marks) : 1)
+    const ownBlend = node.get('blend')
+    const blend: BlendMode = ownBlend !== 'normal' ? ownBlend : inheritedBlend
     const base = node.get('fixed') ? screen : parent
     const m = mul(base, node.localMatrix())
     const first = ops.length
     const path = node.get('path')
-    if (path && path.length > 0) emit(node, path, m, opacity, ops)
+    if (path && path.length > 0) emit(node, path, m, opacity, blend, ops)
     const image = node.get('image')
-    if (image) ops.push({ kind: 'image', image, matrix: m, alpha: opacity, node })
+    if (image) ops.push({ kind: 'image', image, matrix: m, alpha: opacity, blend, node })
     if (node.rawOps) node.rawOps(m, opacity, ops)
     if (least < 1) dimOps(ops, first, least, pass.backdrop)
     if (node.draw) {
@@ -216,7 +219,7 @@ function walk(node: Node, parent: Mat, alpha: number, dim: number, pass: Pass): 
             const list: readonly Node[] = Array.isArray(built) ? built as readonly Node[] : [built as Node]
             for (const child of list) {
                 child.drawer = node
-                walk(child, m, opacity, least, pass)
+                walk(child, m, opacity, least, blend, pass)
             }
         }
     }
@@ -231,7 +234,7 @@ function walk(node: Node, parent: Mat, alpha: number, dim: number, pass: Pass): 
     }
     const ordered = sorted ? children.map((child, index) => ({ child, index, z: child.get('z') }))
         .sort((a, b) => a.z - b.z || a.index - b.index).map((entry) => entry.child) : children
-    for (const child of ordered) walk(child, m, opacity, least, pass)
+    for (const child of ordered) walk(child, m, opacity, least, blend, pass)
 }
 
 /**
@@ -245,7 +248,7 @@ export function buildOps(root: Node, camera: CameraState, width: number, height:
     const screen: Mat = [1, 0, 0, 1, width / 2, height / 2]
     const view = mul(screen, compose(0, 0, -camera.rotation, camera.zoom, camera.zoom, camera.x, camera.y))
     const ops: DrawOp[] = []
-    walk(root, view, 1, 1, { screen, backdrop, marks, ops })
+    walk(root, view, 1, 1, 'normal', { screen, backdrop, marks, ops })
     return ops
 }
 
@@ -349,7 +352,8 @@ export function frameToSvg(frame: Frame, options: { scale?: number; transparent?
                 defs.push(`<filter id="${id}" x="0" y="0" width="1" height="1" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="${keep} 0 0 0 ${r} 0 ${keep} 0 0 ${g} 0 0 ${keep} 0 ${b} 0 0 0 1 0"/></filter>`)
                 filter = ` filter="url(#${id})"`
             }
-            body.push(`<g transform="matrix(${m.map(fmt).join(' ')})"${op.alpha < 1 ? ` opacity="${fmt(op.alpha)}"` : ''}${filter}>${content}</g>`)
+            const imageStyle = op.blend && op.blend !== 'normal' ? ` style="mix-blend-mode:${op.blend}"` : ''
+            body.push(`<g transform="matrix(${m.map(fmt).join(' ')})"${op.alpha < 1 ? ` opacity="${fmt(op.alpha)}"` : ''}${filter}${imageStyle}>${content}</g>`)
             continue
         }
         const style = op.blend !== 'normal' ? ` style="mix-blend-mode:${op.blend}"` : ''
@@ -464,7 +468,7 @@ export function paintFrame(ctx: Canvas2D, frame: Frame, scale = 1, images?: Imag
             ctx.save()
             ctx.transform(m[0], m[1], m[2], m[3], m[4], m[5])
             ctx.globalAlpha = op.alpha
-            ctx.globalCompositeOperation = 'source-over'
+            ctx.globalCompositeOperation = BLEND[op.blend ?? 'normal']
             const crop = op.image.crop
             if (op.dim !== undefined && op.dim < 1 && op.backdrop) ctx.drawImage(dimCopy(source, op.image, op.dim, op.backdrop), 0, 0, op.image.width, op.image.height)
             else if (crop) ctx.drawImage(source, crop.x, crop.y, crop.width, crop.height, 0, 0, op.image.width, op.image.height)

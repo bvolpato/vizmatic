@@ -64,8 +64,8 @@ npx vizmatic film intro.ts --quality high --out ./out</code></pre>
         </article>
       </div>
       <aside class="callout">
-        <h3>For animation, use a module and the CLI.</h3>
-        <p>Export <code>createAnimation(theme)</code> from a TypeScript module, keep <code>create(theme)</code> as its static fallback, then render with <code>vizmatic gif ./animated-frame.tsx --out ./dist/frames --theme dark,light</code>. A bare frame is for static output.</p>
+        <h3>For new motion work, write a film with <code>vizmatic/stage</code>.</h3>
+        <p>Author motion in TypeScript with <code>film(...)</code>, verify every frame with <code>vizmatic check intro.ts --motion --text-gap 0.3 --json</code>, and export with <code>vizmatic film</code> or <code>vizmatic narrated build</code>. Use <code>createAnimation(theme)</code> with <code>vizmatic video</code> or <code>vizmatic gif</code> only when animating an existing TSX figure.</p>
       </aside>
     </section>
 
@@ -176,7 +176,7 @@ claude plugin install vizmatic@vizmatic --scope user</code></pre>
         </details>
         <details>
           <summary>How should I verify a finished visual?</summary>
-          <p>Run the JSON check for dark and light themes, render both variants, and inspect the files at their final display size.</p>
+          <p>For a film, run <code>vizmatic check &lt;film.ts&gt; --motion --text-gap 0.3 --json</code>, inspect full-size beat stills, and watch the export at normal speed with sound. For a TSX figure, run the JSON check across dark and light themes, render both variants, and inspect them at display size.</p>
         </details>
       </div>
     </section>

@@ -758,6 +758,18 @@ try {
     assert.equal(await source(), validSource, 'Undo should recover from a source syntax error.')
     assert.equal(await page.locator('#explorerCopyBlock').isEnabled(), true, 'Undo should restore the valid chart block copy action.')
 
+    for (const escapeExpr of [
+        'Object.getPrototypeOf(Object.getPrototypeOf(globalThis)).indexedDB',
+        'self.postMessage({ id: 1, ok: true })',
+        'navigator.storage',
+        'FontFace',
+    ]) {
+        await page.locator('#playgroundSource').fill(`<Board width={320} height={180}>{String(${escapeExpr})}</Board>`)
+        await page.waitForFunction(() => !document.querySelector('#playgroundError')?.hidden, undefined, { timeout: 20_000 })
+        assert.match(await page.locator('#playgroundError').textContent(), /disabled in the Vizmatic playground/, `Worker capability ${escapeExpr} must stay locked.`)
+    }
+    await runSource(validSource)
+
     await page.locator('#explorerCode').evaluate((details) => { details.open = true })
     await page.locator('#playgroundTemplate').selectOption('animation')
     await ready()

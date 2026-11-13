@@ -8,7 +8,7 @@ import { escapeHtml, slugify, type Heading } from './site-markdown'
  */
 const ENTRIES = [
     { file: 'src/stage/index.ts', module: 'vizmatic/stage' },
-    { file: 'src/stage/export.ts', module: 'vizmatic/stage/export' },
+    { file: 'src/stage-export.ts', module: 'vizmatic/stage/export' },
     { file: 'src/stage/player.ts', module: 'browser player' },
 ]
 
@@ -25,7 +25,7 @@ const GROUPS: [RegExp, string][] = [
     [/\/stage\/(color|look)\.ts$/, 'Color and looks'],
     [/\/stage\/geometry\.ts$/, 'Geometry'],
     [/\/stage\/(display)\.ts$/, 'Drawing'],
-    [/\/stage\/(export|raster)\.ts$/, 'Export (Node.js)'],
+    [/\/(?:stage\/(?:export|raster)|narration-hold)\.ts$/, 'Export (Node.js)'],
     [/\/stage\/player\.ts$/, 'Browser player'],
 ]
 

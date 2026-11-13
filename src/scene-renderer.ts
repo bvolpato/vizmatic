@@ -17,7 +17,7 @@ import {
     type SceneElement, type SceneFrameRequest, type SceneJson, type SceneRequest,
 } from './scene-contract'
 import { SCENE_COMPONENT_NAMES, SCENE_DOM_TAGS } from './scene-components'
-import { validateResolvedSceneResources } from './scene-graph'
+import { isValidSceneStyleProperty, validateResolvedSceneResources } from './scene-graph'
 import { getThemeColors } from './theme'
 
 interface SceneRasterOptions {
@@ -178,7 +178,15 @@ function serializeSvg(node: ReactNode, budget: RasterBudget, depth = 0): string 
     const attributes = Object.entries(node.props).filter(([key, value]) => key !== 'children' && key !== 'key' && value !== undefined && value !== null)
         .map(([key, value]) => {
             if (key === 'style' && typeof value === 'object') {
-                const style = Object.entries(value as Record<string, unknown>).map(([property, item]) => `${svgAttribute(property)}:${String(item)}`).join(';')
+                if (Array.isArray(value)) throw new Error('Unsupported SVG style attribute.')
+                const style = Object.entries(value as Record<string, unknown>)
+                    .filter(([, item]) => item !== undefined && item !== null)
+                    .map(([property, item]) => {
+                        if (!isValidSceneStyleProperty(property) || typeof item === 'object' || typeof item === 'function' || /[;{}]/.test(String(item))) {
+                            throw new Error(`Scene style property ${JSON.stringify(property)} is not allowed.`)
+                        }
+                        return `${svgAttribute(property)}:${String(item)}`
+                    }).join(';')
                 return ` style="${xml(style)}"`
             }
             if (!/^[A-Za-z_][\w:.-]*$/.test(key) || typeof value === 'object' || typeof value === 'function') throw new Error('Unsupported SVG attribute.')

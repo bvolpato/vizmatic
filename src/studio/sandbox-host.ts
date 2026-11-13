@@ -40,14 +40,22 @@ window.parent.postMessage({ t: 'boot-ready' }, '*');
 
 const FONT_PATH = /^fonts\/[A-Za-z0-9-]+\.ttf$/
 
-let runtimeSource: Promise<string> | null = null
+const runtimeSources = new Map<string, Promise<string>>()
 
-function loadRuntime(baseUrl: string): Promise<string> {
-    runtimeSource ??= fetch(new URL('sandbox-runtime.js', baseUrl)).then((response) => {
-        if (!response.ok) throw new Error(`Could not load the sandbox runtime: HTTP ${response.status}`)
-        return response.text()
-    })
-    return runtimeSource
+export function loadRuntime(baseUrl: string): Promise<string> {
+    const url = new URL('sandbox-runtime.js', baseUrl).href
+    let pending = runtimeSources.get(url)
+    if (!pending) {
+        pending = fetch(url).then((response) => {
+            if (!response.ok) throw new Error(`Could not load the sandbox runtime: HTTP ${response.status}`)
+            return response.text()
+        }).catch((error) => {
+            runtimeSources.delete(url)
+            throw error
+        })
+        runtimeSources.set(url, pending)
+    }
+    return pending
 }
 
 interface PendingExport {
@@ -94,7 +102,10 @@ export class SandboxHost {
         if (!data || typeof data !== 'object') return
         switch (data.t) {
             case 'boot-ready':
-                void loadRuntime(this.baseUrl).then((runtime) => this.send({ t: 'boot', runtime }))
+                void loadRuntime(this.baseUrl).then(
+                    (runtime) => this.send({ t: 'boot', runtime }),
+                    (error) => this.callbacks.onError({ message: error instanceof Error ? error.message : String(error) }),
+                )
                 break
             case 'ready':
                 this.ready = true

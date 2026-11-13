@@ -48,8 +48,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg
           pnpm render:video
+      - name: Cache rendered film catalog MP4s
+        uses: actions/cache@v6
+        with:
+          path: .cache/films
+          key: pages-films-${{ runner.os }}-${{ hashFiles('examples/films/**', 'src/stage/**', 'src/video.ts', 'src/math.ts', 'assets/fonts/**') }}
+          restore-keys: |
+            pages-films-${{ runner.os }}-
       - name: Render the film catalog
-        run: pnpm render:films --workers 4 --no-posters
+        run: pnpm render:films --workers 4 --no-posters --cache-dir .cache/films
       # The website is not committed. This step renders the examples, then runs `pnpm site:build`,
       # which writes each page and bundle into docs/.
       - run: pnpm render:examples

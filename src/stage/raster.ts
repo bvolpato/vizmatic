@@ -22,6 +22,7 @@ function embeddedResources(frame: Frame): boolean {
         if (op.kind === 'image') {
             const { asset, src, width, height } = op.image
             if (!isImageAsset(asset) || src !== asset.src || typeof width !== 'number' || typeof height !== 'number') return false
+            if (op.blend !== undefined && !['normal', 'screen', 'multiply', 'overlay'].includes(op.blend)) return false
         } else {
             if (!['normal', 'screen', 'multiply', 'overlay'].includes(op.blend)) return false
             if (!['round', 'butt', 'square'].includes(op.cap) || !['round', 'miter', 'bevel'].includes(op.join)) return false
@@ -169,14 +170,8 @@ function bloom(pixels, w, h, amount, background, dither) {
   const k = w / 1920
   const words = LOW_BYTE_FIRST && pixels.byteOffset % 4 === 0 ? new Uint32Array(pixels.buffer, pixels.byteOffset, w * h) : null
   for (const [base, radius, weight] of [[4, 3, 0.55], [8, 4, 0.3], [16, 4, 0.15]]) {
-    const factor = Math.max(1, Math.round(base * k))
+    const factor = Math.max(1, Math.min(w, h, Math.round(base * k)))
     const lw = Math.max(1, Math.floor(w / factor)), lh = Math.max(1, Math.floor(h / factor))
-    if (lw * factor > w || lh * factor > h) {
-      // The frame is lower than one cell of this layer. The first version read past the end of the pixels
-      // here, and every color of the frame came out as 0. Keep that result until the defect has its own fix.
-      for (let i = 0; i < w * h * 4; i += 4) { pixels[i] = 0; pixels[i + 1] = 0; pixels[i + 2] = 0 }
-      return
-    }
     let finer = null
     for (const layer of layers) if (factor % layer.factor === 0) finer = layer
     const layer = downsample(pixels, words, w, factor, lw, lh, background, finer)
@@ -558,6 +553,7 @@ export class RasterPool {
     private readonly pending = new Map<number, Pending>()
     private nextId = 1
     private failure: Error | null = null
+    private closing = false
     /** Counts and times of the jobs of this pool. The export adds its own waits. */
     readonly stats: ExportStats = {
         workers: 0, computed: 0, reused: 0, mainMs: 0,
@@ -572,8 +568,10 @@ export class RasterPool {
             worker.on('message', (message: WorkerReply) => {
                 const entry = this.pending.get(message.id)
                 this.pending.delete(message.id)
-                this.idle.push(worker)
-                this.pump()
+                if (!this.failure && !this.closing) {
+                    this.idle.push(worker)
+                    this.pump()
+                }
                 if (!entry) return
                 if (message.error || !message.pixels) {
                     entry.reject(new Error(`Frame rasterization failed: ${message.error}`))
@@ -586,6 +584,14 @@ export class RasterPool {
                 entry.resolve(message.pixels)
             })
             worker.on('error', (error: unknown) => this.fail(error instanceof Error ? error : new Error(String(error))))
+            worker.on('exit', (code: number) => {
+                if (this.closing) return
+                const index = this.idle.indexOf(worker)
+                if (index >= 0) this.idle.splice(index, 1)
+                if (code !== 0 || this.pending.size > 0 || this.queue.length > 0) {
+                    this.fail(new Error(`Raster worker exited unexpectedly with code ${code}.`))
+                }
+            })
             this.workers.push(worker)
             this.idle.push(worker)
         }
@@ -596,12 +602,15 @@ export class RasterPool {
     }
 
     private fail(error: Error): void {
-        this.failure = error
-        for (const entry of this.pending.values()) entry.reject(error)
+        this.failure ??= error
+        this.queue.length = 0
+        this.idle.length = 0
+        for (const entry of this.pending.values()) entry.reject(this.failure)
         this.pending.clear()
     }
 
     private pump(): void {
+        if (this.failure || this.closing) return
         while (this.idle.length > 0 && this.queue.length > 0) {
             const worker = this.idle.pop()!
             const { job, id } = this.queue.shift()!
@@ -623,10 +632,8 @@ export class RasterPool {
     }
 
     async close(): Promise<void> {
-        this.failure ??= new Error('The raster pool was closed.')
-        for (const entry of this.pending.values()) entry.reject(this.failure)
-        this.pending.clear()
-        this.queue.length = 0
+        this.closing = true
+        this.fail(new Error('The raster pool was closed.'))
         await Promise.all(this.workers.map((worker) => worker.terminate()))
     }
 }

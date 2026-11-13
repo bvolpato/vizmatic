@@ -6,11 +6,19 @@ const componentNames = new Set<string>(SCENE_COMPONENT_NAMES)
 const domTags = new Set<string>(SCENE_DOM_TAGS)
 const localReference = /^#[A-Za-z_][\w:.-]*$/
 const localPaint = /^url\(\s*#[A-Za-z_][\w:.-]*\s*\)$/
-const resourceKeys = /^(?:background(?:image)?|fill|stroke|filter|clippath|mask(?:image)?|borderimage(?:source)?|liststyle(?:image)?|cursor|content)$/i
+const stylePropertyName = /^(?:--[A-Za-z0-9_-]+|-?[A-Za-z][A-Za-z0-9-]*)$/
+const resourceKeys = /^(?:background(?:-?image)?|fill|stroke|filter|clip-?path|mask(?:-?image)?|border-?image(?:-?source)?|list-?style(?:-?image)?|marker(?:-(?:start|mid|end)|start|mid|end)?|shape-?outside|offset-?path|cursor|content)$/i
+
+export function isValidSceneStyleProperty(name: string): boolean {
+    return stylePropertyName.test(name) && !isUnsafeSceneKey(name)
+}
 
 function validateResource(value: string, key: string, inStyle: boolean): void {
     if (/^(?:src|href|xlinkhref|xlink:href|srcset|poster|action|formaction)$/i.test(key) && !localReference.test(value)) {
         throw new Error('Scene resource references must be local SVG fragment IDs. External assets are disabled.')
+    }
+    if (inStyle && /[;{}]/.test(value)) {
+        throw new Error('Scene CSS cannot contain declaration delimiters.')
     }
     if ((inStyle || resourceKeys.test(key) || /gradient$/i.test(key)) && (/\\|\/\*/.test(value)
         || /(?:https?|file|ftp|data|blob|javascript):|\/\//i.test(value)
@@ -25,11 +33,21 @@ export function validateResolvedSceneResources(props: Record<string, unknown>): 
     const visit = (input: unknown, key: string, style: boolean, depth: number): void => {
         if (++values > 32_000 || depth > SCENE_LIMITS.depth * 2) throw new Error('Resolved scene props exceed their value budget.')
         if (typeof input === 'string') { validateResource(input, key, style); return }
-        if (Array.isArray(input)) { input.forEach((item) => visit(item, key, style, depth + 1)); return }
+        if (Array.isArray(input)) {
+            if (style) throw new Error('Scene style values must be strings or numbers.')
+            input.forEach((item) => visit(item, key, style, depth + 1))
+            return
+        }
         if (input && typeof input === 'object') {
             for (const [property, value] of Object.entries(input)) {
                 if (property === 'children') continue
                 if (property === 'dangerouslySetInnerHTML' || property === '__html') throw new Error('Resolved scene cannot contain raw HTML.')
+                if (style && !isValidSceneStyleProperty(property)) {
+                    throw new Error(`Scene style property ${JSON.stringify(property)} is not allowed.`)
+                }
+                if (style && value !== undefined && value !== null && typeof value !== 'string' && typeof value !== 'number') {
+                    throw new Error(`Scene style property ${JSON.stringify(property)} must be a string or number.`)
+                }
                 visit(value, property, style || /style$/i.test(property), depth + 1)
             }
         }
@@ -43,7 +61,10 @@ export function validateSceneGraph(value: unknown): SceneJson {
     const visit = (input: unknown, depth: number, key = '', inStyle = false): SceneJson => {
         if (depth > SCENE_LIMITS.depth) throw new Error(`Scene graph exceeds depth ${SCENE_LIMITS.depth}.`)
         if (++nodes > SCENE_LIMITS.nodes * 32) throw new Error('Scene graph contains too many values.')
-        if (input === null || typeof input === 'boolean') return input
+        if (input === null || typeof input === 'boolean') {
+            if (inStyle && typeof input === 'boolean') throw new Error(`Scene style property ${JSON.stringify(key)} must be a string or number.`)
+            return input
+        }
         if (typeof input === 'number') {
             if (!Number.isFinite(input) || Math.abs(input) > 1_000_000_000) throw new Error('Scene numbers must be finite and bounded.')
             return input
@@ -53,7 +74,10 @@ export function validateSceneGraph(value: unknown): SceneJson {
             validateResource(input, key, inStyle)
             return input
         }
-        if (Array.isArray(input)) return input.map((item) => visit(item, depth + 1, key, inStyle))
+        if (Array.isArray(input)) {
+            if (inStyle) throw new Error('Scene style values must be strings or numbers.')
+            return input.map((item) => visit(item, depth + 1, key, inStyle))
+        }
         if (!input || typeof input !== 'object' || Object.getPrototypeOf(input) !== Object.prototype
             && Object.getPrototypeOf(input) !== null) throw new Error('Scene props must be plain JSON values.')
         const record = input as Record<string, unknown>
@@ -61,6 +85,14 @@ export function validateSceneGraph(value: unknown): SceneJson {
         for (const [property, item] of Object.entries(record)) {
             if (isUnsafeSceneKey(property) || /^on/i.test(property) || /^(?:xml:base|xmlBase)$/i.test(property) || property === 'dangerouslySetInnerHTML'
                 || property === 'ref' || property === '__html') throw new Error(`Scene property ${JSON.stringify(property)} is not allowed.`)
+            if (inStyle) {
+                if (!isValidSceneStyleProperty(property)) {
+                    throw new Error(`Scene style property ${JSON.stringify(property)} is not allowed.`)
+                }
+                if (item !== null && typeof item !== 'string' && typeof item !== 'number') {
+                    throw new Error(`Scene style property ${JSON.stringify(property)} must be a string or number.`)
+                }
+            }
             output[property] = visit(item, depth + 1, property, inStyle || /style$/i.test(property))
         }
         if (record.kind === 'vizmatic.element') {

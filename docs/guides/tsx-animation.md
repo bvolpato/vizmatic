@@ -37,11 +37,8 @@ In a Node.js 20 or newer project, install Vizmatic and React. [Install FFmpeg](h
 separately and check that its encoder list includes `libx264`. Audio output
 also needs the `aac` encoder.
 
-For a fresh app, add the [consumer security overrides](https://github.com/bvolpato/vizmatic#consumer-security-overrides)
-before installing.
-
 ```bash
-npm install --save-dev vizmatic@0.6.0 react
+npm install --save-dev vizmatic react
 npx vizmatic video ./request-lifecycle.tsx --out ./dist/videos --theme dark --fps 30
 ```
 
