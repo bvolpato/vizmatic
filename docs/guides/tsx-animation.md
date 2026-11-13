@@ -520,17 +520,16 @@ To check a moving object in finished video, use `measureRegionChange` on decoded
 ```ts
 import { measureRegionChange } from 'vizmatic'
 
-const options = {
-  width: 480, height: 270,
-  region: { x: 250, y: 4, width: 24, height: 40 },
-  tolerance: 12,
-}
-const start = decodedFrame(120).slice()
-for (let frame = 121; frame < 160; frame++) {
-  const { changedPixels, bounds } = measureRegionChange(start, decodedFrame(frame), options)
-  if (changedPixels >= 12) {
-    console.log('Inspect the card at frame', frame, bounds)
-    break
+function firstCardChange(decodedFrame: (frame: number) => Uint8Array) {
+  const options = {
+    width: 480, height: 270,
+    region: { x: 250, y: 4, width: 24, height: 40 },
+    tolerance: 12,
+  }
+  const start = decodedFrame(120).slice()
+  for (let frame = 121; frame < 160; frame++) {
+    const { changedPixels, bounds } = measureRegionChange(start, decodedFrame(frame), options)
+    if (changedPixels >= 12) return { frame, bounds }
   }
 }
 ```
