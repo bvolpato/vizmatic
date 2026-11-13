@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from 'child_process'
 import { createHash } from 'crypto'
-import { existsSync } from 'fs'
+import { closeSync, existsSync, openSync } from 'fs'
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink, utimes, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { basename, dirname, join, resolve } from 'path'
@@ -650,6 +650,30 @@ describe.skipIf(!ready)('narration tools', () => {
             '--seed', '17', '--timing', timing, '--out', excerpt, '--start-sample', String(start), '--end-sample', String(end)]
         const partial = spawnSync('uv', excerptArgs, { input: stream, env: { ...process.env, ...QUIET } })
         expect(partial.status, partial.stderr.toString()).toBe(0)
+        const streamArgs = ['run', join(TOOLS, 'soundbed.py'), 'bed', '--voice', '-', '--out', '-',
+            '--palette', 'low', '--seed', '17', '--timing', timing]
+        const streamed = spawnSync('uv', streamArgs, { input: stream, maxBuffer: 4 * 1024 * 1024, env: { ...process.env, ...QUIET } })
+        expect(streamed.status, streamed.stderr.toString()).toBe(0)
+        expect(streamed.stdout.readUInt32LE(4)).toBe(streamed.stdout.length - 8)
+        expect(streamed.stdout.readUInt32LE(40)).toBe(streamed.stdout.length - 44)
+        const redirectedPath = join(dir, 'redirected.wav')
+        const fd = openSync(redirectedPath, 'w')
+        try {
+            const redirected = spawnSync('uv', streamArgs, { input: stream, stdio: ['pipe', fd, 'pipe'], env: { ...process.env, ...QUIET } })
+            expect(redirected.status, redirected.stderr.toString()).toBe(0)
+        } finally {
+            closeSync(fd)
+        }
+        expect((await readFile(redirectedPath)).equals(streamed.stdout)).toBe(true)
+        const unpack = spawnSync('ffmpeg', ['-v', 'error', '-i', 'pipe:0', '-c:a', 'pcm_s24le', '-f', 's24le', '-'],
+            { input: streamed.stdout, maxBuffer: 4 * 1024 * 1024 })
+        expect(unpack.status, unpack.stderr.toString()).toBe(0)
+        const expected = ffmpeg('-i', bed, '-c:a', 'pcm_s24le', '-f', 's24le', '-')
+        expect(unpack.stdout.equals(expected)).toBe(true)
+        const header = spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=sample_rate,channels,bits_per_raw_sample',
+            '-of', 'json', 'pipe:0'], { input: streamed.stdout })
+        expect(header.status, header.stderr.toString()).toBe(0)
+        expect(JSON.parse(header.stdout.toString()).streams).toEqual([{ sample_rate: '24000', channels: 2, bits_per_raw_sample: '24' }])
         const got = audioSamples(excerpt)
         expect(Buffer.from(got.buffer, got.byteOffset, got.byteLength).equals(
             Buffer.from(pcm.buffer, pcm.byteOffset + start * 8, (end - start) * 8))).toBe(true)
