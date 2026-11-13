@@ -553,6 +553,13 @@ To score an existing recording in another mixer, run `vizmatic sounds bed --voic
 
 Use `warm` for a balanced chord, `open` to bring out separated notes, or `low` for more bass. The seed controls chord and scene texture choices. To time chord changes to the narration, pass `--timing marks.json` with start times in seconds, for example `{"beats":[0,12,24],"scenes":[0,24]}`. Give the command the complete narration track so that adjacent scenes share the same musical timeline.
 
+To audition a passage, pass `--start-sample` and `--end-sample` in samples per channel at the voice recording's rate. The first sample is included and the end is excluded. The command reads the whole voice for its speech and pause levels, then synthesizes the requested passage on the original musical timeline. To avoid a temporary narration file, pipe a complete PCM WAV stream to `--voice -`. For example, this writes seconds 10 through 12 of the bed for a 24 kHz voice.
+
+```sh
+ffmpeg -v error -i voice.flac -ar 24000 -c:a pcm_s16le -f wav pipe:1 |
+  vizmatic sounds bed --voice - --timing marks.json --seed 7 --palette warm \
+    --start-sample 240000 --end-sample 288000 --out excerpt.wav
+```
 
 - The pad stays about 21 dB below the voice while the voice speaks. It rises to 15 dB below only in a pause longer than about 1 second, and to 10 dB below under the title card and after the last word.
 - The pad has no loop. The chord changes where a beat of the narration starts, a seeded random walk picks each chord from nine, and each scene has its own texture. `seed` picks the walk. Without a seed, the name of the film picks it, so two films do not share their chords.

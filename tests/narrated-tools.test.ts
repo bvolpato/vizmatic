@@ -625,10 +625,11 @@ describe.skipIf(!ready)('narration tools', () => {
 
     it('writes a deterministic bed aligned to an existing voice and lifts it in long pauses', async () => {
         const dir = await filmFolder()
-        const voice = join(dir, 'voice.wav'), bed = join(dir, 'bed.wav')
-        ffmpeg('-f', 'lavfi', '-i', 'aevalsrc=if(between(t\\,5\\,10)\\,0\\,0.2*sin(2*PI*180*t)):s=24000:d=15.0003', voice)
+        const voice = join(dir, 'voice.wav'), bed = join(dir, 'bed.wav'), timing = join(dir, 'marks.json')
+        await writeFile(timing, JSON.stringify({ beats: [0, 9], scenes: [0, 9] }))
+        ffmpeg('-f', 'lavfi', '-i', 'aevalsrc=if(between(t\\,5\\,10)\\,0\\,0.2*sin(2*PI*180*t)):s=24000:d=19.0003', voice)
         const render = (palette: string) => {
-            const take = tool('soundbed', 'bed', '--voice', voice, '--out', bed, '--seed', '17', '--palette', palette)
+            const take = tool('soundbed', 'bed', '--voice', voice, '--out', bed, '--seed', '17', '--palette', palette, '--timing', timing)
             expect(take.status, take.stderr).toBe(0)
         }
         render('low')
@@ -639,6 +640,21 @@ describe.skipIf(!ready)('narration tools', () => {
         expect(active).toBeLessThan(0.12 * loudness(voice, 2, 4))
         expect(pause).toBeGreaterThan(1.3 * active)
         render('low')
+        expect((await readFile(bed)).equals(original)).toBe(true)
+        // A late excerpt crosses the chord transition and then the return of speech.
+        const start = 7 * 24000 + 37, end = 12 * 24000 + 13
+        const pcm = audioSamples(bed)
+        const excerpt = join(dir, 'excerpt.wav')
+        const stream = ffmpeg('-i', voice, '-c:a', 'pcm_s16le', '-f', 'wav', 'pipe:1')
+        const excerptArgs = ['run', join(TOOLS, 'soundbed.py'), 'bed', '--voice', '-', '--palette', 'low',
+            '--seed', '17', '--timing', timing, '--out', excerpt, '--start-sample', String(start), '--end-sample', String(end)]
+        const partial = spawnSync('uv', excerptArgs, { input: stream, env: { ...process.env, ...QUIET } })
+        expect(partial.status, partial.stderr.toString()).toBe(0)
+        const got = audioSamples(excerpt)
+        expect(Buffer.from(got.buffer, got.byteOffset, got.byteLength).equals(
+            Buffer.from(pcm.buffer, pcm.byteOffset + start * 8, (end - start) * 8))).toBe(true)
+        expect(tool('soundbed', 'bed', '--voice', voice, '--out', bed, '--start-sample', String(end),
+            '--end-sample', String(start)).status).not.toBe(0)
         expect((await readFile(bed)).equals(original)).toBe(true)
         render('open')
         expect((await readFile(bed)).equals(original)).toBe(false)

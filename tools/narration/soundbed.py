@@ -264,29 +264,37 @@ def _fade_effect(samples, rate):
 BED_TEXTURES = {"warm": "full", "open": "open", "low": "low"}
 
 
-def render_bed(voice_path, output, seed=0, palette="warm", beats=(), scenes=()):
-    """Write a stereo PCM bed aligned to an existing narration recording."""
+def render_bed(voice_path, output, seed=0, palette="warm", beats=(), scenes=(), *, start_sample=0, end_sample=None):
+    """Write the requested samples of the bed, using the whole recording for levels and timing."""
     import soundfile as sf
 
-    if Path(voice_path).resolve() == Path(output).resolve():
+    from_stdin = str(voice_path) == "-"
+    if not from_stdin and Path(voice_path).resolve() == Path(output).resolve():
         raise ValueError("The bed and voice must have different paths.")
-    with sf.SoundFile(voice_path) as voice:
-        rate, n = voice.samplerate, voice.frames
-        if rate < 8000 or not n or voice.channels not in (1, 2):
+    with sf.SoundFile(sys.stdin.fileno() if from_stdin else voice_path, closefd=not from_stdin) as voice:
+        rate = voice.samplerate
+        if rate < 8000 or voice.channels not in (1, 2):
             raise ValueError("Use a nonempty mono or stereo recording at 8000 Hz or higher.")
-        total = n / rate
-        for marks in (beats, scenes):
-            if not isinstance(marks, (list, tuple)) or not all(type(m) in (int, float) and 0 <= m <= total for m in marks):
-                raise ValueError("Beat and scene times must be numbers within the recording.")
-        parts = plan(total, beats, sorted({0.0, *scenes}), seed)
         hop = rate // 50
-        energy = np.empty((n + hop - 1) // hop)
-        for k, block in enumerate(voice.blocks(blocksize=hop * 128, dtype="float32", always_2d=True)):
+        energies, n = [], 0
+        while len(block := voice.read(hop * 128, dtype="float32", always_2d=True)):
+            n += len(block)
             power = np.mean(np.square(block, dtype=np.float64), axis=1)
             if not np.isfinite(power).all():
                 raise ValueError("Voice samples must be finite.")
             starts = np.arange(0, len(power), hop)
-            energy[k * 128:k * 128 + len(starts)] = np.sqrt(np.add.reduceat(power, starts) / np.minimum(hop, len(power) - starts))
+            energies.append(np.sqrt(np.add.reduceat(power, starts) / np.minimum(hop, len(power) - starts)))
+    if not n:
+        raise ValueError("The voice recording is empty.")
+    stop = n if end_sample is None else end_sample
+    if type(start_sample) is not int or type(stop) is not int or not 0 <= start_sample < stop <= n:
+        raise ValueError(f"The sample range must satisfy 0 <= start < end <= {n}.")
+    total = n / rate
+    for marks in (beats, scenes):
+        if not isinstance(marks, (list, tuple)) or not all(type(m) in (int, float) and 0 <= m <= total for m in marks):
+            raise ValueError("Beat and scene times must be numbers within the recording.")
+    parts = plan(total, beats, sorted({0.0, *scenes}), seed)
+    energy = np.concatenate(energies)
     gains, speaking = _level_frames(energy, -23, -17)
     reference = np.sqrt(np.mean(energy[speaking] ** 2)) if np.any(speaking) else 0.0
     centers = np.arange(len(energy)) + 0.5
@@ -298,8 +306,9 @@ def render_bed(voice_path, output, seed=0, palette="warm", beats=(), scenes=()):
     with tempfile.TemporaryDirectory(dir=Path(output).parent) as directory:
         temporary = Path(directory) / "bed.wav"
         with sf.SoundFile(temporary, "w", rate, 2, subtype="PCM_24", format="WAV") as target:
-            for a in range(0, n, rate):
-                b = min(a + rate, n)
+            # Prime the 900 Hz filter with one second of the actual preceding chords.
+            for a in range(max(0, start_sample - rate), stop, rate):
+                b = min(a + rate, stop)
                 samples = np.zeros((b - a, 2), dtype=np.float32)
                 while current + 1 < len(parts) and int((parts[current][1] + CROSS / 2) * rate) <= a:
                     current += 1
@@ -312,6 +321,11 @@ def render_bed(voice_path, output, seed=0, palette="warm", beats=(), scenes=()):
                     weights /= np.sqrt(0.5 * np.sum(weights ** 2))
                     _paint_chord(samples[lo-a:hi-a], lo, hi, rate, start, end, chord, weights, k == 0, k == len(parts) - 1)
                 samples, state = sosfilt(filt, samples, axis=0, zi=state)
+                if b <= start_sample:
+                    continue
+                if a < start_sample:
+                    samples = samples[start_sample - a:]
+                    a = start_sample
                 at = np.arange(a, b)
                 envelope = np.minimum(1, np.minimum(at / (1.5 * rate), (n - 1 - at) / (2 * rate)))
                 gain = np.interp(at / hop, centers, gains) * reference * envelope
@@ -327,11 +341,13 @@ def main():
     render.add_argument("name", choices=SOUND_EFFECTS)
     render.add_argument("--out", type=Path, required=True, help="The output WAV path.")
     bed = commands.add_parser("bed", help="Write a stereo ambient bed under an existing narration.")
-    bed.add_argument("--voice", type=Path, required=True)
+    bed.add_argument("--voice", type=Path, required=True, help="Voice recording, or - for a WAV stream on stdin.")
     bed.add_argument("--out", type=Path, required=True)
     bed.add_argument("--seed", type=int, default=0)
     bed.add_argument("--palette", choices=BED_TEXTURES, default="warm")
     bed.add_argument("--timing", type=Path, help="JSON with optional beats and scenes arrays, in seconds.")
+    bed.add_argument("--start-sample", type=int, default=0, help="First sample per channel to write, counted from zero.")
+    bed.add_argument("--end-sample", type=int, help="Stop before this sample per channel. Defaults to the end of the recording.")
     args = parser.parse_args()
     if args.command == "list":
         for name in SOUND_EFFECTS:
@@ -344,7 +360,8 @@ def main():
             marks = json.loads(args.timing.read_text()) if args.timing else {}
             if not isinstance(marks, dict) or marks.keys() - {"beats", "scenes"}:
                 raise ValueError("Timing must be an object with optional beats and scenes arrays.")
-            render_bed(args.voice, args.out, args.seed, args.palette, marks.get("beats", ()), marks.get("scenes", ()))
+            render_bed(args.voice, args.out, args.seed, args.palette, marks.get("beats", ()), marks.get("scenes", ()),
+                       start_sample=args.start_sample, end_sample=args.end_sample)
             return
         sf.write(args.out, sound_effect(args.name) * 0.16, SOUND_EFFECT_RATE, subtype="PCM_16", format="WAV")
     except (OSError, RuntimeError, ValueError) as error:
