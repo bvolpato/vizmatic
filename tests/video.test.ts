@@ -23,6 +23,34 @@ async function tempDirectory(): Promise<string> {
 }
 
 describe('RGBA video export', () => {
+    it.skipIf(!hasFfmpeg)('encodes held RGBA frames at the same CFR timestamps as raw input', async () => {
+        const directory = await tempDirectory()
+        for (const count of [1, 2, 56]) {
+            const options = { width: 64, height: 48, fps: 30, duration: count * 1000 / 30, threads: 2, preset: 'veryfast', crf: 16 }
+            const change = (index: number) => index === 0 || index === 1 || index === 19
+            // Reuse the backing store even for changed pictures. Object identity cannot prove a hold.
+            const pixels = Buffer.alloc(options.width * options.height * 4)
+            const paint = ({ index }: { index: number }) => {
+                if (change(index)) pixels.fill(index === 1 ? 241 : index === 19 ? 92 : 40)
+                return pixels
+            }
+            const raw = join(directory, 'raw-' + count + '.mp4')
+            const sparse = join(directory, 'sparse-' + count + '.mp4')
+            await renderRgbaVideo(paint, { ...options, outputPath: raw })
+            const calls: number[] = []
+            const result = await renderRgbaVideo(paint, {
+                ...options, outputPath: sparse,
+                frameIsRepeat: ({ index }) => {
+                    calls.push(index)
+                    return index === 0 || !change(index)
+                },
+            })
+            expect(calls).toEqual(Array.from({ length: count }, (_, index) => index))
+            expect(result.rgbaPackets).toBe(count === 56 ? 7 : count)
+            expect(await readFile(sparse)).toEqual(await readFile(raw))
+        }
+    })
+
     it('schedules rounded frames without duplicating the final endpoint', () => {
         const frames = [...videoFrameSchedule(250, 10)]
 
