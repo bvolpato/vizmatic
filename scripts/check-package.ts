@@ -11,7 +11,7 @@ interface PackResult {
 // The AVC splice planner ships in the ESM, CJS and declaration bundles.
 const limits = {
     size: 7_435_000,
-    unpackedSize: 21_340_000,
+    unpackedSize: 21_345_000,
     entryCount: 232,
 }
 

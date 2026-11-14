@@ -165,3 +165,14 @@ const { concatScript, frameCount } = await planAvcSplice([
 ```
 
 Give `concatScript` to FFmpeg as a concat input with `-copyts -f concat -safe 0 -auto_convert 0 -protocol_whitelist file,pipe -i pipe:0`. Map `0:v:0` with `-c:v copy`. For a finished movie, supply the separately approved audio, subtitles, metadata and chapters as explicit mux inputs. Verify those tracks and the final MP4 against the intended timeline. The example uses a 48-frame boundary shared by both sources.
+
+### Reusing a Canvas pixel readback
+
+For a serial RGBA export, `createCanvasReadback(context, readPixels)` can return the previous pixel snapshot when two consecutive drawings issue the same supported commands. Each frame resets the native context and runs the synchronous drawing callback once. Shapes, text and state changes still execute on the native canvas. A state query, gradient, image, pattern or other untracked operation switches the rest of that export to ordinary readback.
+
+Give the helper exclusive ownership of a fixed-size context. Draw through the context supplied to the callback. Register fonts before starting the export and keep them fixed until it finishes. Use a readback function that returns an owned pixel snapshot. Treat the returned pixels as read-only and finish consuming them before requesting the next frame. Use `stats()` to inspect the number of frames, reused snapshots and whether tracking is still active.
+
+```ts
+const frames = createCanvasReadback(context, () => canvas.data())
+const pixels = frames.frame(ctx => drawLessonFrame(ctx, clock))
+```
