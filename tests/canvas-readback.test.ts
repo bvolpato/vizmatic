@@ -179,14 +179,24 @@ describe('serial canvas readback', () => {
     })
 
     it('runs non-configurable read-only own context methods without violating Proxy invariants', () => {
-        let ink = 'none'
+        let offset = 0, ink = 'none'
         const frozen = Object.freeze({
-            reset() { ink = 'none' },
-            fillRect() { ink = 'painted' },
+            reset() { offset = 0; ink = 'none' },
+            translate(dx: number) { offset += dx },
+            measureText(label: string) { return { width: label.length * 8 } },
+            fillRect() { ink = `painted@${offset}` },
         })
         const cache = createCanvasReadback(frozen, () => new TextEncoder().encode(ink))
-        expect(new TextDecoder().decode(cache.frame(ctx => { ctx.fillRect() }))).toBe('painted')
-        expect(cache.stats()).toEqual({ frames: 1, reused: 0, tracking: false })
+        expect(new TextDecoder().decode(cache.frame(ctx => {
+            ctx.translate(4)
+            expect(ctx.measureText('ab').width).toBe(16)
+            ctx.fillRect()
+        }))).toBe('painted@4')
+        expect(new TextDecoder().decode(cache.frame(ctx => {
+            ctx.translate(6)
+            ctx.fillRect()
+        }))).toBe('painted@6')
+        expect(cache.stats()).toEqual({ frames: 2, reused: 0, tracking: false })
     })
 
     it('invokes replaced context methods and disables stale reuse across frames', () => {

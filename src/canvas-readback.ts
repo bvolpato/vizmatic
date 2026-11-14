@@ -24,14 +24,16 @@ export function createCanvasReadback<C extends { reset(): void }>(context: C, re
             let value: unknown
             try { value = Reflect.get(target, key, target) }
             catch (error) { disable(); throw error }
+            if (typeof value === 'function') {
+                const descriptor = Reflect.getOwnPropertyDescriptor(target, key)
+                if (descriptor && !descriptor.configurable && 'value' in descriptor && !descriptor.writable) {
+                    disable()
+                    return value
+                }
+            }
             if (typeof key !== 'string' || !calls.has(key) || typeof value !== 'function') {
                 disable()
                 return typeof value === 'function' ? value.bind(target) : value
-            }
-            const descriptor = Reflect.getOwnPropertyDescriptor(target, key)
-            if (descriptor && !descriptor.configurable && 'value' in descriptor && !descriptor.writable) {
-                disable()
-                return value
             }
             const fn = value as (...args: unknown[]) => unknown
             let cached = methods.get(key)
