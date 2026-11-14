@@ -4,6 +4,7 @@ import { chmod, mkdir, open, rename, rm, stat, writeFile } from 'fs/promises'
 import { connect, createServer, type Socket } from 'net'
 import { createInterface } from 'readline'
 import { basename, dirname, join, resolve } from 'path'
+import { setImmediate as yieldToEventLoop } from 'node:timers/promises'
 import { Resvg } from '@resvg/resvg-js'
 import parseCssColor from 'parse-css-color'
 import type { OverflowResult } from './autocrop'
@@ -35,8 +36,9 @@ export interface RgbaVideoOptions {
     duration: number
     outputPath: string
     /** After drawing, return true only if the RGBA bytes equal the preceding frame.
+     * Return 'compare' to check consecutive RGBA snapshots byte for byte.
      * Sends timestamped RGBA packets and expands holds after color conversion. */
-    frameIsRepeat?: (frame: VideoFrameInfo) => boolean
+    frameIsRepeat?: (frame: VideoFrameInfo) => boolean | 'compare'
     fps?: number
     audioPath?: string
     /** Seconds to skip in the audio file, for a render that starts partway through a timeline. */
@@ -744,6 +746,7 @@ export async function renderRgbaVideo(
         }
         let packets = 0
         let lastPacket = -1
+        let previous: Buffer | undefined
         if (repeat) await writeFrameBytes(rgbaIvfHeader(width, height, fps, schedule.count), 0)
         for (let index = 0; index < schedule.count; index++) {
             const info = frameInfo(index, schedule, fps)
@@ -753,7 +756,18 @@ export async function renderRgbaVideo(
             }
             if (inputError) throw describeExit(null, null, inputError.message || stderr)
 
-            const unchanged = repeat?.(info) === true
+            const hint = repeat?.(info)
+            let unchanged = hint === true
+            if (hint === 'compare') {
+                unchanged = previous?.equals(rendered) === true
+                if (!unchanged) {
+                    // A renderer may return a different view of storage it rewrites on the next draw.
+                    previous ??= Buffer.allocUnsafeSlow(expectedBytes)
+                    previous.set(rendered)
+                }
+            } else {
+                previous = undefined
+            }
             // A refresh bounds how far painting can run ahead of encoding during a long hold.
             // The last packet gives FFmpeg the exact end of the hold, including a one-frame film.
             if (!unchanged || index === 0 || index === schedule.count - 1 || index - lastPacket >= 16) {
@@ -762,6 +776,9 @@ export async function renderRgbaVideo(
                 await writeFrameBytes(pixels, index)
                 lastPacket = index
                 packets++
+            } else if (hint === 'compare') {
+                // Give Node a turn to release native readbacks when a hold skips the write.
+                await yieldToEventLoop()
             }
             if (options.onProgress) {
                 await withAbort(observeEncoder(Promise.resolve(options.onProgress(info)), index, false), options.signal)
