@@ -51,6 +51,31 @@ describe('RGBA video export', () => {
         }
     })
 
+    it.skipIf(!hasFfmpeg)('compares only consecutive requested frames across reused RGBA views', async () => {
+        const directory = await tempDirectory()
+        const count = 56
+        const options = { width: 64, height: 48, fps: 30, duration: count * 1000 / 30, threads: 2 }
+        const size = options.width * options.height * 4
+        const storage = new Uint8Array(size + 2)
+        const paint = ({ index }: { index: number }) => {
+            // Change the view offset and both adjacent bytes while reusing the same storage.
+            storage.fill(index)
+            const view = storage.subarray(index % 2, index % 2 + size)
+            view.fill(index === 4 ? 200 : index >= 22 ? 125 : 42)
+            return view
+        }
+        const raw = join(directory, 'raw.mp4')
+        const sparse = join(directory, 'compared.mp4')
+        await renderRgbaVideo(paint, { ...options, outputPath: raw })
+        const result = await renderRgbaVideo(paint, {
+            ...options, outputPath: sparse,
+            frameIsRepeat: ({ index }) => index === 4 ? false : index === 9 ? true : 'compare',
+        })
+        // Write frames 0, 4, 5, 10, 22, 38, 54 and the endpoint.
+        expect(result.rgbaPackets).toBe(8)
+        expect(await readFile(sparse)).toEqual(await readFile(raw))
+    })
+
     it('schedules rounded frames without duplicating the final endpoint', () => {
         const frames = [...videoFrameSchedule(250, 10)]
 

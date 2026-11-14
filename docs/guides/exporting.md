@@ -196,3 +196,5 @@ console.log(readback.stats().reused) // 1
 ```
 
 When many frames hold the same picture, pass `frameIsRepeat` to `renderRgbaVideo`. FFmpeg receives timestamped RGBA packets and expands the holds after color conversion. The export still draws every frame. Return `true` only when the current bytes equal the previous frame. A reused mutable buffer can contain new pixels. With `createCanvasReadback`, compare the cumulative `stats().reused` count before and after drawing each frame. An increase proves the previous snapshot was reused. The result reports the number of full pictures written in `rgbaPackets`.
+
+If a Canvas operation disables command tracking, the callback can return `'compare'` for that frame. The encoder compares consecutive frames that request this check. It sends the first frame in each comparison run and copies changed pixels into one private RGBA buffer. A renderer can reuse a mutable buffer or return a subarray. Each frame still incurs painting and readback costs. This option helps scenes with long holds. Continuously moving scenes pay the comparison and copy costs.
