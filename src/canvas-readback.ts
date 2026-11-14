@@ -16,7 +16,7 @@ const scalar = (v: unknown): v is Scalar => typeof v === 'string' || typeof v ==
 export function createCanvasReadback<C extends { reset(): void }>(context: C, readPixels: () => Uint8Array) {
     let available = true, active = false, tape: unknown[] = [], previous: unknown[] | undefined
     let pixels: Uint8Array | undefined, reused = 0, frames = 0
-    const methods = new Map<string, (...args: unknown[]) => unknown>()
+    const methods = new Map<string, { raw: (...args: unknown[]) => unknown; wrapped: (...args: unknown[]) => unknown }>()
     const disable = () => { available = false; previous = undefined; pixels = undefined }
     const observed = new Proxy(context, {
         get(target, key) {
@@ -28,10 +28,16 @@ export function createCanvasReadback<C extends { reset(): void }>(context: C, re
                 disable()
                 return typeof value === 'function' ? value.bind(target) : value
             }
+            const descriptor = Reflect.getOwnPropertyDescriptor(target, key)
+            if (descriptor && !descriptor.configurable && 'value' in descriptor && !descriptor.writable) {
+                disable()
+                return value
+            }
             const fn = value as (...args: unknown[]) => unknown
-            let method = methods.get(key)
-            if (!method) {
-                method = (...args) => {
+            let cached = methods.get(key)
+            if (!cached || cached.raw !== fn) {
+                if (cached) disable()
+                const wrapped = (...args: unknown[]) => {
                     if (!available) return Reflect.apply(fn, target, args)
                     // A dash array can change after the call. Record Canvas's accepted copy.
                     const isDash = key === 'setLineDash' && args.length === 1
@@ -53,9 +59,10 @@ export function createCanvasReadback<C extends { reset(): void }>(context: C, re
                         throw error
                     }
                 }
-                methods.set(key, method)
+                cached = { raw: fn, wrapped }
+                methods.set(key, cached)
             }
-            return method
+            return cached.wrapped
         },
         set(target, key, value: unknown) {
             if (!active || typeof key !== 'string' || !settings.has(key) || !scalar(value)) disable()

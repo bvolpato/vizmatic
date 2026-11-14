@@ -164,10 +164,78 @@ describe('serial canvas readback', () => {
         expect(readback.stats()).toEqual({ frames: 0, reused: 0, tracking: false })
 
         failRead = false
+        let leaked: typeof context | undefined
         const fresh = createCanvasReadback(context, () => crossRealm)
-        expect(fresh.frame(ctx => { if ('fillRect' in ctx) ctx.fillRect() })).toBe(crossRealm)
-        expect(fresh.frame(ctx => { if ('fillRect' in ctx) ctx.fillRect() })).toBe(crossRealm)
-        expect(fresh.stats()).toEqual({ frames: 2, reused: 1, tracking: true })
+        expect(() => fresh.frame((async () => {}) as unknown as () => void)).toThrow(TypeError)
+        expect(() => fresh.frame(() => { fresh.frame(() => {}) })).toThrow('already drawing a frame')
+        expect(fresh.stats()).toEqual({ frames: 0, reused: 0, tracking: false })
+
+        const activeCheck = createCanvasReadback(context, () => crossRealm)
+        expect(activeCheck.frame(ctx => { leaked = ctx; if ('fillRect' in ctx) ctx.fillRect() })).toBe(crossRealm)
+        expect(activeCheck.frame(ctx => { if ('fillRect' in ctx) ctx.fillRect() })).toBe(crossRealm)
+        expect(activeCheck.stats()).toEqual({ frames: 2, reused: 1, tracking: true })
+        void leaked!.fillRect
+        expect(activeCheck.stats().tracking).toBe(false)
+    })
+
+    it('runs non-configurable read-only own context methods without violating Proxy invariants', () => {
+        let ink = 'none'
+        const frozen = Object.freeze({
+            reset() { ink = 'none' },
+            fillRect() { ink = 'painted' },
+        })
+        const cache = createCanvasReadback(frozen, () => new TextEncoder().encode(ink))
+        expect(new TextDecoder().decode(cache.frame(ctx => { ctx.fillRect() }))).toBe('painted')
+        expect(cache.stats()).toEqual({ frames: 1, reused: 0, tracking: false })
+    })
+
+    it('invokes replaced context methods and disables stale reuse across frames', () => {
+        let ink = ''
+        const swappable = {
+            reset() { ink = '' },
+            fillRect() { ink = 'first-impl' },
+        }
+        const cache = createCanvasReadback(swappable, () => new TextEncoder().encode(ink))
+        expect(new TextDecoder().decode(cache.frame(ctx => { ctx.fillRect() }))).toBe('first-impl')
+        swappable.fillRect = () => { ink = 'second-impl' }
+        expect(new TextDecoder().decode(cache.frame(ctx => { ctx.fillRect() }))).toBe('second-impl')
+        expect(cache.stats()).toEqual({ frames: 2, reused: 0, tracking: false })
+    })
+
+    it('disables reuse on caught throwing tracked methods, non-finite numbers and mutable radii arrays', () => {
+        let path = 'line'
+        const arcContext = {
+            ink: '',
+            reset() { path = 'line'; this.ink = '' },
+            arc(_x: number, _y: number, radius: number) {
+                path = 'mutated'
+                if (radius < 0) throw new RangeError('negative radius')
+            },
+            fill() { this.ink = path },
+        }
+        const arcCache = createCanvasReadback(arcContext, () => new TextEncoder().encode(arcContext.ink))
+        expect(new TextDecoder().decode(arcCache.frame(ctx => { ctx.fill() }))).toBe('line')
+        const afterArc = arcCache.frame(ctx => { try { ctx.arc(0, 0, -1) } catch {} ctx.fill() })
+        expect(new TextDecoder().decode(afterArc)).toBe('mutated')
+        expect(arcCache.stats()).toEqual({ frames: 2, reused: 0, tracking: false })
+
+        const roundContext = {
+            ink: '',
+            reset() { this.ink = '' },
+            roundRect(_x: number, _y: number, _w: number, _h: number, radii: number | number[]) {
+                this.ink = Array.isArray(radii) ? `arr:${radii[0]}` : `num:${radii}`
+            },
+        }
+        const nanCache = createCanvasReadback(roundContext, () => new TextEncoder().encode(roundContext.ink))
+        expect(new TextDecoder().decode(nanCache.frame(ctx => { ctx.roundRect(0, 0, 8, 8, Number.NaN) }))).toBe('num:NaN')
+        expect(nanCache.stats().tracking).toBe(false)
+
+        const radii = [2]
+        const radiiCache = createCanvasReadback(roundContext, () => new TextEncoder().encode(roundContext.ink))
+        expect(new TextDecoder().decode(radiiCache.frame(ctx => { ctx.roundRect(0, 0, 8, 8, radii) }))).toBe('arr:2')
+        radii[0] = 8
+        expect(new TextDecoder().decode(radiiCache.frame(ctx => { ctx.roundRect(0, 0, 8, 8, radii) }))).toBe('arr:8')
+        expect(radiiCache.stats()).toEqual({ frames: 2, reused: 0, tracking: false })
     })
 
     it.skipIf(!hasFfmpeg)('produces byte-identical MP4 output to fresh readback in renderRgbaVideo', async () => {
