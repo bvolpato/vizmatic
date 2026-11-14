@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { inspect } from 'util'
+import { inspect, parseArgs } from 'util'
 import { existsSync } from 'fs'
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'fs/promises'
 import { randomUUID } from 'crypto'
@@ -209,6 +209,7 @@ Frames:
   vizmatic check <file-or-directory...> [--theme dark,light] [--background transparent|theme|color] [--json]
   vizmatic gif <file-or-directory...> [--out <dir>] [--theme dark] [--background transparent|theme|color] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--scale 1] [--fps 20]
   vizmatic video <file-or-directory...> [--out <dir>] [--theme dark,light] [--background theme|color] [--scale 1] [--fps 30] [--audio <file>] [--crf 18] [--preset fast] [--threads 4] [--ffmpeg <path>]
+  vizmatic plan-excerpt <start-frame> <frame-count> --fps <fps> --sample-rate <hz>
 
   Browser animation metadata renders at t=0 in static output; GIF output still requires createAnimation(theme) or createScenes(theme).
   Video requires a film or createAnimation(theme) and FFmpeg on PATH; it writes H.264 MP4 with optional AAC audio at 1-120 fps.
@@ -2187,6 +2188,15 @@ async function main() {
         await gifCommand(rest)
     } else if (command === 'video') {
         await videoCommand(rest)
+    } else if (command === 'plan-excerpt') {
+        const { positionals, values } = parseArgs({ args: rest, allowPositionals: true,
+            options: { fps: { type: 'string' }, 'sample-rate': { type: 'string' } } })
+        if (positionals.length !== 2 || !values.fps || !values['sample-rate'])
+            throw new Error('Usage: vizmatic plan-excerpt <start-frame> <frame-count> --fps <fps> --sample-rate <hz>')
+        const [startFrame, frameCount] = positionals.map(Number)
+        console.log(JSON.stringify(publicApi.planMediaExcerpt({
+            startFrame, frameCount, fps: Number(values.fps), sampleRate: Number(values['sample-rate']),
+        })))
     } else if (command === 'film') {
         await filmCommand(rest)
     } else if (command === 'preview') {

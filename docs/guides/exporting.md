@@ -151,6 +151,25 @@ pnpm benchmark:export examples/films/lorenz.ts --from 5 --to 15 --quality standa
 
 It prints the frames per second, the count of frames that a worker computed, the count of frames that took the pixels of the frame before, and the time in each step: the main thread, the raster, the average of the shutter samples, the bloom, and the waits for frames and for the encoder. The load of the machine changes the numbers, so compare two runs only at a similar load.
 
+## Cut an excerpt with its soundtrack
+
+Use `planMediaExcerpt` from `vizmatic` to cut a range of displayed frames and the corresponding source audio in one FFmpeg pass. Both streams must start at timestamp zero and run continuously. Supply the source audio sample rate and a constant video rate in whole frames per second. Check that both tracks cover the requested range.
+
+```ts
+import { execFileSync } from 'node:child_process'
+import { planMediaExcerpt } from 'vizmatic'
+
+const cut = planMediaExcerpt({ startFrame: 135, frameCount: 752, fps: 30, sampleRate: 48000 })
+execFileSync('ffmpeg', [
+    '-n', ...cut.inputArgs, '-i', 'master.mp4',
+    '-map', '0:v:0', '-vf', cut.videoFilter, '-c:v', 'libx264',
+    '-map', '0:a:0', '-af', cut.audioFilter, '-c:a', 'aac',
+    '-map_chapters', '-1', 'excerpt.mp4',
+])
+```
+
+The command `vizmatic plan-excerpt 135 752 --fps 30 --sample-rate 48000` prints the same plan as JSON. For each source, put its input arguments before its `-i`. Apply its filters before scaling, resampling, or concatenating. The filters keep samples whose start times fall inside the frame range and reset both output timestamps to zero. They preserve the source sample rate and channel layout. The caller chooses the output codecs and handles subtitles and chapters.
+
 ## Reuse encoded GOPs in an MP4
 
 Use `planAvcSplice` to copy complete groups of pictures from compatible constant-frame-rate AVC MP4s. Each range uses zero-based display frames and an exclusive end. Cuts inside a source must land on IDR pictures. The planner compares the AVC decoder configuration, presentation format and packet clocks. It runs FFmpeg in stream-copy mode and checks each outgoing picture packet against its source. It reads local files with FFprobe and FFmpeg on your PATH. Keep the inputs immutable from planning through muxing.
