@@ -17,42 +17,52 @@ export function createCanvasReadback<C extends { reset(): void }>(context: C, re
     let available = true, active = false, tape: unknown[] = [], previous: unknown[] | undefined
     let pixels: Uint8Array | undefined, reused = 0, frames = 0
     const methods = new Map<string, (...args: unknown[]) => unknown>()
-    const disable = () => { available = false; previous = undefined }
+    const disable = () => { available = false; previous = undefined; pixels = undefined }
     const observed = new Proxy(context, {
         get(target, key) {
-            const value: unknown = Reflect.get(target, key, target)
+            if (!active || typeof key !== 'string' || !calls.has(key)) disable()
+            let value: unknown
+            try { value = Reflect.get(target, key, target) }
+            catch (error) { disable(); throw error }
             if (typeof key !== 'string' || !calls.has(key) || typeof value !== 'function') {
                 disable()
                 return typeof value === 'function' ? value.bind(target) : value
             }
+            const fn = value as (...args: unknown[]) => unknown
             let method = methods.get(key)
             if (!method) {
                 method = (...args) => {
-                    if (!available) return Reflect.apply(value, target, args)
+                    if (!available) return Reflect.apply(fn, target, args)
                     // A dash array can change after the call. Record Canvas's accepted copy.
-                    const isDash = key === 'setLineDash'
+                    const isDash = key === 'setLineDash' && args.length === 1
                     if (!active || (!isDash && !args.every(scalar))) disable()
-                    let result: unknown
-                    try { result = Reflect.apply(value, target, args) }
-                    catch (error) { disable(); throw error }
-                    if (available && isDash) {
-                        const readDash = Reflect.get(target, 'getLineDash')
-                        if (typeof readDash !== 'function') disable()
-                        else {
-                            const segments: unknown = Reflect.apply(readDash, target, [])
-                            if (Array.isArray(segments) && segments.every(scalar)) tape.push(dash, segments.length, ...segments)
-                            else disable()
-                        }
-                    } else if (available) tape.push(invoke, key, args.length, ...args)
-                    return result
+                    try {
+                        const result: unknown = Reflect.apply(fn, target, args)
+                        if (available && isDash) {
+                            const readDash: unknown = Reflect.get(target, 'getLineDash', target)
+                            if (typeof readDash !== 'function') disable()
+                            else {
+                                const segments: unknown = Reflect.apply(readDash, target, [])
+                                if (Array.isArray(segments) && segments.every(scalar)) tape.push(dash, segments.length, ...segments)
+                                else disable()
+                            }
+                        } else if (available) tape.push(invoke, key, args.length, ...args)
+                        return result
+                    } catch (error) {
+                        disable()
+                        throw error
+                    }
                 }
                 methods.set(key, method)
             }
             return method
         },
         set(target, key, value: unknown) {
-            const accepted = Reflect.set(target, key, value, target)
             if (!active || typeof key !== 'string' || !settings.has(key) || !scalar(value)) disable()
+            let accepted: boolean
+            try { accepted = Reflect.set(target, key, value, target) }
+            catch (error) { disable(); throw error }
+            if (!accepted) disable()
             else if (available) tape.push(assign, key, value)
             return accepted
         },
@@ -71,19 +81,26 @@ export function createCanvasReadback<C extends { reset(): void }>(context: C, re
                 context.reset()
                 const result: unknown = draw(observed)
                 if (result && typeof (result as PromiseLike<unknown>).then === 'function') throw new TypeError('Canvas drawing must be synchronous')
-                frames++
                 if (available && previous && pixels && tape.length === previous.length
                     && tape.every((v, i) => Object.is(v, previous![i]))) {
+                    frames++
                     reused++
                     return pixels
                 }
-                pixels = readPixels()
-                previous = available ? tape : undefined
-                return pixels
+                const next = readPixels()
+                frames++
+                if (available) {
+                    pixels = next
+                    previous = tape
+                }
+                return next
             } catch (error) {
                 disable()
                 throw error
-            } finally { active = false }
+            } finally {
+                tape = []
+                active = false
+            }
         },
         stats: () => ({ frames, reused, tracking: available }),
     }
