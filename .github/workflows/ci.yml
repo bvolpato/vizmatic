@@ -65,6 +65,7 @@ jobs:
           tests/video.test.ts
           tests/video-socket.test.ts
           tests/avc-splice.test.ts
+          tests/canvas-readback.test.ts
           tests/cli-video.test.ts
           tests/cli-film.test.ts
           tests/stage-export.test.ts
