@@ -8,10 +8,10 @@ interface PackResult {
     entryCount?: number
 }
 
-// The RGBA transport and AVC splice planner ship in the ESM, CJS and declaration bundles.
+// The RGBA transport, AVC splice planner and media excerpt planner ship in the public bundles.
 const limits = {
-    size: 7_436_300,
-    unpackedSize: 21_355_000,
+    size: 7_439_300,
+    unpackedSize: 21_361_000,
     entryCount: 232,
 }
 
