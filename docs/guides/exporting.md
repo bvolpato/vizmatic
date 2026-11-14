@@ -172,7 +172,25 @@ For a serial RGBA export, `createCanvasReadback(context, readPixels)` can return
 
 Give the helper exclusive ownership of a fixed-size context. Draw through the context supplied to the callback. Register fonts before starting the export and keep them fixed until it finishes. Use a readback function that returns an owned pixel snapshot. Treat the returned pixels as read-only and finish consuming them before requesting the next frame. Use `stats()` to inspect the number of frames, reused snapshots and whether tracking is still active.
 
+This Node example uses the optional `@napi-rs/canvas` package.
+
 ```ts
-const frames = createCanvasReadback(context, () => canvas.data())
-const pixels = frames.frame(ctx => drawLessonFrame(ctx, clock))
+import { createRequire } from 'node:module'
+import { createCanvasReadback } from 'vizmatic'
+
+const require = createRequire(import.meta.url)
+const { createCanvas } = require('@napi-rs/canvas')
+const canvas = createCanvas(320, 180)
+const readback = createCanvasReadback(canvas.getContext('2d'), () => canvas.data())
+
+function drawBar() {
+  return readback.frame(ctx => {
+    ctx.fillStyle = '#2878b5'
+    ctx.fillRect(20, 80, 160, 24)
+  })
+}
+
+drawBar()
+drawBar()
+console.log(readback.stats().reused) // 1
 ```
