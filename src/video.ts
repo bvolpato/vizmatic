@@ -34,6 +34,9 @@ export interface RgbaVideoOptions {
     /** Requested duration before rounding to a whole number of frames. */
     duration: number
     outputPath: string
+    /** After drawing, return true only if the RGBA bytes equal the preceding frame.
+     * Sends timestamped RGBA packets and expands holds after color conversion. */
+    frameIsRepeat?: (frame: VideoFrameInfo) => boolean
     fps?: number
     audioPath?: string
     /** Seconds to skip in the audio file, for a render that starts partway through a timeline. */
@@ -103,6 +106,8 @@ export interface RgbaVideoOutput {
     bytes: number
     outputPath: string
     audioIncluded: boolean
+    /** Full RGBA packets written when frameIsRepeat is supplied. */
+    rgbaPackets?: number
     /** The encoder that produced the H.264 stream. Absent for other codecs. */
     h264Encoder?: H264Encoder
 }
@@ -481,6 +486,27 @@ function hasMovieTimescale(ffmpegPath: string): Promise<boolean> {
     return hasFfmpegOption(ffmpegPath, 'muxer=mp4', 'movie_timescale')
 }
 
+// IVF frames carry a fourcc, picture dimensions and integer presentation timestamps.
+function rgbaIvfHeader(width: number, height: number, fps: number, frames: number): Buffer {
+    const header = Buffer.alloc(32)
+    header.write('DKIF')
+    header.writeUInt16LE(32, 6)
+    header.write('RGBA', 8)
+    header.writeUInt16LE(width, 12)
+    header.writeUInt16LE(height, 14)
+    header.writeUInt32LE(fps, 16)
+    header.writeUInt32LE(1, 20)
+    header.writeUInt32LE(frames, 24)
+    return header
+}
+
+function rgbaPacketHeader(bytes: number, index: number): Buffer {
+    const header = Buffer.alloc(12)
+    header.writeUInt32LE(bytes)
+    header.writeBigUInt64LE(BigInt(index), 4)
+    return header
+}
+
 /**
  * Encodes caller-rendered RGBA frames as H.264 MP4 or VP9 WebM, tagged BT.709.
  * Frames are requested and written one at a time, so the caller controls
@@ -502,6 +528,11 @@ export async function renderRgbaVideo(
     const expectedBytes = width * height * 4
     if (!Number.isSafeInteger(expectedBytes)) {
         throw new Error('frame dimensions are too large')
+    }
+    const repeat = options.frameIsRepeat
+    if (repeat !== undefined && typeof repeat !== 'function') throw new Error('frameIsRepeat must be a function')
+    if (repeat && (width > 65535 || height > 65535 || expectedBytes > 0x7fffffff || schedule.count > 0xffffffff)) {
+        throw new Error('Timestamped RGBA frames exceed the IVF packet or header limits')
     }
     if (typeof renderFrame !== 'function') throw new Error('renderFrame must be a function')
     if (typeof options.outputPath !== 'string' || options.outputPath.length === 0) {
@@ -560,8 +591,10 @@ export async function renderRgbaVideo(
         // If the encoder gets no frame, it must fail. Without this flag, it writes a movie with no frames
         // and reports success.
         '-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-abort_on', 'empty_output',
-        '-f', 'rawvideo', '-pixel_format', 'rgba', '-video_size', `${width}x${height}`,
-        '-framerate', String(fps), '-i', 'pipe:0',
+        ...(repeat
+            ? ['-f', 'ivf', '-fpsprobesize', '0', '-probesize', '32', '-analyzeduration', '1']
+            : ['-f', 'rawvideo', '-pixel_format', 'rgba', '-video_size', `${width}x${height}`, '-framerate', String(fps)]),
+        '-i', 'pipe:0',
     ]
     let inputs = 1
     let audioInput = -1
@@ -595,7 +628,7 @@ export async function renderRgbaVideo(
     if (options.audioPath) args.push('-map', `${audioInput}:a:0`, '-af', `asetpts=PTS-STARTPTS,apad,atrim=duration=${seconds}`)
     if (captionInput >= 0) args.push('-map', `${captionInput}:0`, '-c:s', 'mov_text', '-metadata:s:s:0', 'language=eng')
     if (metadataInput >= 0) args.push('-map_metadata', String(metadataInput), '-map_chapters', String(metadataInput))
-    args.push('-frames:v', String(schedule.count), '-t', seconds, '-vf', COLOR_FILTER)
+    args.push('-frames:v', String(schedule.count), '-t', seconds, '-vf', repeat ? `${COLOR_FILTER},fps=${fps}` : COLOR_FILTER)
     if (codec === 'vp9') {
         // The quality mode needs a zero bitrate. Row threading makes VP9 practical at HD and above.
         args.push('-c:v', 'libvpx-vp9', '-crf', String(crf), '-b:v', '0', '-deadline', 'good', '-cpu-used', '2', '-row-mt', '1', '-threads:v', String(threads))
@@ -703,6 +736,15 @@ export async function renderRgbaVideo(
         const input = frameInput
         if (!input) throw new Error('FFmpeg did not provide a frame input stream')
 
+        const writeFrameBytes = (bytes: Buffer, index: number) => {
+            const write = new Promise<void>((done, fail) => {
+                input.write(bytes, error => error ? fail(error) : done())
+            })
+            return withAbort(observeEncoder(write, index, true), options.signal)
+        }
+        let packets = 0
+        let lastPacket = -1
+        if (repeat) await writeFrameBytes(rgbaIvfHeader(width, height, fps, schedule.count), 0)
         for (let index = 0; index < schedule.count; index++) {
             const info = frameInfo(index, schedule, fps)
             const rendered = await withAbort(observeEncoder(Promise.resolve(renderFrame(info)), index, false), options.signal)
@@ -711,11 +753,16 @@ export async function renderRgbaVideo(
             }
             if (inputError) throw describeExit(null, null, inputError.message || stderr)
 
-            const pixels = Buffer.from(rendered.buffer, rendered.byteOffset, rendered.byteLength)
-            const write = new Promise<void>((resolvePromise, rejectPromise) => {
-                input.write(pixels, (error) => error ? rejectPromise(error) : resolvePromise())
-            })
-            await withAbort(observeEncoder(write, index, true), options.signal)
+            const unchanged = repeat?.(info) === true
+            // A refresh bounds how far painting can run ahead of encoding during a long hold.
+            // The last packet gives FFmpeg the exact end of the hold, including a one-frame film.
+            if (!unchanged || index === 0 || index === schedule.count - 1 || index - lastPacket >= 16) {
+                if (repeat) await writeFrameBytes(rgbaPacketHeader(expectedBytes, index), index)
+                const pixels = Buffer.from(rendered.buffer, rendered.byteOffset, rendered.byteLength)
+                await writeFrameBytes(pixels, index)
+                lastPacket = index
+                packets++
+            }
             if (options.onProgress) {
                 await withAbort(observeEncoder(Promise.resolve(options.onProgress(info)), index, false), options.signal)
             }
@@ -740,6 +787,7 @@ export async function renderRgbaVideo(
             bytes: outputStat.size,
             outputPath,
             audioIncluded: options.audioPath !== undefined,
+            ...(repeat && { rgbaPackets: packets }),
             ...(codec === 'h264' ? { h264Encoder } : {}),
         }
     } catch (error) {
