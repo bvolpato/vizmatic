@@ -147,7 +147,7 @@ describe('<vz-film> live reconfigure, captions overlay, and synced audio', () =>
             readonly children: MiniNode[] = []
 
             constructor(tagName = 'div') {
-                this.tagName = tagName.toLowerCase()
+                this.tagName = tagName.toUpperCase()
             }
             setAttribute(name: string, value: string): void {
                 const prev = this.attrs.get(name) ?? null
@@ -272,6 +272,7 @@ describe('<vz-film> live reconfigure, captions overlay, and synced audio', () =>
         const registry = new Map<string, CustomElementConstructor>()
 
         vi.stubGlobal('HTMLElement', StubElement)
+        vi.stubGlobal('Element', MiniNode)
         vi.stubGlobal('customElements', {
             get: (name: string) => registry.get(name),
             define: (name: string, ctor: CustomElementConstructor) => registry.set(name, ctor),
@@ -290,7 +291,7 @@ describe('<vz-film> live reconfigure, captions overlay, and synced audio', () =>
                 if (tag === 'audio') {
                     node.playImpl = async () => {
                         if (rejectUnmutedPlay && !node.muted) {
-                            throw new Error('NotAllowedError: autoplay blocked')
+                            throw new DOMException('Autoplay blocked', 'NotAllowedError')
                         }
                         node.paused = false
                     }
@@ -396,6 +397,46 @@ describe('<vz-film> live reconfigure, captions overlay, and synced audio', () =>
             rejectUnmutedPlay = false
             player.pause()
             expect(audio.paused).toBe(true)
+
+            // Space on a shadow button belongs to its native activation, not the host shortcut.
+            for (const button of [ccBtn, muteBtn]) {
+                const preventDefault = vi.fn()
+                el.dispatchEvent({
+                    type: 'keydown', key: ' ', preventDefault,
+                    composedPath: () => [button, root, el],
+                } as unknown as Event)
+                expect.soft(preventDefault).not.toHaveBeenCalled()
+                expect.soft(player.isPlaying).toBe(false)
+                player.pause()
+            }
+            const preventDefault = vi.fn()
+            el.dispatchEvent({
+                type: 'keydown', key: ' ', preventDefault,
+                composedPath: () => [el],
+            } as unknown as Event)
+            expect(preventDefault).toHaveBeenCalledOnce()
+            expect(player.isPlaying).toBe(true)
+            player.pause()
+
+            // Rejected play requests must not restart cancelled or obsolete playback.
+            for (const scenario of ['abort', 'pause', 'resume', 'disconnect'] as const) {
+                audio.muted = false
+                let rejectPlay!: (error: DOMException) => void
+                const pending = new Promise<void>((_, reject) => { rejectPlay = reject })
+                const play = vi.fn(() => Promise.resolve()).mockImplementationOnce(() => pending)
+                audio.playImpl = play
+                player.play()
+                if (scenario === 'pause' || scenario === 'resume') player.pause()
+                if (scenario === 'resume') player.play()
+                if (scenario === 'disconnect') el.disconnectedCallback()
+                const callsBeforeRejection = play.mock.calls.length
+                rejectPlay(new DOMException('Playback rejected', scenario === 'abort' ? 'AbortError' : 'NotAllowedError'))
+                await pending.catch(() => {})
+                await Promise.resolve()
+                expect.soft(play).toHaveBeenCalledTimes(callsBeforeRejection)
+                expect.soft(audio.muted).toBe(false)
+                player.pause()
+            }
 
             el.disconnectedCallback()
         } finally {

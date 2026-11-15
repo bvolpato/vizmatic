@@ -436,17 +436,20 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
                     // Metadata may still be loading; loadedmetadata syncs once ready.
                 }
             }
+            let audioPlaySeq = 0
             const playAudio = () => {
                 if (!audio) return
-                const attempt = audio.play()
+                const currentAudio = audio
+                const seq = ++audioPlaySeq
+                const attempt = currentAudio.play()
                 if (attempt && typeof attempt.catch === 'function') {
-                    attempt.catch(() => {
-                        if (!audio!.muted) {
-                            audio!.muted = true
-                            syncMuteUi()
-                            const retry = audio!.play()
-                            if (retry && typeof retry.catch === 'function') retry.catch(() => {})
-                        }
+                    attempt.catch((error) => {
+                        if (error?.name !== 'NotAllowedError' || seq !== audioPlaySeq
+                            || this.audio !== currentAudio || !this.player?.isPlaying || currentAudio.muted) return
+                        currentAudio.muted = true
+                        syncMuteUi()
+                        const retry = currentAudio.play()
+                        if (retry && typeof retry.catch === 'function') retry.catch(() => {})
                     })
                 }
             }
@@ -566,6 +569,8 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
             this.addEventListener('keydown', (event) => {
                 // Shortcuts such as Command+K belong to the page.
                 if (event.metaKey || event.ctrlKey || event.altKey) return
+                // Space activates focused controls, including buttons inside the shadow root.
+                if (event.key === ' ' && event.composedPath().some((target) => target instanceof Element && target.tagName === 'BUTTON')) return
                 if (event.key === ' ' || event.key === 'k') {
                     event.preventDefault()
                     player.toggle()
