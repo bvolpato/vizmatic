@@ -26,6 +26,7 @@ import {
 // ─── Stack — Vertical/horizontal group ──────────────────────────────────────
 
 interface StackProps {
+    c?: ThemeColors
     direction?: 'vertical' | 'horizontal'
     gap?: number
     align?: 'start' | 'center' | 'end' | 'stretch'
@@ -34,13 +35,14 @@ interface StackProps {
 }
 
 export function Stack({
+    c,
     direction = 'vertical',
     gap: gapProp,
     align = 'center',
     wrap = false,
     children,
 }: StackProps): React.ReactElement {
-    const gap = gapProp ?? densityOf().s(12)
+    const gap = gapProp ?? densityOf(c).s(12)
     const alignMap = {
         start: 'flex-start',
         center: 'center',

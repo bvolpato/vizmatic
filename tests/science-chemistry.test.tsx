@@ -237,6 +237,30 @@ describe('ReactionEnergyDiagram', () => {
         expect(textContent(chart)).toContain('Ea (catalyzed) = 45 kJ/mol')
         expect(textContent(chart)).toContain('ΔE = −60 kJ/mol')
         expect((chart as Element).props['aria-description']).toContain('endpoints are unchanged')
+
+        const catalogChart = ReactionEnergyDiagram({
+            c: getThemeColors('dark'),
+            width: 1150,
+            height: 320,
+            reactants: 0,
+            products: -100,
+            barrier: 140,
+            catalyzedBarrier: 70,
+            unit: 'relative energy',
+        })
+        const catalogText = textContent(catalogChart)
+        expect(catalogText).toContain('100')
+        expect(catalogText).toContain('0')
+        expect(catalogText).toContain('−100')
+        expect(catalogText).not.toContain('138.4')
+        expect(catalogText).not.toContain('178.4')
+        const xPeak = 1150 / 2
+        const uncatMeasure = elements(catalogChart).find((el) => el.type === 'g' && el.props['data-measurement'] === 'activation-uncatalyzed')!
+        const catMeasure = elements(catalogChart).find((el) => el.type === 'g' && el.props['data-measurement'] === 'activation-catalyzed')!
+        const uncatLine = elements(uncatMeasure).find((el) => el.type === 'line')!
+        const catLine = elements(catMeasure).find((el) => el.type === 'line')!
+        expect(Number(uncatLine.props.x1)).toBeCloseTo(xPeak - 10, 1)
+        expect(Number(catLine.props.x1)).toBeCloseTo(xPeak + 14, 1)
     })
 
     it('rasterizes an empty path at progress zero and a continuous curve at progress one', async () => {

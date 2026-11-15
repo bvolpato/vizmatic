@@ -165,7 +165,7 @@ function schemaLabel(schema: DataflowSchema | undefined): string | undefined {
     return [prefix, fields ? `{ ${fields} }` : undefined].filter(Boolean).join(' ')
 }
 
-function detailWithSchema(detail: React.ReactNode, schema: DataflowSchema | undefined): React.ReactNode {
+function detailWithSchema(detail: React.ReactNode, schema: DataflowSchema | undefined, c?: ThemeColors): React.ReactNode {
     const renderedSchema = schemaLabel(schema)
     if (!renderedSchema) return detail
     if (detail == null) return renderedSchema
@@ -174,7 +174,7 @@ function detailWithSchema(detail: React.ReactNode, schema: DataflowSchema | unde
         style: {
             display: 'flex',
             flexDirection: 'column' as const,
-            gap: densityOf().s(3),
+            gap: densityOf(c).s(3),
             minWidth: 0,
         },
     },
@@ -246,7 +246,7 @@ function validateDataflowSpec(spec: DataflowSpec): { boundaries: DataflowBoundar
 }
 
 /** Compile typed dataflow semantics into the shared GraphDiagram model. */
-function compileDataflow(spec: DataflowSpec): CompiledDataflow {
+function compileDataflow(spec: DataflowSpec, c?: ThemeColors): CompiledDataflow {
     const { boundaries } = validateDataflowSpec(spec)
     const boundaryIds = new Set(boundaries.map((boundary) => boundary.id))
     const groups: GraphDiagramGroup[] = boundaries.map((boundary) => ({
@@ -266,7 +266,7 @@ function compileDataflow(spec: DataflowSpec): CompiledDataflow {
         return {
             id: node.id,
             label: node.label,
-            detail: detailWithSchema(node.detail, node.schema),
+            detail: detailWithSchema(node.detail, node.schema, c),
             href: node.href,
             title: node.title,
             tone: node.tone ?? defaultNodeTones[kind],
@@ -329,7 +329,7 @@ export function DataflowDiagram({
     sizing,
     iconSize,
 }: DataflowDiagramProps): React.ReactElement {
-    const compiled = compileDataflow({ nodes, edges, boundaries, ariaLabel })
+    const compiled = compileDataflow({ nodes, edges, boundaries, ariaLabel }, c)
     return GraphDiagram({
         c,
         nodes: compiled.nodes,

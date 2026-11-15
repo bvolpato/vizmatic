@@ -52,19 +52,19 @@ export function create(theme: ThemeMode = 'dark') {
 
                 <Panel
                     c={c}
-                    title="In-phase wave superposition"
-                    subtitle="Two equal waves add point by point to a wave with twice the amplitude."
+                    title="Phase-shifted wave superposition"
+                    subtitle="Two coherent waves with Δφ = 1.2 rad add point by point into a shifted resultant."
                     width={608}
                     align="center"
-                    footer="Illustrative sinusoidal waves · A = 1 m each · λ = 4 m"
+                    footer="Illustrative sinusoidal waves · A = 1 m each · λ = 4 m · Δφ = 1.2 rad"
                 >
                     <WaveDiagram
                         c={c}
                         width={600}
                         height={360}
                         waves={[
-                            { amplitude: 1, wavelength: 4, phase: 0, color: c.info, label: 'wave 1 · A' },
-                            { amplitude: 1, wavelength: 4, phase: 0, color: c.primary, label: 'wave 2 · A' },
+                            { amplitude: 1, wavelength: 4, phase: 0, color: c.info, label: 'wave 1 · φ = 0' },
+                            { amplitude: 1, wavelength: 4, phase: 1.2, color: c.primary, label: 'wave 2 · φ = 1.2' },
                         ]}
                         time={0}
                         xMin={-4}
@@ -74,7 +74,7 @@ export function create(theme: ThemeMode = 'dark') {
                         showComponents
                         showSum
                     />
-                    <TextLabel c={c} text="At matching crests and troughs, the displacement adds to ±2A." fontSize={12} color={c.textSecondary} />
+                    <TextLabel c={c} text="At each position x, the combined wave sums the two individual displacements." fontSize={12} color={c.textSecondary} />
                 </Panel>
             </Row>
         </Scene>

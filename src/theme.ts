@@ -228,6 +228,8 @@ export const gradients = {
     warm: flat('#8a6620'),
     cyan: flat('#1d7a6e'),
     pink: flat('#a04672'),
+    red: 'linear-gradient(135deg, #b83232, #8f2626)',
+    critical: 'linear-gradient(135deg, #b83232, #8f2626)',
     sunset: flat('#9c5526'),
     ocean: flat('#1d5f86'),
     dark: flat('#22252c'),
@@ -244,8 +246,8 @@ export const toneGradients: Record<ToneName, string> = {
     warm: gradients.warm,
     cyan: gradients.cyan,
     pink: gradients.pink,
-    red: gradients.warm,
-    critical: gradients.warm,
+    red: gradients.red,
+    critical: gradients.critical,
     neutral: gradients.dark,
     sunset: gradients.sunset,
     ocean: gradients.ocean,
@@ -347,8 +349,8 @@ export function typeOf<V extends TypographyVariant>(c: ThemeColors, variant: V):
     return {
         ...base,
         fontSize: densityOf(c).f(base.fontSize),
-        // Bold headings at small sizes read as shouting, so they settle at semibold.
-        fontWeight: Math.min(base.fontWeight, 600),
+        // Clamp to bundled Inter weights up to 700.
+        fontWeight: Math.min(base.fontWeight, 700),
     }
 }
 
@@ -574,7 +576,7 @@ export function getGradient(name: ColorName): string {
         secondary: gradients.blue,
         positive: gradients.green,
         warning: gradients.warm,
-        critical: gradients.warm,
+        critical: gradients.critical,
         info: gradients.cyan,
         accent: gradients.pink,
         neutral: gradients.dark,

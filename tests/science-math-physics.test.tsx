@@ -118,8 +118,31 @@ describe('science, math, and physics primitives', () => {
         const circles = collect(diagram, (element) => element.type === 'circle' && Number(props(element).r) === 5.5)
         const [a, b, c] = circles.map((element) => ({ x: Number(props(element).cx), y: Number(props(element).cy) }))
         expect(Math.abs(b.x - a.x) / Math.abs(c.y - b.y)).toBeCloseTo(2)
-        expect(collect(diagram, (element) => element.type === 'path')).toHaveLength(1)
+        const anglePaths = collect(diagram, (element) => element.type === 'path')
+        expect(anglePaths).toHaveLength(1)
+        expect(props(anglePaths[0])['data-angle-mark']).toBe('right')
+        const elbowCoords = String(props(anglePaths[0]).d).match(/-?\d+(?:\.\d+)?/g)!.map(Number)
+        expect(elbowCoords).toHaveLength(6)
+        const leg1 = { x: elbowCoords[2] - elbowCoords[0], y: elbowCoords[3] - elbowCoords[1] }
+        const leg2 = { x: elbowCoords[4] - elbowCoords[2], y: elbowCoords[5] - elbowCoords[3] }
+        expect(Math.hypot(leg1.x, leg1.y)).toBeCloseTo(32 * 0.62, 1)
+        expect(Math.hypot(leg2.x, leg2.y)).toBeCloseTo(32 * 0.62, 1)
+        expect(Math.abs(leg1.x * leg2.x + leg1.y * leg2.y)).toBeLessThan(0.05)
         expect(collect(diagram, (element) => element.type === 'line')).toHaveLength(2)
+
+        const acute = GeometryDiagram({
+            c: getThemeColors('dark'),
+            points: [
+                { id: 'O', x: 0, y: 0 },
+                { id: 'P', x: 4, y: 0 },
+                { id: 'Q', x: 3, y: 2 },
+            ],
+            segments: [{ from: 'O', to: 'P' }, { from: 'O', to: 'Q' }],
+            angles: [{ vertex: 'O', from: 'P', to: 'Q', label: 'α' }],
+        })
+        const acutePath = collect(acute, (element) => element.type === 'path')[0]
+        expect(props(acutePath)['data-angle-mark']).toBeUndefined()
+        expect(String(props(acutePath).d).split(' L ')).toHaveLength(19)
     })
 
     it('rejects missing, degenerate, and excessive geometry references', () => {
@@ -168,6 +191,23 @@ describe('science, math, and physics primitives', () => {
         const normalLine = React.Children.toArray(props(normal).children).find((child) => React.isValidElement(child) && child.type === 'line') as React.ReactElement
         expect(Number(props(normalLine).y2)).toBeLessThan(Number(props(normalLine).y1))
         expect(collect(diagram, (element) => element.type === 'line' && props(element).strokeDasharray === '5 5')).toHaveLength(3)
+
+        const dark = getThemeColors('dark')
+        const collinearPositive = FreeBodyDiagram({
+            c: dark,
+            forces: [
+                { id: 'push', label: 'push', x: 8, y: 0, color: dark.positive },
+                { id: 'drag', label: 'drag', x: -3, y: 0, color: dark.warning },
+            ],
+            showResultant: true,
+        })
+        const pushGroup = collect(collinearPositive, (element) => element.type === 'g' && props(element)['data-vector-id'] === 'push')[0]
+        const resultantGroup = collect(collinearPositive, (element) => element.type === 'g' && props(element)['data-vector-role'] === 'resultant')[0]
+        const pushShaft = React.Children.toArray(props(pushGroup).children).find((child) => React.isValidElement(child) && child.type === 'line') as React.ReactElement
+        const resultantShaft = React.Children.toArray(props(resultantGroup).children).find((child) => React.isValidElement(child) && child.type === 'line') as React.ReactElement
+        expect(Math.abs(Number(props(resultantShaft).y1) - Number(props(pushShaft).y1))).toBeCloseTo(10, 1)
+        expect(props(resultantShaft).stroke).toBe(dark.accent)
+        expect(collect(collinearPositive, (element) => element.type === 'line' && props(element).strokeDasharray === '2 3')).toHaveLength(1)
     })
 
     it('does not draw a phantom arrow when the resultant is exactly zero', () => {

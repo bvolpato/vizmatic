@@ -24,6 +24,7 @@ import {
     type ChartValueFormat,
     createPlotArea,
     formatChartValue,
+    niceChartScale,
     pointLabelPlacement,
     xInPlot,
     yInPlot,
@@ -97,10 +98,8 @@ export function ScatterPlot({
 }: ScatterPlotProps): React.ReactElement {
     const margin: ChartMargins = { top: 20, right: 24, bottom: xAxisLabel ? 46 : 34, left: yAxisLabel ? 54 : 42 }
     const plot = createPlotArea(width, height, margin)
-    const xDomain = chartDomain(points.map((item) => item.x), xMin, xMax)
-    const yDomain = chartDomain(points.map((item) => item.y), yMin, yMax)
-    const xTicks = chartTicks(xDomain.min, xDomain.max, 4)
-    const yTicks = chartTicks(yDomain.min, yDomain.max, 4)
+    const { domain: xDomain, ticks: xTicks } = niceChartScale(points.map((item) => item.x), xMin, xMax, 5)
+    const { domain: yDomain, ticks: yTicks } = niceChartScale(points.map((item) => item.y), yMin, yMax, 5)
 
     const pointFor = (xValue: number, yValue: number) => ({
         x: xInPlot(xValue, xDomain, plot),
@@ -320,14 +319,16 @@ export function ParetoChart({
             && Number.isFinite(point.y)
             && (xScale !== 'log' || point.x > 0))
     const frontierIndices = paretoFrontierIndices(validPoints, xObjective, yObjective)
+    const linearXScale = xScale === 'log'
+        ? undefined
+        : niceChartScale(validPoints.map(({ point }) => point.x), xMin, xMax, 5)
     const xDomain = xScale === 'log'
         ? positiveLogDomain(validPoints.map(({ point }) => point.x), xMin, xMax)
-        : chartDomain(validPoints.map(({ point }) => point.x), xMin, xMax)
-    const yDomain = chartDomain(validPoints.map(({ point }) => point.y), yMin, yMax)
+        : linearXScale!.domain
+    const { domain: yDomain, ticks: yTicks } = niceChartScale(validPoints.map(({ point }) => point.y), yMin, yMax, 5)
     const xTicks = xScale === 'log'
         ? logChartTicks(xDomain.min, xDomain.max)
-        : chartTicks(xDomain.min, xDomain.max, 5)
-    const yTicks = chartTicks(yDomain.min, yDomain.max, 5)
+        : linearXScale!.ticks
     const frontier = chartColor(frontierColor ?? 'positive', c, 0)
 
     const pointFor = (xValue: number, yValue: number) => {
@@ -710,20 +711,35 @@ export function QuadrantChart({
                     strokeWidth: 3,
                 })),
             ),
-            ...regionEntries.flatMap(({ key, region, x, y, width: regionWidth }, index) => {
+            ...regionEntries.flatMap(({ key, region, width: regionWidth }, index) => {
                 const color = chartColor(region.color, c, index)
+                const isRight = key.endsWith('right')
+                const isBottom = key.startsWith('bottom')
+                const align = isRight ? 'right' as const : 'left' as const
+                const cornerX = isRight ? plot.right - 12 : plot.x + 12
+                const fontSize = densityOf(c).f(11)
+                const lineStep = Math.round(fontSize * 1.28)
+                const labelY = isBottom
+                    ? plot.bottom - (region.detail ? 16 + lineStep : 16)
+                    : plot.y + 16
+                const detailY = isBottom
+                    ? plot.bottom - 16
+                    : plot.y + 16 + lineStep
+                const maxLabelWidth = Math.max(1, regionWidth - 24)
                 return [
-                    chartLabel(`quadrant-label-${key}`, region.label, x + regionWidth / 2, y + 18, c, {
-                        width: Math.max(1, regionWidth - 24),
+                    chartLabel(`quadrant-label-${key}`, region.label, cornerX, labelY, c, {
+                        align,
+                        width: maxLabelWidth,
                         color,
                         fontFamily: 'Inter',
                         fontWeight: 600,
-                        fontSize: densityOf(c).f(11),
+                        fontSize,
                     }),
-                    ...(region.detail ? [chartLabel(`quadrant-detail-${key}`, region.detail, x + regionWidth / 2, y + 34, c, {
-                        width: Math.max(1, regionWidth - 24),
+                    ...(region.detail ? [chartLabel(`quadrant-detail-${key}`, region.detail, cornerX, detailY, c, {
+                        align,
+                        width: maxLabelWidth,
                         color: c.textMuted,
-                        fontSize: densityOf(c).f(11),
+                        fontSize,
                     })] : []),
                 ]
             }),

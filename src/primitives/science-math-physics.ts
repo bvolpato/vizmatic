@@ -25,10 +25,10 @@ function increasing(min: number, max: number, name: string): number {
     return range
 }
 
-function dimensions(width: number, height: number, name: string, minimumHeight = 360): void {
+function dimensions(width: number, height: number, name: string, minimumHeight = 240): void {
     finite(width, `${name} width`)
     finite(height, `${name} height`)
-    if (width < 600 || height < minimumHeight) throw new RangeError(`${name} width must be at least 600 pixels and height at least ${minimumHeight} pixels.`)
+    if (width < 320 || height < minimumHeight) throw new RangeError(`${name} width must be at least 320 pixels and height at least ${minimumHeight} pixels.`)
     if (width > MAX_SVG_SIZE || height > MAX_SVG_SIZE) throw new RangeError(`${name} dimensions cannot exceed ${MAX_SVG_SIZE} pixels.`)
 }
 
@@ -93,7 +93,7 @@ interface SvgShellProps {
 }
 
 /** Default titles name the diagram for assistive technology. They do not need to be printed. */
-const UNNAMED_TITLES = new Set(['Number line', 'Geometry diagram', 'Free-body diagram', 'Wave diagram'])
+const UNNAMED_TITLES = new Set(['Number line', 'Geometry diagram', 'Free-body diagram', 'Wave diagram', 'Wave superposition'])
 
 function svgShell({ c, width, height, title, ariaLabel, description, children }: SvgShellProps): React.ReactElement {
     const d = densityOf(c)
@@ -117,6 +117,7 @@ function svgShell({ c, width, height, title, ariaLabel, description, children }:
             const text = React.Children.toArray(textProps.children).map((part) => String(part)).join('')
             overlays.push(React.createElement(SvgMathText, {
                 key: `label-${index}`,
+                c,
                 text,
                 x: textProps.x,
                 y: textProps.y,
@@ -134,6 +135,7 @@ function svgShell({ c, width, height, title, ariaLabel, description, children }:
     if (!UNNAMED_TITLES.has(title)) {
         overlays.unshift(React.createElement(SvgMathText, {
             key: 'diagram-title',
+            c,
             text: title,
             x: 0,
             y: d.f(16),
@@ -493,14 +495,36 @@ export function GeometryDiagram({
         let delta = Math.atan2((from.x - vertex.x) * (to.y - vertex.y) - (from.y - vertex.y) * (to.x - vertex.x), (from.x - vertex.x) * (to.x - vertex.x) + (from.y - vertex.y) * (to.y - vertex.y))
         if (!Number.isFinite(delta)) throw new RangeError(`GeometryDiagram angle ${index} cannot be rendered.`)
         const radius = angle.radius ?? 32
-        const samples = 18
-        const arc = Array.from({ length: samples + 1 }, (_, sample) => {
-            const theta = a1 + delta * sample / samples
-            return { x: v.x + radius * Math.cos(theta), y: v.y - radius * Math.sin(theta) }
-        })
-        const path = arc.map((point, part) => `${part === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(' ')
+        const isRightAngle = Math.abs(Math.abs(delta) - Math.PI / 2) < 0.02
+        let path: string
+        if (isRightAngle) {
+            const elbow = radius * 0.62
+            const a2 = a1 + delta
+            const u1 = { x: Math.cos(a1), y: -Math.sin(a1) }
+            const u2 = { x: Math.cos(a2), y: -Math.sin(a2) }
+            const p1 = { x: v.x + elbow * u1.x, y: v.y + elbow * u1.y }
+            const corner = { x: v.x + elbow * (u1.x + u2.x), y: v.y + elbow * (u1.y + u2.y) }
+            const p2 = { x: v.x + elbow * u2.x, y: v.y + elbow * u2.y }
+            path = `M ${p1.x.toFixed(2)} ${p1.y.toFixed(2)} L ${corner.x.toFixed(2)} ${corner.y.toFixed(2)} L ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`
+        } else {
+            const samples = 18
+            const arc = Array.from({ length: samples + 1 }, (_, sample) => {
+                const theta = a1 + delta * sample / samples
+                return { x: v.x + radius * Math.cos(theta), y: v.y - radius * Math.sin(theta) }
+            })
+            path = arc.map((point, part) => `${part === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(' ')
+        }
         const color = colorValue(angle.color, c.accent, `GeometryDiagram angle ${index} color`)
-        elements.push(React.createElement('path', { key: `angle-${index}`, d: path, fill: 'none', stroke: color, strokeWidth: densityOf(c).w(2.5), strokeLinecap: 'round' }))
+        elements.push(React.createElement('path', {
+            key: `angle-${index}`,
+            d: path,
+            fill: 'none',
+            stroke: color,
+            strokeWidth: densityOf(c).w(2.5),
+            strokeLinecap: 'round',
+            strokeLinejoin: isRightAngle ? 'miter' : 'round',
+            ...(isRightAngle ? { 'data-angle-mark': 'right' } : {}),
+        }))
         if (angle.label) {
             const middle = a1 + delta / 2
             const labelX = clamp(v.x + (radius + 18) * Math.cos(middle), 28 + textWidth(angle.label) / 2, width - 28 - textWidth(angle.label) / 2)
@@ -628,15 +652,52 @@ export function FreeBodyDiagram({
         elements.push(React.createElement('text', { key: `force-label-${force.id}`, x: labelX, y: labelY, textAnchor: anchor, fill: c.textPrimary, fontFamily: c.fontSans, fontSize: FONT_SIZE, fontWeight: 650 }, force.label))
     })
     if (showResultant && (resultant.x !== 0 || resultant.y !== 0)) {
-        const end = mapVector(resultant.x, resultant.y)
-        elements.push(arrow(center, end, c.positive, 'resultant', 4))
+        const rawEnd = mapVector(resultant.x, resultant.y)
+        const collinearForce = forces.some((force) => {
+            const fMag = Math.hypot(force.x, force.y)
+            const dot = resultant.x * force.x + resultant.y * force.y
+            const cross = resultant.x * force.y - resultant.y * force.x
+            return dot > 0 && Math.abs(cross) / (resultant.magnitude * fMag) < 0.06
+        })
+        const forceUsesPositive = forces.some((force) =>
+            colorValue(force.color, c.secondary, `FreeBodyDiagram force "${force.id}" color`).toLowerCase() === c.positive.toLowerCase(),
+        )
+        const resultantColor = collinearForce && forceUsesPositive ? c.accent : c.positive
+        let start = center
+        let end = rawEnd
+        if (collinearForce) {
+            const dx = rawEnd.x - center.x
+            const dy = rawEnd.y - center.y
+            const screenLen = Math.hypot(dx, dy) || 1
+            let nx = -dy / screenLen
+            let ny = dx / screenLen
+            if (ny < 0) {
+                nx = -nx
+                ny = -ny
+            }
+            const offset = 10
+            start = { x: center.x + nx * offset, y: center.y + ny * offset }
+            end = { x: rawEnd.x + nx * offset, y: rawEnd.y + ny * offset }
+            elements.push(React.createElement('line', {
+                key: 'resultant-origin-tick',
+                x1: center.x,
+                y1: center.y,
+                x2: start.x,
+                y2: start.y,
+                stroke: resultantColor,
+                strokeWidth: densityOf(c).w(1.4),
+                strokeDasharray: '2 3',
+                opacity: 0.75,
+            }))
+        }
+        elements.push(arrow(start, end, resultantColor, 'resultant', 4))
         const label = `R = ${formatNumber(resultant.magnitude)}`
-        const direction = Math.sign(end.x - center.x) || 1
+        const direction = Math.sign(end.x - start.x) || 1
         const anchor = direction > 0 ? 'start' : 'end'
         elements.push(React.createElement('text', {
             key: 'resultant-label',
             x: boundedTextX(end.x + direction * 12, width, label, anchor, 20),
-            y: clamp(end.y + 20, 60, height - 20),
+            y: clamp(end.y + (collinearForce ? 16 : 20), 60, height - 20),
             textAnchor: anchor,
             fill: c.textPrimary,
             fontFamily: c.fontSans,
