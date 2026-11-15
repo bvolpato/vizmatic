@@ -361,7 +361,7 @@ export function frameToSvg(frame: Frame, options: { scale?: number; transparent?
             const color = glowOf(op)
             const glowD = pathData(op.strokePath.length ? op.strokePath : op.path)
             if (color && glowD) {
-                const base = Math.max(op.fillAlpha, op.strokeAlpha)
+                const base = Math.max(op.fillAlpha, op.strokeAlpha) * (frame.dark ? 1 : 0.22)
                 const mode = frame.dark ? ' style="mix-blend-mode:screen"' : ''
                 const passes = glowPasses(op.glow, op.stroke ? op.strokeWidth : 0)
                     .map((pass) => `<path d="${glowD}" fill="none" stroke="${css([color[0], color[1], color[2], 1])}" stroke-opacity="${fmt(pass.alpha * base)}" stroke-width="${fmt(pass.width)}" stroke-linecap="round" stroke-linejoin="round"/>`)
@@ -480,7 +480,7 @@ export function paintFrame(ctx: Canvas2D, frame: Frame, scale = 1, images?: Imag
         if (op.glow > 0) {
             const color = glowOf(op)
             if (color) {
-                const base = Math.max(op.fillAlpha, op.strokeAlpha)
+                const base = Math.max(op.fillAlpha, op.strokeAlpha) * (frame.dark ? 1 : 0.22)
                 const previous = ctx.globalCompositeOperation
                 if (frame.dark) ctx.globalCompositeOperation = 'screen'
                 ctx.strokeStyle = css([color[0], color[1], color[2], 1])

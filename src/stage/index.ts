@@ -39,4 +39,18 @@ export type { Gap, Where, BesideSide, LayoutItem, Measured, Maybe, RowOptions, C
 export { lerp, clamp, smoothstep, valueAt, commas, assertEqual } from './numbers'
 export { capHeight, textWidth, fitSize, type TextMeasureOptions, type TextFontOptions } from './text-fit'
 export { seededRandom } from './objects/util'
+export { focusOn, resetCamera, type FocusOptions } from './camera'
+export {
+    stableSoftmax,
+    combineSoftmaxMass,
+    softmaxTileMass,
+    entropy,
+    normalizeVector,
+    gaussian,
+    sampleGaussian,
+    dotProduct,
+    multiplyMatrices,
+    lerpArray,
+    type SoftmaxMass,
+} from '../teaching-math'
 export * from './three/index'

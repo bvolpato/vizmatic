@@ -222,11 +222,69 @@ function gridTransform(): StudioProject {
     }
 }
 
+function pipelineTrace(): StudioProject {
+    return {
+        ...emptyProject('Pipeline and context budget'),
+        look: 'midnight',
+        hold: 1.2,
+        objects: [
+            object('title', 'text', 0, -445, { content: 'Where every token and millisecond goes', font: 'text-serif', size: 64 }),
+            object('budget', 'segmentedBar', 0, -280, {
+                parts: 'System: 1800: blue\nHistory: 6400: teal\nTools: 2200: yellow',
+                barWidth: 1320, capacity: 16000, title: 'Context window (16k)', free: 'headroom', size: 24,
+            }, { name: 'Context budget' }),
+            object('schedule', 'pipeline', -280, 110, {
+                tracks: 'Router, Worker A, Worker B',
+                tasks: 'Router: Parse 0..14: blue\nWorker A: Retrieve 14..52: teal\nWorker B: Policy 14..38: gold\nRouter: Merge 52..74: green',
+                pipeWidth: 820, size: 24,
+            }, { name: 'Execution schedule' }),
+            object('audit', 'eventLog', 540, 110, {
+                entries: 'req_01 | Parse | schema ok | pass\nreq_02 | Policy | rate check | pass\nreq_03 | Retrieve | cache hit | pass\nreq_04 | Merge | 74 ms total | pass',
+                logWidth: 580, title: 'Trace log', size: 20,
+            }, { name: 'Trace log' }),
+        ],
+        beats: [
+            beat('title', 'write', 0, 1.2),
+            beat('budget', 'enter', 0.8, 1.3),
+            beat('schedule', 'enter', 1.8, 1.5),
+            beat('audit', 'enter', 2.8, 1.4),
+            beat('budget', 'indicate', 4.5, 0.9, { color: 'yellow', amount: 1.03 }),
+        ],
+        markers: [{ id: 'm-1', time: 1.8, title: 'Parallel fan-out' }],
+    }
+}
+
+function orbit3d(): StudioProject {
+    return {
+        ...emptyProject('Helix around a sphere'),
+        look: 'neon',
+        hold: 1.2,
+        objects: [
+            object('title', 'text', 0, -445, { content: 'One trajectory in three dimensions', font: 'text-serif', size: 66 }),
+            object('core', 'sphere3d', -280, 40, { radius: 1.45, color: 'blue', opacity: 0.88, phi: 58, theta: -42, scale: 96, axes: true }, { name: 'Sphere' }),
+            object('helix', 'curve3d', 300, 40, {
+                xExpr: '1.6 * cos(t)', yExpr: '1.6 * sin(t)', zExpr: '0.28 * t - 0.9',
+                tMin: 0, tMax: 6.28, color: 'yellow', width: 4, halo: true, phi: 58, theta: -42, scale: 96, axes: true,
+            }, { name: 'Helix' }),
+        ],
+        beats: [
+            beat('title', 'write', 0, 1.2),
+            beat('core', 'fadeIn', 0.6, 1, { direction: 'up', distance: 20 }),
+            beat('helix', 'draw', 1.2, 1.6),
+            beat('core', 'orbit', 2.4, 3.2, { theta: 85, phi: 66 }),
+            beat('helix', 'orbit', 2.4, 3.2, { theta: 85, phi: 66 }),
+        ],
+        markers: [{ id: 'm-1', time: 2.4, title: 'Orbit camera' }],
+    }
+}
+
 export const TEMPLATES: readonly Template[] = [
     { id: 'explainer', title: 'Explainer', description: 'A curve, a formula, and a value that drives both.', thumb: 11.6, project: explainer },
     { id: 'equation', title: 'Equation story', description: 'Symbols travel from step to step.', thumb: 8.8, project: equationStory },
     { id: 'architecture', title: 'Architecture walkthrough', description: 'Dense system nodes draw in, then one request travels through.', thumb: 7.3, project: architecture },
+    { id: 'pipeline', title: 'Pipeline & context budget', description: 'A context window bar, parallel worker lanes, and a live trace log.', thumb: 4.8, project: pipelineTrace },
     { id: 'chart', title: 'Chart reveal', description: 'Bars rise one at a time, on paper.', thumb: 5.6, project: chartReveal },
+    { id: 'orbit3d', title: '3D sphere & helix', description: 'Sculpted 3D sphere and haloed parametric curve orbiting together.', thumb: 4.6, project: orbit3d },
     { id: 'deck', title: 'Slide deck', description: 'Chapters for presenting, one arrow key at a time.', thumb: 5.8, project: slideDeck },
     { id: 'grid', title: 'Grid transformation', description: 'A number plane under a 2x2 matrix.', thumb: 7, project: gridTransform },
 ]

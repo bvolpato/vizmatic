@@ -1,9 +1,11 @@
 import type { Bounds } from '../geometry'
+import type { Anim, AnimOptions } from '../anim'
 import { Node } from '../node'
 import { rect } from '../shapes'
 import { text, type TextNode, type TextOptions } from '../text'
 import { advanceWidth } from '../text-fit'
 import type { ColorInput } from '../color'
+import { reveal, sampleAt, staggered, stepAt } from './util'
 
 export interface ChipOptions {
     /** Font size of the label. Defaults to 28. */
@@ -70,6 +72,25 @@ export class Chip extends Node {
         this.box = { x: middle - width / 2, y: -height / 2, width, height }
         this.add(this.frame, this.text)
     }
+
+    /** The border draws in and the label settles inside it. */
+    enter(options: AnimOptions = {}): Anim {
+        return {
+            label: 'chip.enter', duration: options.duration ?? 0.5, ease: options.ease,
+            schedule: (ctx) => {
+                reveal(this, ctx.t0, ctx.stage)
+                const span = ctx.t1 - ctx.t0
+                const fillTarget = sampleAt(this.frame, 'fillOpacity', ctx.t0)
+                const textTarget = sampleAt(this.text, 'opacity', ctx.t0)
+                stepAt(this.frame, 'trimTo', 0, ctx.t0)
+                stepAt(this.frame, 'fillOpacity', 0, ctx.t0)
+                stepAt(this.text, 'opacity', 0, ctx.t0)
+                this.frame.tween('trimTo', 1, ctx.t0, ctx.t0 + span * 0.7, ctx.ease)
+                this.frame.tween('fillOpacity', fillTarget, ctx.t0 + span * 0.2, ctx.t1, ctx.ease)
+                this.text.tween('opacity', textTarget, ctx.t0 + span * 0.3, ctx.t1, ctx.ease)
+            },
+        }
+    }
 }
 
 /** A short label in a box that fits it, such as `chip('virtio', { color: 'green', stroke: 'green' }).at(120, 40)`, with its left end at x 120. */
@@ -134,6 +155,23 @@ export class ChipRow extends Node {
         this.chips = chips
         this.box = { x: start(widest), y: -height / 2, width: widest, height: y + height }
         this.add(...chips)
+    }
+
+    /** The chips arrive in order across the row. */
+    enter(options: AnimOptions = {}): Anim {
+        return {
+            label: 'chipRow.enter', duration: options.duration ?? 0.75, ease: options.ease,
+            schedule: (ctx) => {
+                reveal(this, ctx.t0, ctx.stage)
+                const windows = staggered(this.chips.length, Math.max(0, options.lag ?? 0.35), ctx.t0, ctx.t1)
+                this.chips.forEach((item, index) => {
+                    const [start, end] = windows[index]!
+                    const target = sampleAt(item, 'opacity', ctx.t0)
+                    stepAt(item, 'opacity', 0, ctx.t0)
+                    item.tween('opacity', target, start, end, ctx.ease)
+                })
+            },
+        }
     }
 }
 

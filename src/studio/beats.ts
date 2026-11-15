@@ -387,7 +387,7 @@ const orbit_: BeatDef = {
         { key: 'phi', label: 'Tilt to', type: 'number', min: 0, max: 180, step: 1 },
     ],
     hint: 'Moves the 3D camera to a new angle',
-    only: (kind) => kind === 'surface3d',
+    only: (kind) => kind === 'surface3d' || kind === 'sphere3d' || kind === 'curve3d',
     build: (beat, { node }) => (node as Scene3D).orbit({ theta: Number(beat.params['theta']) * Math.PI / 180, phi: Number(beat.params['phi']) * Math.PI / 180 }),
     code: (beat, { name }) => `${name}.orbit({ theta: ${num(Number(beat.params['theta']))} * Math.PI / 180, phi: ${num(Number(beat.params['phi']))} * Math.PI / 180 })`,
 }

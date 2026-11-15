@@ -17,6 +17,7 @@ const SYSTEMS = 'Systems and computer science'
 const THREE = '3D'
 const BRIDGE = 'Bring in existing work'
 const LAYOUT = 'Layout'
+const CAMERA = 'Camera'
 
 export const FILM_OBJECTS: readonly FilmObjectEntry[] = [
     { name: 'text', group: TEXT, usage: "text('Hello', { font: 'serif', size: 72, color: 'ink' }): vector glyphs you can write and morph. With no font, it takes the font of the film: film({ font: 'text-serif' }, (s) => { ... }) sets it for every text and every label of an object that names none" },
@@ -180,4 +181,6 @@ export const FILM_OBJECTS: readonly FilmObjectEntry[] = [
     { name: 'shake', group: EMPHASIS, usage: 'shake(node): a small oscillation' },
     { name: 'highlightSweep', group: EMPHASIS, usage: 'highlightSweep(node): a marker stroke across text' },
     { name: 'spotlight', group: EMPHASIS, usage: "spotlight(row, { dim: 0.3, keep: [heading] }): the rest of the stage dims, and the row keeps its look. A second spotlight moves the light, and spotlight(null) turns it off. { within: chart } dims only inside one node" },
+    { name: 'focusOn', group: CAMERA, usage: "focusOn(s, target, { padding: 120, duration: 1.2 }): smoothly pan and zoom stage.camera to center any Node, Block, Box, or [x, y] point" },
+    { name: 'resetCamera', group: CAMERA, usage: 'resetCamera(s, { duration: 1 }): smoothly return stage.camera to full-frame home view' },
 ]
