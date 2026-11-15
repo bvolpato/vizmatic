@@ -78,7 +78,7 @@ Other `vizmatic narrated <step> <folder>` commands (`--dry-run` previews any ste
 
 Generate subtle sound effects (`tap`, `slide`, `latch`, `resolve`, `bell`) or ambient beds with `npx vizmatic sounds list`, `npx vizmatic sounds render <name> --out cue.wav`, and `npx vizmatic sounds bed --voice narration.wav --out bed.wav --palette warm --timing timing.json`. Read the [narrated films guide](https://github.com/bvolpato/vizmatic/blob/main/docs/guides/narrated-films.md) for the full folder contract.
 
-Compute every displayed number, check invariants with `assertEqual`, and keep every visible heading true for its entire lifetime on screen. Report which passages were played with sound and which were reviewed as stills; a person must watch the complete lesson at full speed with sound before publication.
+Derive displayed results from the model, label hand-authored inputs and timings as illustrative, and check invariants with `assertEqual`. Keep every visible heading true for its entire lifetime on screen. Report which passages were played with sound and which were reviewed as stills; a person must watch the complete lesson at full speed with sound before publication.
 
 ## Figure workflow
 
@@ -98,7 +98,14 @@ Figures default to `dense` (10 to 12 px detail type, hairlines, tight gutters): 
 
 ## Judge your own output
 
-`vizmatic check` catches geometric defects, not weak composition. On every still or figure, verify:
+`vizmatic check` catches geometric defects. It does not establish scientific correctness, benchmark validity, or visual quality. Before reviewing composition:
+
+- Check technical claims against primary sources. State assumptions that change the result, such as one process versus many pods, SQPOLL versus ordinary submission, or ideal links versus measured hardware.
+- Verify the actual displayed model: probabilities normalize, paired charts use the same distribution, and rank, determinant, and matrix labels match the rendered geometry. Do not change the mathematics to conceal a rendering defect.
+- Use a consistent axis scale. Label schematic timelines and synthetic timings explicitly. Claim a measured speedup only for comparable workloads with the hardware, configuration, and source identified.
+- Check compiled captions and exported VTT. A new caption replaces the previous cue; leave enough reading time before the next starts.
+
+On every still or figure, verify:
 
 - Can a reader grasp the main point in three seconds?
 - Does one color mean one concept throughout, using look tokens (`blue`, `teal`, `yellow`, `ink`, `dim`) in films and semantic tones in figures?

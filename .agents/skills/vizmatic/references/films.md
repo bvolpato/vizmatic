@@ -59,7 +59,7 @@ s.play(morphMatching(eq0, eq1), seq(fadeOut(oldNote), fadeIn(newNote)), { durati
 
 ## Sound and captions
 
-`--audio narration.wav` adds a sound track. It is padded or trimmed to the film's length, so a film that ends early cuts off the voice. Hold to the end with `s.wait(Math.max(0, voiceLength - s.time))`. `s.caption(text, seconds)` adds a caption and draws nothing into the picture.
+`--audio narration.wav` adds a sound track. It is padded or trimmed to the film's length, so a film that ends early cuts off the voice. Hold to the end with `s.wait(Math.max(0, voiceLength - s.time))`. `s.caption(text, seconds)` adds a caption and draws nothing into the picture. Compilation sorts cues by start time and ends each cue at the next start if they overlap. The last cue declared at the same start wins. Browser playback and VTT export use this same timeline, so older cues do not resume after replacement. Give each sentence enough reading time before introducing the next cue.
 
 An MP4 carries the film's title, its chapters as markers on the player's timeline, and its captions as a track that the viewer can switch on. The same captions are also written as a WebVTT file beside the video. No second pass with FFmpeg is needed.
 
@@ -74,12 +74,12 @@ For a film that follows a recorded voice, use `narrated({ title, timing, scenes 
 | Film | What to learn from it |
 |---|---|
 | `flash-attention.ts` | Stream tiles through `segmentedBar` memory hierarchies (`blueprint` look), sweep a `heatmap` window, and assert online softmax equality. |
-| `io-uring.ts` | Contrast `boundary` kernel traps against shared-memory `ringBuffer` queues and `connector.send` DMA packets. |
+| `io-uring.ts` | Contrast kernel entries against shared userspace/kernel `ringBuffer` queues, with the kernel between the app and the device. |
 | `svd-3d.ts` | Compose `scene3d`, `parametricSurface`, `axes3d`, and `vector3d` with `tex` and `matrix` on the `chalk` look. |
 | `rag-citations.ts` | Wire retrieved `passage` spans to draft clauses on the `paper` look, snap unsupported citation links with `break()`, and audit claims in a `table`. |
 | `ring-allreduce.ts` | Drive an 8-GPU `graph` ring and lockstep `segmentedBar` channels on the `neon` look, and verify shard sums with `assertEqual`. |
-| `attention.ts` | Compute every number on screen from small real inputs (`tokens`, `attentionMatrix`, `barChart`, `morphMatching`). |
-| `cache-miss.ts` | Run a discrete-event queueing model (`infoBox`, `connector`, `requestQueue`, `lanes`) on the `blueprint` look. |
+| `attention.ts` | Compute attention from illustrative inputs and keep the matrix and bars on the same distribution (`tokens`, `attentionMatrix`, `barChart`, `morphMatching`). |
+| `cache-miss.ts` | Explain an aggregate queueing model (`infoBox`, `connector`, `requestQueue`, `lanes`) on the `blueprint` look, with the coalescing scope stated explicitly. |
 | `beam-search.ts` | Grow a search `tree`, keep a beam of two, and compare cumulative log probabilities against greedy decoding. |
 | `paxos.ts` | Play a protocol through a schedule of delays and losses, and send each message of the trace along a `connector` with `send`. |
 | `gradient-descent.ts` | Drive motion from real iterates, and compare two runs. |

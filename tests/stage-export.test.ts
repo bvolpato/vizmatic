@@ -293,6 +293,36 @@ describe('film export', () => {
         }))
         expect(captionsToVtt(compiled)).toBe('WEBVTT\n\n00:00.000 --> 00:01.500\nHello there\n')
     })
+
+    it('replaces overlapping captions without resuming the older cue in exports', async () => {
+        const compiled = await compileFilm(film((s) => {
+            s.caption('First', 5)
+            s.wait(2)
+            s.caption('Second', 1)
+            s.wait(4)
+        }))
+        expect(compiled.captions).toEqual([
+            { t0: 0, t1: 2, text: 'First' },
+            { t0: 2, t1: 3, text: 'Second' },
+        ])
+        expect(captionsToVtt(compiled)).toBe('WEBVTT\n\n00:00.000 --> 00:02.000\nFirst\n\n00:02.000 --> 00:03.000\nSecond\n')
+        expect(compiled.captions.some(cue => cue.t0 <= 4 && 4 < cue.t1)).toBe(false)
+    })
+
+    it('orders scheduled captions and keeps the last cue at the same start time', async () => {
+        const compiled = await compileFilm(film((s) => {
+            s.at(4, () => s.caption('Last', 1))
+            s.at(0, () => s.caption('Superseded', 6))
+            s.at(0, () => s.caption('Opening', 3))
+            s.at(2, () => s.caption('Middle', 1))
+            s.wait(6)
+        }))
+        expect(compiled.captions).toEqual([
+            { t0: 0, t1: 2, text: 'Opening' },
+            { t0: 2, t1: 3, text: 'Middle' },
+            { t0: 4, t1: 5, text: 'Last' },
+        ])
+    })
 })
 
 describe('film check', () => {

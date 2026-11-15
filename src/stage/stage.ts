@@ -262,7 +262,7 @@ export class Stage {
         return this
     }
 
-    /** Show a caption for a span of time. Captions also export as a VTT sidecar. */
+    /** Show a caption until its duration ends or the next caption starts. Also exports as VTT. */
     caption(text: string, duration = 3): this {
         this.claim()
         this.captions.push({ t0: this.time, t1: this.time + duration, text })
@@ -394,7 +394,11 @@ export class CompiledFilm {
         this.bleed = options.bleed === true
         this.chapters = stage.chapters
         this.clips = stage.clips
-        this.captions = stage.captions
+        const captions = [...stage.captions].sort((a, b) => a.t0 - b.t0)
+        this.captions = captions.map((cue, index) => ({
+            ...cue,
+            t1: Math.min(cue.t1, captions[index + 1]?.t0 ?? this.duration),
+        })).filter(cue => cue.t1 > cue.t0)
     }
 
     get frameCount(): number {
