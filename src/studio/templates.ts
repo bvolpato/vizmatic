@@ -233,13 +233,13 @@ function pipelineTrace(): StudioProject {
                 parts: 'System: 1800: blue\nHistory: 6400: teal\nTools: 2200: yellow',
                 barWidth: 1320, capacity: 16000, title: 'Context window (16k)', free: 'headroom', size: 24,
             }, { name: 'Context budget' }),
-            object('schedule', 'pipeline', -280, 110, {
-                tracks: 'Router, Worker A, Worker B',
-                tasks: 'Router: Parse 0..14: blue\nWorker A: Retrieve 14..52: teal\nWorker B: Policy 14..38: gold\nRouter: Merge 52..74: green',
-                pipeWidth: 820, size: 24,
+            object('schedule', 'lanes', -280, 110, {
+                actors: 'Router, Worker A, Worker B',
+                events: 'Router 0..14: Parse\nWorker A 14..52: Retrieve\nWorker B 14..38: Policy\nRouter 52..74: Merge',
+                laneWidth: 820, size: 24,
             }, { name: 'Execution schedule' }),
             object('audit', 'eventLog', 540, 110, {
-                entries: 'req_01 | Parse | schema ok | pass\nreq_02 | Policy | rate check | pass\nreq_03 | Retrieve | cache hit | pass\nreq_04 | Merge | 74 ms total | pass',
+                rows: 'req_01 | Parse | schema ok | answered\nreq_02 | Policy | rate check | answered\nreq_03 | Retrieve | cache hit | answered\nreq_04 | Merge | 74 ms total | answered',
                 logWidth: 580, title: 'Trace log', size: 20,
             }, { name: 'Trace log' }),
         ],
@@ -247,6 +247,7 @@ function pipelineTrace(): StudioProject {
             beat('title', 'write', 0, 1.2),
             beat('budget', 'enter', 0.8, 1.3),
             beat('schedule', 'enter', 1.8, 1.5),
+            beat('schedule', 'showAll', 3.3, 2.5, {}, 'linear'),
             beat('audit', 'enter', 2.8, 1.4),
             beat('budget', 'indicate', 4.5, 0.9, { color: 'yellow', amount: 1.03 }),
         ],
@@ -261,10 +262,10 @@ function orbit3d(): StudioProject {
         hold: 1.2,
         objects: [
             object('title', 'text', 0, -445, { content: 'One trajectory in three dimensions', font: 'text-serif', size: 66 }),
-            object('core', 'sphere3d', -280, 40, { radius: 1.45, color: 'blue', opacity: 0.88, phi: 58, theta: -42, scale: 96, axes: true }, { name: 'Sphere' }),
+            object('core', 'sphere3d', -280, 40, { radius: 1.45, colorA: 'blue', colorB: 'blue', colorC: 'blue', phi: 58, theta: -42, unit: 96, axes: true }, { name: 'Sphere', opacity: 0.88 }),
             object('helix', 'curve3d', 300, 40, {
-                xExpr: '1.6 * cos(t)', yExpr: '1.6 * sin(t)', zExpr: '0.28 * t - 0.9',
-                tMin: 0, tMax: 6.28, color: 'yellow', width: 4, halo: true, phi: 58, theta: -42, scale: 96, axes: true,
+                fx: '1.6 * cos(u)', fy: '1.6 * sin(u)', fz: '0.28 * u - 0.9',
+                uMin: 0, uMax: 6.28, color: 'yellow', width: 4, halo: true, phi: 58, theta: -42, unit: 96, axes: true,
             }, { name: 'Helix' }),
         ],
         beats: [
@@ -282,7 +283,7 @@ export const TEMPLATES: readonly Template[] = [
     { id: 'explainer', title: 'Explainer', description: 'A curve, a formula, and a value that drives both.', thumb: 11.6, project: explainer },
     { id: 'equation', title: 'Equation story', description: 'Symbols travel from step to step.', thumb: 8.8, project: equationStory },
     { id: 'architecture', title: 'Architecture walkthrough', description: 'Dense system nodes draw in, then one request travels through.', thumb: 7.3, project: architecture },
-    { id: 'pipeline', title: 'Pipeline & context budget', description: 'A context window bar, parallel worker lanes, and a live trace log.', thumb: 4.8, project: pipelineTrace },
+    { id: 'pipeline', title: 'Pipeline & context budget', description: 'A context window bar, parallel worker lanes, and a live trace log.', thumb: 6, project: pipelineTrace },
     { id: 'chart', title: 'Chart reveal', description: 'Bars rise one at a time, on paper.', thumb: 5.6, project: chartReveal },
     { id: 'orbit3d', title: '3D sphere & helix', description: 'Sculpted 3D sphere and haloed parametric curve orbiting together.', thumb: 4.6, project: orbit3d },
     { id: 'deck', title: 'Slide deck', description: 'Chapters for presenting, one arrow key at a time.', thumb: 5.8, project: slideDeck },

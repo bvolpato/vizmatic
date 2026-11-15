@@ -39,6 +39,8 @@ export interface BuildContext {
 
 export interface CodeContext {
     name: string
+    /** Reserve a helper identifier in the generated film's scope. */
+    identifier: (suffix: string) => string
     variables: readonly string[]
     /** JavaScript identifier for a project variable. */
     variableName: (variable: string) => string
@@ -408,7 +410,7 @@ const graphKind: KindDef = {
             const expr = parseExpr(String(p['expr']), ['x', ...ctx.variables])
             const body = expr.js((name) => name === 'x' ? 'x' : ctx.variables.includes(name) ? `${ctx.variableName(name)}.value` : name)
             const style = options([['stroke', p['stroke'] as string], ['width', p['width'] as number], ['glow', p['glow'] as number, 0]])
-            const curve = `${ctx.name}Curve`
+            const curve = ctx.identifier('Curve')
             setup.push(`const ${curve} = ${ctx.name}.plot((x) => ${body}, ${style})`)
             if (expr.variables.size > (expr.variables.has('x') ? 1 : 0)) {
                 after.push(`s.update(${curve}, (node) => node.set('path', ${ctx.name}.plotPath((x) => ${body})))`)
@@ -1448,10 +1450,11 @@ const connectorKind: KindDef = {
             ['dash', p['dashed'] ? [8, 6] : undefined],
             ['both', p['both'] ? true : undefined],
         ])
+        const from = ctx.identifier('From'), to = ctx.identifier('To')
         const setup = [
-            `const ${ctx.name}From = rect(1, 1, { stroke: null }).at(${num(-hx)}, ${num(-hy)})`,
-            `const ${ctx.name}To = rect(1, 1, { stroke: null }).at(${num(hx)}, ${num(hy)})`,
-            `const ${ctx.name} = group(${ctx.name}From, ${ctx.name}To, ${call('connector', `${ctx.name}From`, `${ctx.name}To`, wireOpts)})`,
+            `const ${from} = rect(1, 1, { stroke: null }).at(${num(-hx)}, ${num(-hy)})`,
+            `const ${to} = rect(1, 1, { stroke: null }).at(${num(hx)}, ${num(hy)})`,
+            `const ${ctx.name} = group(${from}, ${to}, ${call('connector', from, to, wireOpts)})`,
         ]
         return { setup, expr: ctx.name }
     },

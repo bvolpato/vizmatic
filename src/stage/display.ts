@@ -12,6 +12,8 @@ const clockNow = () => clock.now
 
 export interface PathOp {
     readonly kind: 'path'
+    /** Intersecting clip paths in frame coordinates. */
+    readonly clips?: readonly Path[]
     readonly path: Path
     /** Stroke geometry when it differs from the fill, such as during a partial draw. */
     readonly strokePath: Path
@@ -33,6 +35,8 @@ export interface PathOp {
 
 export interface ImageOp {
     readonly kind: 'image'
+    /** Intersecting clip paths in frame coordinates. */
+    readonly clips?: readonly Path[]
     readonly image: StageImage
     readonly matrix: Mat
     readonly alpha: number
@@ -224,7 +228,6 @@ function walk(node: Node, parent: Mat, alpha: number, dim: number, inheritedBlen
         }
     }
     const children = node.children
-    if (children.length === 0) return
     let sorted = false
     for (let i = 0; i < children.length; i++) {
         if (children[i]!.get('z') !== 0) {
@@ -235,6 +238,13 @@ function walk(node: Node, parent: Mat, alpha: number, dim: number, inheritedBlen
     const ordered = sorted ? children.map((child, index) => ({ child, index, z: child.get('z') }))
         .sort((a, b) => a.z - b.z || a.index - b.index).map((entry) => entry.child) : children
     for (const child of ordered) walk(child, m, opacity, least, blend, pass)
+    if (node.clipPath) {
+        const clip = transformPath(node.clipPath, m)
+        for (let i = first; i < ops.length; i++) {
+            const op = ops[i]!
+            ops[i] = { ...op, clips: [clip, ...(op.clips ?? [])] }
+        }
+    }
 }
 
 /**
@@ -324,6 +334,8 @@ export function frameToSvg(frame: Frame, options: { scale?: number; transparent?
     const defs: string[] = []
     const body: string[] = []
     let gradientCount = 0, dimCount = 0
+    const clipIds = new Map<Path, string>()
+    let closeClips = ''
     const paintAttr = (paint: Paint, attr: 'fill' | 'stroke', alpha: number): string => {
         if (isGradient(paint)) {
             const id = `g${gradientCount++}`
@@ -336,6 +348,18 @@ export function frameToSvg(frame: Frame, options: { scale?: number; transparent?
     }
     if (frame.background && !options.transparent) body.push(`<rect width="${w}" height="${h}" fill="${frame.background}"/>`)
     for (const op of frame.ops) {
+        if (closeClips) body.push(closeClips)
+        closeClips = ''
+        for (const clip of op.clips ?? []) {
+            let id = clipIds.get(clip)
+            if (!id) {
+                id = `c${clipIds.size}`
+                clipIds.set(clip, id)
+                defs.push(`<clipPath id="${id}" clipPathUnits="userSpaceOnUse"><path d="${pathData(clip)}"/></clipPath>`)
+            }
+            body.push(`<g clip-path="url(#${id})">`)
+            closeClips += '</g>'
+        }
         if (op.kind === 'image') {
             const m = op.matrix
             const { image } = op, crop = image.crop
@@ -378,6 +402,7 @@ export function frameToSvg(frame: Frame, options: { scale?: number; transparent?
             body.push(`<path d="${pathData(op.strokePath)}" fill="none" ${paintAttr(op.stroke, 'stroke', op.strokeAlpha)} stroke-width="${fmt(op.strokeWidth)}"${strokeAttrs(op)}${style}/>`)
         }
     }
+    if (closeClips) body.push(closeClips)
     const defsBlock = defs.length ? `<defs>${defs.join('')}</defs>` : ''
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${w * scale}" height="${h * scale}" viewBox="0 0 ${w} ${h}">${defsBlock}${body.join('')}</svg>`
 }
@@ -461,55 +486,64 @@ export function paintFrame(ctx: Canvas2D, frame: Frame, scale = 1, images?: Imag
         ctx.fillRect(0, 0, frame.width, frame.height)
     }
     for (const op of frame.ops) {
-        if (op.kind === 'image') {
-            const source = images?.(op.image) ?? browserImageSource(op.image.asset)
-            if (!source) throw new ImageAssetError('Image pixels are unavailable. Await image preparation and provide an ImageLookup outside the browser.')
-            const m = op.matrix
+        const clipped = !!op.clips?.length
+        if (clipped) {
             ctx.save()
-            ctx.transform(m[0], m[1], m[2], m[3], m[4], m[5])
-            ctx.globalAlpha = op.alpha
-            ctx.globalCompositeOperation = BLEND[op.blend ?? 'normal']
-            const crop = op.image.crop
-            if (op.dim !== undefined && op.dim < 1 && op.backdrop) ctx.drawImage(dimCopy(source, op.image, op.dim, op.backdrop), 0, 0, op.image.width, op.image.height)
-            else if (crop) ctx.drawImage(source, crop.x, crop.y, crop.width, crop.height, 0, 0, op.image.width, op.image.height)
-            else ctx.drawImage(source, 0, 0, op.image.width, op.image.height)
-            ctx.restore()
-            continue
+            for (const clip of op.clips!) ctx.clip(ringsToPath2D(clip))
         }
-        ctx.globalCompositeOperation = BLEND[op.blend]
-        if (op.glow > 0) {
-            const color = glowOf(op)
-            if (color) {
-                const base = Math.max(op.fillAlpha, op.strokeAlpha) * (frame.dark ? 1 : 0.22)
-                const previous = ctx.globalCompositeOperation
-                if (frame.dark) ctx.globalCompositeOperation = 'screen'
-                ctx.strokeStyle = css([color[0], color[1], color[2], 1])
-                ctx.lineCap = 'round'
-                ctx.lineJoin = 'round'
-                ctx.setLineDash([])
-                const glowPath = ringsToPath2D(op.strokePath.length ? op.strokePath : op.path)
-                for (const pass of glowPasses(op.glow, op.stroke ? op.strokeWidth : 0)) {
-                    ctx.globalAlpha = pass.alpha * base
-                    ctx.lineWidth = pass.width
-                    ctx.stroke(glowPath)
-                }
-                ctx.globalCompositeOperation = previous
+        try {
+            if (op.kind === 'image') {
+                const source = images?.(op.image) ?? browserImageSource(op.image.asset)
+                if (!source) throw new ImageAssetError('Image pixels are unavailable. Await image preparation and provide an ImageLookup outside the browser.')
+                const m = op.matrix
+                ctx.save()
+                ctx.transform(m[0], m[1], m[2], m[3], m[4], m[5])
+                ctx.globalAlpha = op.alpha
+                ctx.globalCompositeOperation = BLEND[op.blend ?? 'normal']
+                const crop = op.image.crop
+                if (op.dim !== undefined && op.dim < 1 && op.backdrop) ctx.drawImage(dimCopy(source, op.image, op.dim, op.backdrop), 0, 0, op.image.width, op.image.height)
+                else if (crop) ctx.drawImage(source, crop.x, crop.y, crop.width, crop.height, 0, 0, op.image.width, op.image.height)
+                else ctx.drawImage(source, 0, 0, op.image.width, op.image.height)
+                ctx.restore()
+                continue
             }
-        }
-        if (op.fill) {
-            ctx.globalAlpha = op.fillAlpha
-            ctx.fillStyle = canvasPaint(ctx, op.fill)
-            ctx.fill(ringsToPath2D(op.path))
-        }
-        if (op.stroke && op.strokePath.length) {
-            ctx.globalAlpha = op.strokeAlpha
-            ctx.strokeStyle = canvasPaint(ctx, op.stroke)
-            ctx.lineWidth = op.strokeWidth
-            ctx.lineCap = op.cap
-            ctx.lineJoin = op.join
-            ctx.setLineDash(op.dash ? [...op.dash] : [])
-            ctx.lineDashOffset = op.dashOffset
-            ctx.stroke(ringsToPath2D(op.strokePath))
+            ctx.globalCompositeOperation = BLEND[op.blend]
+            if (op.glow > 0) {
+                const color = glowOf(op)
+                if (color) {
+                    const base = Math.max(op.fillAlpha, op.strokeAlpha) * (frame.dark ? 1 : 0.22)
+                    const previous = ctx.globalCompositeOperation
+                    if (frame.dark) ctx.globalCompositeOperation = 'screen'
+                    ctx.strokeStyle = css([color[0], color[1], color[2], 1])
+                    ctx.lineCap = 'round'
+                    ctx.lineJoin = 'round'
+                    ctx.setLineDash([])
+                    const glowPath = ringsToPath2D(op.strokePath.length ? op.strokePath : op.path)
+                    for (const pass of glowPasses(op.glow, op.stroke ? op.strokeWidth : 0)) {
+                        ctx.globalAlpha = pass.alpha * base
+                        ctx.lineWidth = pass.width
+                        ctx.stroke(glowPath)
+                    }
+                    ctx.globalCompositeOperation = previous
+                }
+            }
+            if (op.fill) {
+                ctx.globalAlpha = op.fillAlpha
+                ctx.fillStyle = canvasPaint(ctx, op.fill)
+                ctx.fill(ringsToPath2D(op.path))
+            }
+            if (op.stroke && op.strokePath.length) {
+                ctx.globalAlpha = op.strokeAlpha
+                ctx.strokeStyle = canvasPaint(ctx, op.stroke)
+                ctx.lineWidth = op.strokeWidth
+                ctx.lineCap = op.cap
+                ctx.lineJoin = op.join
+                ctx.setLineDash(op.dash ? [...op.dash] : [])
+                ctx.lineDashOffset = op.dashOffset
+                ctx.stroke(ringsToPath2D(op.strokePath))
+            }
+        } finally {
+            if (clipped) ctx.restore()
         }
     }
     ctx.globalAlpha = 1
@@ -524,7 +558,16 @@ export function frameInkBounds(frame: Frame): { x: number; y: number; width: num
         const b = op.kind === 'image' ? imageOpBounds(op) : pathBounds(op.path)
         if (!b) continue
         const pad = op.kind === 'path' && op.stroke ? op.strokeWidth / 2 : 0
-        const next = { x: b.x - pad, y: b.y - pad, width: b.width + pad * 2, height: b.height + pad * 2 }
+        let next = { x: b.x - pad, y: b.y - pad, width: b.width + pad * 2, height: b.height + pad * 2 }
+        for (const clip of op.clips ?? []) {
+            const box = pathBounds(clip)
+            if (!box) { next.width = next.height = 0; break }
+            const x = Math.max(next.x, box.x), y = Math.max(next.y, box.y)
+            const right = Math.min(next.x + next.width, box.x + box.width)
+            const bottom = Math.min(next.y + next.height, box.y + box.height)
+            next = { x, y, width: Math.max(0, right - x), height: Math.max(0, bottom - y) }
+        }
+        if ((op.clips?.length ?? 0) > 0 && (next.width === 0 || next.height === 0)) continue
         if (!result) result = next
         else {
             const x = Math.min(result.x, next.x), y = Math.min(result.y, next.y)

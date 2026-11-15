@@ -6,7 +6,7 @@ import {
     along, appear, applyMatrix, bounce, circumscribe, draw, easeInExpo, easeInOutCubic, easeInOutQuint, easeInQuad, easeOutCubic,
     easeOutExpo, easeOutQuint, erase, fade, fadeIn, fadeOut, flash, grow, indicate, linear, moveTo, morph, morphMatching, overshoot,
     morphCode, pulse, recolor, ripple, rotate, rushFrom, rushInto, scaleBy, shake, slowInto, smooth, smoother, spring, vanish, write,
-    type Anim, type BarChart, type CodeBlock, type Ease, type NeuralNet, type Node, type PieChart, type Scene3D, type Value,
+    type Anim, type BarChart, type CodeBlock, type Ease, type Lanes, type NeuralNet, type Node, type PieChart, type Scene3D, type Value,
 } from '../stage/index'
 import { KINDS, num, options, parseLabeled, parseNumbers, str, type Field } from './catalog'
 import type { Beat, ObjectProps } from './model'
@@ -155,6 +155,14 @@ const enter_: BeatDef = {
         return typeof staged.enter === 'function' ? staged.enter() : fadeIn(node)
     },
     code: (_, { name }) => `${name}.enter()`,
+}
+
+const showAll_: BeatDef = {
+    kind: 'showAll', label: 'Trace events', group: 'Change', eases: true, duration: 4, params: {}, fields: [],
+    hint: 'Moves the timeline cursor through every event',
+    only: (kind) => kind === 'lanes',
+    build: (_, { node }) => (node as Lanes).showAll(),
+    code: (_, { name }) => `${name}.showAll()`,
 }
 
 const fadeOut_: BeatDef = {
@@ -420,7 +428,7 @@ export const BEATS: Readonly<Record<string, BeatDef>> = Object.freeze({
     enter: enter_, write: write_, draw: draw_, fadeIn: fadeIn_, grow: grow_, appear: appear_,
     fadeOut: fadeOut_, erase: erase_, vanish: vanish_,
     move: move_, scale: scale_, rotate: rotate_, recolor: recolor_, fade: fadeTo_, morph: morph_, along: along_, applyMatrix: matrix_,
-    update: updateData_, orbit: orbit_,
+    update: updateData_, orbit: orbit_, showAll: showAll_,
     indicate: indicate_, circumscribe: circumscribe_, flash: flash_, ripple: ripple_, pulse: pulse_, shake: shake_, forward: forward_, focus: focus_,
     value: value_,
 })

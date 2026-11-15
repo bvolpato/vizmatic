@@ -22,16 +22,20 @@ const RESERVED = new Set([
     ...IMPORTABLE,
 ])
 
+function reserveIdentifier(base: string, taken: Set<string>): string {
+    let name = base
+    for (let n = 2; taken.has(name) || RESERVED.has(name); n++) name = `${base}${n}`
+    taken.add(name)
+    return name
+}
+
 /** A readable, unique camelCase name for each object. */
 function identifiers(values: readonly string[], fallback: string, taken: Set<string>): string[] {
     return values.map((value) => {
         const words = value.replace(/[^A-Za-z0-9]+/g, ' ').trim().split(' ').filter(Boolean).slice(0, 4)
         let base = words.map((word, i) => i === 0 ? word.toLowerCase() : word[0]!.toUpperCase() + word.slice(1).toLowerCase()).join('') || fallback
         if (/^[0-9]/.test(base)) base = `${fallback}${base}`
-        let name = base
-        for (let n = 2; taken.has(name) || RESERVED.has(name); n++) name = `${base}${n}`
-        taken.add(name)
-        return name
+        return reserveIdentifier(base, taken)
     })
 }
 
@@ -64,7 +68,12 @@ export function projectToSource(project: StudioProject): string {
         out()
     }
     if (visible.length) out('// Objects, back to front')
-    const context = (name: string): CodeContext => ({ name, variables: project.variables.map((variable) => variable.name), variableName })
+    const context = (name: string): CodeContext => ({
+        name,
+        identifier: (suffix) => reserveIdentifier(`${name}${suffix}`, taken),
+        variables: project.variables.map((variable) => variable.name),
+        variableName,
+    })
     for (const object of visible) {
         const name = names.get(object.id)!
         let code: CodeResult

@@ -1,4 +1,4 @@
-import { apply, compose, IDENTITY, matScale, mul, parseSvgPath, pathBounds, pointAt, rectPath, arcPath, polyPath, tangentAt, transformPath, type Mat, type Path, type Ring } from './geometry'
+import { apply, compose, IDENTITY, invert, matScale, mul, parseSvgPath, pathBounds, pointAt, rectPath, arcPath, polyPath, tangentAt, transformPath, type Mat, type Path, type Ring } from './geometry'
 import { Node, type StageImage } from './node'
 import { parseColor, radialGradient, type Paint, type Rgba } from './color'
 import { filmFont, text, type TextOptions } from './text'
@@ -557,7 +557,7 @@ function parseSvgInternal(source: string, options: FromSvgOptions, budget: SvgPa
         const decodeSvgToken = (token: string): string => (
             token === 'empty'
                 ? ''
-                : token.replace(/_u([0-9a-f]+)_/gi, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16)))
+                : token.replace(/_u([0-9a-f]+)_/gi, (_, hex: string) => safeCodePoint(parseInt(hex, 16)))
         )
         const GRAPH_NODE_ID = /^vizmatic-graph-(?:index-\d+|id-.+?)-node-(.+)$/
         const GRAPH_ANY_ID = /^vizmatic-graph-(?:index-\d+|id-.+?)-(?:node|edge)-(.+)$/
@@ -670,14 +670,24 @@ function parseSvgInternal(source: string, options: FromSvgOptions, budget: SvgPa
                     font: options.font,
                 }, subBudget)
                 budget.nodes = subBudget.nodes
-                const sx = inner.pictureWidth > 0 ? width / inner.pictureWidth : 1
-                const sy = inner.pictureHeight > 0 ? height / inner.pictureHeight : 1
-                const embedMat = mul(m, [sx, 0, 0, sy, ix + width / 2, iy + height / 2])
+                let sx = inner.pictureWidth > 0 ? width / inner.pictureWidth : 1
+                let sy = inner.pictureHeight > 0 ? height / inner.pictureHeight : 1
+                const [alignment = 'xMidYMid', fit = 'meet'] = (element.attrs['preserveAspectRatio'] ?? '').trim().replace(/^defer\s+/, '').split(/\s+/).filter(Boolean)
+                let offsetX = width / 2, offsetY = height / 2
+                if (alignment !== 'none') {
+                    sx = sy = fit === 'slice' ? Math.max(sx, sy) : Math.min(sx, sy)
+                    const align = /^x(Min|Mid|Max)Y(Min|Mid|Max)$/.exec(alignment)
+                    const fraction = (value: string | undefined) => value === 'Min' ? 0 : value === 'Max' ? 1 : 0.5
+                    offsetX = inner.pictureWidth * sx / 2 + (width - inner.pictureWidth * sx) * fraction(align?.[1])
+                    offsetY = inner.pictureHeight * sy / 2 + (height - inner.pictureHeight * sy) * fraction(align?.[2])
+                }
+                const embedMat = mul(m, [sx, 0, 0, sy, ix + offsetX, iy + offsetY])
                 const holder = new Node().at(embedMat[4], embedMat[5])
                 const rot = Math.atan2(embedMat[1], embedMat[0])
                 holder.base.rotation = rot
                 holder.base.sx = Math.hypot(embedMat[0], embedMat[1])
                 holder.base.sy = Math.hypot(embedMat[2], embedMat[3]) * (embedMat[0] * embedMat[3] - embedMat[1] * embedMat[2] < 0 ? -1 : 1)
+                holder.clipPath = transformPath(rectPath(ix, iy, width, height), mul(invert(holder.localMatrix()), m))
                 holder.data['svgEmbed'] = true
                 if (opacity < 1) holder.base.opacity = opacity
                 for (const child of inner.children) {

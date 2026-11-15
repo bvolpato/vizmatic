@@ -1,4 +1,5 @@
 import { createElement } from 'react'
+import { Resvg } from '@resvg/resvg-js'
 import { describe, expect, it, vi } from 'vitest'
 import {
     GraphDiagram,
@@ -26,9 +27,11 @@ import {
     entropy,
     film,
     focusOn,
+    frameInkBounds,
     frameToSvg,
     fromSvg,
     gaussian,
+    group,
     lerpArray,
     line,
     multiplyMatrices,
@@ -209,6 +212,20 @@ describe('camera choreography verbs: focusOn and resetCamera', () => {
 })
 
 describe('3D engine upgrades: Scene3D.bounds, sculptural two-light shading, and occlusion halos', () => {
+    it('measures projected geometry through transformed parent groups', () => {
+        const view = scene3d({ unit: 100 })
+        view.add(sphere(1, { mesh: false }))
+        const parent = group(group(view).at(40, -30)).at(200, 100).scale(1.5).rotate(0.3)
+        expect(view.bounds().width).toBeGreaterThan(200)
+        expect(parent.bounds()).toEqual(view.bounds())
+        const region = new Box(-700, -200, -200, 200)
+        place(parent, region)
+        expect(boxOf(parent).cx).toBeCloseTo(region.cx, 5)
+        expect(boxOf(parent).cy).toBeCloseTo(region.cy, 5)
+        view.hide()
+        expect(parent.bounds()).toEqual({ x: 0, y: 0, width: 0, height: 0 })
+    })
+
     it('projects 2D bounds for Scene3D so boxOf, place, and beside position 3D views accurately', async () => {
         await compileFilm(film((s) => {
             const left3d = scene3d({ unit: 80 })
@@ -344,6 +361,65 @@ describe('teaching runtime exports, stage math helpers, and connector obstacle r
 })
 
 describe('fromSvg and fromComponent markers, radial gradients, and data-* node lookup', () => {
+    it.each([
+        ['horizontal', 'x1="10" y1="50" x2="90" y2="50"', { x: -40, y: 0, width: 80, height: 0 }, { x: 9, y: 49, width: 82, height: 2 }],
+        ['vertical', 'x1="50" y1="10" x2="50" y2="90"', { x: 0, y: -40, width: 0, height: 80 }, { x: 49, y: 9, width: 2, height: 82 }],
+        ['disjoint', 'x1="10" y1="150" x2="90" y2="150"', { x: 0, y: 0, width: 0, height: 0 }, null],
+    ] as const)('measures %s embedded line bounds and stroke ink after clipping', async (_, attributes, bounds, ink) => {
+        const inner = `<svg width="100" height="100"><line ${attributes} stroke="#ff0000" stroke-width="2"/></svg>`
+        const uri = `data:image/svg+xml;base64,${Buffer.from(inner).toString('base64')}`
+        const imported = fromSvg(`<svg width="100" height="100"><image width="100" height="100" href="${uri}"/></svg>`)
+        expect(imported.bounds()).toEqual(bounds)
+        const compiled = await compileFilm(film({ width: 100, height: 100, bloom: 0 }, (s) => {
+            s.add(imported)
+            s.wait(1)
+        }))
+        expect(frameInkBounds(compiled.frame(0))).toEqual(ink)
+    })
+
+    it('clips embedded slice images to their viewport without clipping following marks', async () => {
+        const inner = '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="#ff0000"/></svg>'
+        const uri = `data:image/svg+xml;base64,${Buffer.from(inner).toString('base64')}`
+        const source = `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="140"><image x="20" y="20" width="200" height="100" preserveAspectRatio="xMidYMid slice" href="${uri}"/><rect x="5" y="5" width="10" height="10" fill="#00ff00"/></svg>`
+        const compiled = await compileFilm(film({ width: 240, height: 140, bloom: 0 }, (s) => {
+            s.add(fromSvg(source))
+            s.wait(1)
+        }))
+        const actual = new Resvg(frameToSvg(compiled.frame(0), { transparent: true })).render().pixels
+        const expected = new Resvg(source).render().pixels
+        const at = (pixels: Uint8Array, x: number, y: number) => [...pixels.slice((y * 240 + x) * 4, (y * 240 + x) * 4 + 4)]
+        for (const [x, y] of [[120, 5], [120, 25], [120, 115], [120, 125], [10, 10], [230, 70]]) {
+            expect(at(actual, x!, y!)).toEqual(at(expected, x!, y!))
+        }
+        expect(at(actual, 120, 25)).toEqual([255, 0, 0, 255])
+    })
+
+    it('keeps invalid encoded graph IDs importable while decoding valid aliases', () => {
+        const invalid = 'vizmatic-graph-index-0-node-_u110000_'
+        const imported = fromSvg(`<svg width="100" height="100">
+            <rect id="${invalid}" x="10" y="10" width="20" height="20" fill="red"/>
+            <rect id="vizmatic-graph-index-0-node-_u1f600_" x="40" y="10" width="20" height="20" fill="blue"/>
+        </svg>`)
+        expect(imported.find(invalid).bounds().width).toBe(20)
+        expect(imported.find('😀').bounds().width).toBe(20)
+    })
+
+    it.each([
+        ['', 60, 80],
+        ['xMinYMin meet', 10, 80],
+        ['xMaxYMax meet', 110, 80],
+        ['none', 20, 160],
+    ])('preserves embedded SVG viewport proportions and alignment: %s', (aspect, x, width) => {
+        const inner = '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><circle id="orb" cx="50" cy="50" r="40" fill="#ff0000"/></svg>'
+        const uri = `data:image/svg+xml;base64,${Buffer.from(inner).toString('base64')}`
+        const imported = fromSvg(`<svg width="200" height="100"><image width="200" height="100" href="${uri}" ${aspect ? `preserveAspectRatio="${aspect}"` : ''}/></svg>`, { center: false })
+        const bounds = imported.find('orb').bounds()
+        expect(bounds.x).toBeCloseTo(x, 5)
+        expect(bounds.y).toBeCloseTo(10, 5)
+        expect(bounds.width).toBeCloseTo(width, 5)
+        expect(bounds.height).toBeCloseTo(80, 5)
+    })
+
     it('emits positioned and tangent-rotated marker arrowheads, radial gradients, and data-* ids', () => {
         const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 120" width="240" height="120">
             <defs>

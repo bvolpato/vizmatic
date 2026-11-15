@@ -13,7 +13,7 @@ import { text, type TextOptions } from '../text'
 import { tex } from '../tex'
 import { solidColor, stepsBetween, tweenValue } from '../objects/util'
 import type { DrawOp, PathOp } from '../display'
-import { pathBounds, type Bounds, type Mat, type Path, type Ring, type Vec } from '../geometry'
+import { mul, pathBounds, type Bounds, type Mat, type Path, type Ring, type Vec } from '../geometry'
 
 export type Vec3 = readonly [number, number, number]
 type Reactive3 = Vec3 | (() => Vec3)
@@ -318,17 +318,17 @@ export class Scene3D extends Node {
         for (let i = 0; i < count; i++) ops.push(view.ops[order[i]!]!)
     }
 
-    override bounds(): Bounds {
-        const base = super.bounds()
+    protected override boundsFrom(parent: Mat): Bounds | null {
+        const base = super.boundsFrom(parent)
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-        if (base.width > 0 || base.height > 0) {
+        if (base && (base.width > 0 || base.height > 0)) {
             minX = base.x
             minY = base.y
             maxX = base.x + base.width
             maxY = base.y + base.height
         }
         const time = clock.now
-        const view = this.view(this.worldMatrix(), 1, time)
+        const view = this.view(mul(parent, this.localMatrix()), 1, time)
         view.measuring = true
         for (const child of this.children) {
             if (child instanceof Object3D && child.get('visible')) child.emit(view, time)
@@ -362,7 +362,7 @@ export class Scene3D extends Node {
                 }
             }
         }
-        if (!Number.isFinite(minX)) return { x: 0, y: 0, width: 0, height: 0 }
+        if (!Number.isFinite(minX)) return base
         return { x: minX, y: minY, width: maxX - minX, height: maxY - minY }
     }
 

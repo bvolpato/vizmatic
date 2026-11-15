@@ -101,6 +101,56 @@ describe('Studio Store notifications, selection pruning, and history limits', ()
 })
 
 describe('Studio codegen for all templates and tricky identifiers', () => {
+    it.each([
+        ['connector', 'Wire From', 'Wire To'],
+        ['graph', 'Wire Curve', 'Wire Curve2'],
+    ])('reserves %s helper names against object and variable names', async (kind, label, variable) => {
+        const project = emptyProject('Connector names')
+        project.variables = [{ name: variable, value: 1 }]
+        project.objects = [
+            { id: 'wire', kind, name: 'Wire' },
+            { id: 'label', kind: 'text', name: label },
+        ].map((object) => ({ ...object, x: 0, y: 0, rotation: 0, scale: 1, opacity: 1, hidden: false, locked: false, props: defaultProps(object.kind) }))
+        const live = await compileProject(project)
+        const exported = await runGeneratedSource(projectToSource(project))
+        expect(frameToSvg(exported.frame(0))).toBe(frameToSvg(live.film.frame(0)))
+    })
+
+    it('builds the authored parallel schedule and request trace in the pipeline template', async () => {
+        const project = TEMPLATES.find((entry) => entry.id === 'pipeline')!.project()
+        const built = await compileProject(project)
+        expect([...built.objectErrors, ...built.beatErrors]).toEqual([])
+        const schedule = built.nodes.get('schedule') as ReturnType<typeof stage.lanes>
+        expect(schedule.domain).toEqual([0, 74])
+        expect(schedule.spans).toHaveLength(4)
+        const finalFrame = built.film.frame(built.film.duration)
+        for (const event of schedule.spans) {
+            expect(finalFrame.ops.some((op) => op.node === event.shape)).toBe(true)
+        }
+        const audit = built.nodes.get('audit') as ReturnType<typeof stage.eventLog>
+        expect(() => audit.row('req_04')).not.toThrow()
+    })
+
+    it('uses the authored sphere opacity, scale, and helix geometry in the 3D template', async () => {
+        const project = TEMPLATES.find((entry) => entry.id === 'orbit3d')!.project()
+        const built = await compileProject(project)
+        const core = built.nodes.get('core') as ReturnType<typeof stage.scene3d>
+        const helix = built.nodes.get('helix') as ReturnType<typeof stage.scene3d>
+        expect(core.unit.value).toBe(96)
+        expect(helix.unit.value).toBe(96)
+        expect(core.base.opacity).toBe(0.88)
+        const curve = helix.children.find((child) => child instanceof stage.Curve3D)!
+        const expected = stage.curve3d((u) => [1.6 * Math.cos(u), 1.6 * Math.sin(u), 0.28 * u - 0.9], 0, 6.28, { color: 'yellow', width: 4, halo: true })
+        const view = new stage.View3D()
+        const reference = new stage.View3D()
+        for (const camera of [view, reference]) {
+            camera.rx = camera.uy = camera.dz = 1
+        }
+        curve.emit(view)
+        expected.emit(reference)
+        expect(view.ops.map((op) => op.path)).toEqual(reference.ops.map((op) => op.path))
+    })
+
     it.each(TEMPLATES.map((t) => [t.id, t] as const))('generates executable TSX matching live frames for template %s', async (_, template) => {
         const project = template.project()
         const live = await compileProject(project)

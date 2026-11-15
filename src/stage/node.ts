@@ -156,6 +156,8 @@ export class Node {
      * square of its grid, so that items of one size line up whatever they draw. `boxOf` reads it.
      */
     layoutBox: readonly [left: number, top: number, right: number, bottom: number] | null = null
+    /** Clip this node and its descendants to a path in this node's coordinates. */
+    clipPath: Path | null = null
     base: NodeProps = Object.create(DEFAULT_PROPS) as NodeProps
     tracks: Map<PropName, Track<unknown>> | null = null
     overlay: Map<string, unknown> | null = null
@@ -347,7 +349,7 @@ export class Node {
         return this.boundsFrom(this.parent ? this.parent.worldMatrix() : IDENTITY) ?? { x: 0, y: 0, width: 0, height: 0 }
     }
 
-    private boundsFrom(parent: Mat): Bounds | null {
+    protected boundsFrom(parent: Mat): Bounds | null {
         const m = mul(parent, this.localMatrix())
         let result: Bounds | null = null
         const path = this.get('path')
@@ -361,6 +363,14 @@ export class Node {
         }
         for (const child of this.children) {
             if (child.get('visible')) result = unionBounds(result, child.boundsFrom(m))
+        }
+        if (this.clipPath && result) {
+            const clip = pathBounds(transformPath(this.clipPath, m))
+            if (!clip) return null
+            const x = Math.max(result.x, clip.x), y = Math.max(result.y, clip.y)
+            const right = Math.min(result.x + result.width, clip.x + clip.width)
+            const bottom = Math.min(result.y + result.height, clip.y + clip.height)
+            return right >= x && bottom >= y ? { x, y, width: right - x, height: bottom - y } : null
         }
         return result
     }
