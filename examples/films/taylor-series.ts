@@ -67,13 +67,13 @@ export default film({
     const xTicks = new Node(), yTicks = new Node()
     // Curves sweep across the whole plot, so each number sits on its own opaque chip above them.
     const tick = (value: number, at: Vec): Node => {
-        const label = tex(String(value), { size: 21, color: 'dim', display: false }).moveTo(at)
+        const label = tex(String(value), { size: 27, color: 'dim', display: false }).moveTo(at)
         const b = label.bounds()
-        const back = rect(b.width + 10, b.height + 8, { fill: 'bg', stroke: null, radius: 3 }).at(b.x + b.width / 2, b.y + b.height / 2)
+        const back = rect(b.width + 26, b.height + 24, { fill: 'bg', stroke: null, radius: 5 }).at(b.x + b.width / 2, b.y + b.height / 2)
         return new Node().add(back, label)
     }
-    for (const x of [-10, -8, -6, -4, -2, 2, 4, 6, 8, 10]) xTicks.add(tick(x, [view(x, 0)[0], view(x, 0)[1] + 26]))
-    for (const y of [-2, 2]) yTicks.add(tick(y, [view(0, y)[0] - 24, view(0, y)[1]]))
+    for (const x of [-10, -8, -6, -4, -2, 2, 4, 6, 8, 10]) xTicks.add(tick(x, [view(x, 0)[0], view(x, 0)[1] + 34]))
+    for (const y of [-2, 2]) yTicks.add(tick(y, [view(0, y)[0] - 34, view(0, y)[1]]))
     xTicks.zIndex(3)
     yTicks.zIndex(3)
 
@@ -109,11 +109,11 @@ export default film({
     }
     const lhs = new Map(orders.map((order) => [order, eqAt(order)]))
 
-    const readLabel = text('Within 0.01 of sine for', { size: 19, color: 'dim', uppercase: true, tracking: 0.08, weight: 600 }).zIndex(5)
-    readLabel.alignTo([880, 0], 'right').alignTo([0, -504], 'top')
+    const readLabel = text('Within 0.01 of sine for', { size: 26, color: 'dim', weight: 600 }).zIndex(5)
+    readLabel.alignTo([880, 0], 'right').alignTo([0, -508], 'top')
     const readValue = dynamic(() => {
-        const node = text(`|x| < ${trust.value.toFixed(2)}`, { font: 'mono', size: 46, color: 'yellow' })
-        node.alignTo([880, 0], 'right').alignTo([0, -474], 'top')
+        const node = text(`|x| < ${trust.value.toFixed(2)}`, { font: 'mono', size: 44, color: 'yellow' })
+        node.alignTo([880, 0], 'right').alignTo([0, -472], 'top')
         return node
     }).zIndex(5)
     const orderValue = dynamic(() => {
@@ -124,7 +124,7 @@ export default film({
 
     const closing = text('The polynomial only ever looked at one point. It learned the whole wave.', { font: 'text-serif', italic: true, size: 44, color: 'ink' }).zIndex(5)
     closing.moveTo([0, 470])
-    const closingPlate = rect(1340, 84, { fill: 'bg', stroke: null, radius: 6 }).at(0, 470).zIndex(4)
+    const closingPlate = rect(1420, 96, { fill: 'bg', stroke: null, radius: 8 }).at(0, 470).zIndex(4)
 
     s.add(plot)
     plot.grid.hide()

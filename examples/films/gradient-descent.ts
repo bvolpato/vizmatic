@@ -240,18 +240,18 @@ export default film({
             const a = project(x, y, z(x, y) + 0.05)
             const b = project(tx, ty, z(tx, ty) + 0.05)
             items.push({ depth: a.depth - 0.4, node: arrow(a.p, b.p, { stroke: 'ink', width: 4, tip: 20 }).opacity(alpha) })
-            const away = tex('-\\nabla f', { size: 34, color: 'ink', display: false })
+            const away = tex('-\\nabla f', { size: 34, color: 'ink', display: false }).opacity(alpha)
             // Sit beside the shaft, on its upper side, so the label covers neither the ball nor the arrow.
             const shaftX = b.p[0] - a.p[0], shaftY = b.p[1] - a.p[1]
             const shaftLength = Math.hypot(shaftX, shaftY) || 1
             const upward = shaftX > 0 ? -1 : 1
             const sideX = (-shaftY / shaftLength) * upward, sideY = (shaftX / shaftLength) * upward
-            away.moveTo([(a.p[0] + b.p[0]) / 2 + sideX * 58, (a.p[1] + b.p[1]) / 2 + sideY * 58])
+            away.moveTo([(a.p[0] + b.p[0]) / 2 + sideX * 72, (a.p[1] + b.p[1]) / 2 + sideY * 72])
             const bb = away.bounds()
             items.push({ depth: a.depth - 0.5, node: new Node().add(
-                rect(bb.width + 14, bb.height + 10, { fill: 'bg', stroke: null, radius: 6 }).at(bb.x + bb.width / 2, bb.y + bb.height / 2).opacity(0.94),
+                rect(bb.width + 28, bb.height + 26, { fill: 'bg', stroke: null, radius: 6 }).at(bb.x + bb.width / 2, bb.y + bb.height / 2),
                 away,
-            ).opacity(alpha) })
+            ) })
         }
         items.sort((p, q) => q.depth - p.depth)
         for (const item of items) out.push(item.node)
@@ -267,38 +267,38 @@ export default film({
         node.zIndex(6)
         return node
     }
-    const label = (content: string, top: number) => place(text(content, { size: 19, color: 'dim', uppercase: true, tracking: 0.08, weight: 600 }), top)
-    const title = place(text('Downhill, one step at a time.', { font: 'text-serif', size: 58, maxWidth: 410, leading: 1.08 }), -490)
-    const rule1 = place(tex('\\theta_{t+1} = \\theta_t - \\eta \\, \\nabla f(\\theta_t)', { size: 36 }), -340)
-    const etaNote = place(text(`Step size eta = ${ETA}. Each step moves against the local slope, and nothing else.`, { size: 22, color: 'dim', maxWidth: 400, leading: 1.4 }), -280)
+    const label = (content: string, top: number) => place(text(content, { size: 26, color: 'dim', weight: 600 }), top)
+    const title = place(text('Downhill, one step at a time.', { font: 'text-serif', size: 52, maxWidth: 420, leading: 1.08 }), -496)
+    const rule1 = place(tex('\\theta_{t+1} = \\theta_t - \\eta \\, \\nabla f(\\theta_t)', { size: 36 }), -356)
+    const etaNote = place(text(`Step size η = ${ETA}. Each step moves against the local slope, and nothing else.`, { size: 26, color: 'dim', maxWidth: 420, leading: 1.34 }), -296)
 
-    const stepLabel = label('Step', -176)
-    const stepRead = dynamic(() => place(text(String(Math.floor(Math.max(stepA.value, stepB.value))).padStart(3, ' '), { font: 'mono', size: 56, color: 'ink' }), -150)).zIndex(6)
+    const stepLabel = label('Step', -172)
+    const stepRead = dynamic(() => place(text(String(Math.floor(Math.max(stepA.value, stepB.value))).padStart(3, ' '), { font: 'mono', size: 52, color: 'ink' }), -138)).zIndex(6)
 
     const lossLabelA = label('Loss, start A', -66)
     const lossReadA = dynamic(() => {
         const [x, y] = pathA[Math.min(STEPS, Math.floor(stepA.value))]!
-        return place(text(loss(x, y).toFixed(3), { font: 'mono', size: 38, color: 'orange' }), -40)
+        return place(text(loss(x, y).toFixed(3), { font: 'mono', size: 38, color: 'orange' }), -32)
     }).zIndex(6)
     const lossLabelB = label('Loss, start B', -66)
-    lossLabelB.alignTo([COLUMN + 200, 0], 'left')
+    lossLabelB.alignTo([COLUMN + 216, 0], 'left')
     const lossReadB = dynamic(() => {
         const [x, y] = pathB[Math.min(STEPS, Math.floor(stepB.value))]!
-        const node = place(text(loss(x, y).toFixed(3), { font: 'mono', size: 38, color: 'pink' }), -40)
-        node.alignTo([COLUMN + 200, 0], 'left')
+        const node = place(text(loss(x, y).toFixed(3), { font: 'mono', size: 38, color: 'pink' }), -32)
+        node.alignTo([COLUMN + 216, 0], 'left')
         return node
     }).zIndex(6)
 
     // Loss against step, for both runs.
-    const CHART_X = COLUMN, CHART_W = 380, CHART_TOP = 72, CHART_H = 200
+    const CHART_X = COLUMN, CHART_W = 380, CHART_TOP = 72, CHART_H = 186
     const chartY = (v: number) => CHART_TOP + CHART_H - ((v - low) / (high - low)) * CHART_H
-    const chartLabel = label('Loss against step', 36)
+    const chartLabel = label('Loss against step', 28)
     const chartAxes = new Node().add(
         line([CHART_X, CHART_TOP], [CHART_X, CHART_TOP + CHART_H], { stroke: 'faint', width: 1.3 }),
         line([CHART_X, CHART_TOP + CHART_H], [CHART_X + CHART_W, CHART_TOP + CHART_H], { stroke: 'faint', width: 1.3 }),
     ).zIndex(6)
-    const chartTick0 = place(text('0', { font: 'mono', size: 18, color: 'dim' }), CHART_TOP + CHART_H + 8)
-    const chartTick1 = place(text(String(STEPS), { font: 'mono', size: 18, color: 'dim' }), CHART_TOP + CHART_H + 8)
+    const chartTick0 = place(text('0', { font: 'mono', size: 26, color: 'dim' }), CHART_TOP + CHART_H + 14)
+    const chartTick1 = place(text(String(STEPS), { font: 'mono', size: 26, color: 'dim' }), CHART_TOP + CHART_H + 14)
     chartTick1.alignTo([CHART_X + CHART_W, 0], 'right')
     const chart = dynamic(() => {
         const draw = (path: Vec[], step: number, color: string, alpha: number): Node | null => {
@@ -311,7 +311,7 @@ export default film({
         }
         return [draw(pathA, stepA.value, 'orange', showA.value), draw(pathB, stepB.value, 'pink', showB.value)].filter((n): n is Node => n !== null)
     }).zIndex(6)
-    const outcome = place(text('Same rule, same step size, starts 0.12 apart. Different answers.', { size: 24, color: 'ink', maxWidth: 400, leading: 1.38 }), 340)
+    const outcome = place(text('Same rule, same step size, starts 0.12 apart. Different answers.', { size: 26, color: 'ink', maxWidth: 420, leading: 1.35 }), 330)
 
     // ── Timeline ────────────────────────────────────────────────────────────
 

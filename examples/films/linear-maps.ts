@@ -43,37 +43,48 @@ export default film({
     grid.major.opacity(0.62)
     grid.axes.opacity(0.85)
 
-    const chip = (label: Node, at: Vec, pad = 8): Node[] => {
-        label.moveTo(at)
+    const basisAlpha = s.value(0)
+    const squareAlpha = s.value(0)
+
+    const chip = (label: Node, at: Vec, alpha: number, pad = 14): Node[] => {
+        label.moveTo(at).opacity(alpha)
         const b = label.bounds()
         const back = rect(b.width + pad * 2, b.height + pad * 2, { fill: 'bg', stroke: null, radius: 6 })
-            .at(b.x + b.width / 2, b.y + b.height / 2).opacity(0.88)
+            .at(b.x + b.width / 2, b.y + b.height / 2)
         return [back, label]
     }
     /** Label beside an arrow tip, not past it, so the chip never breaks the axis the arrow lies on. */
-    const tipLabel = (x: number, y: number, source: string, color: string, side: 1 | -1): Node[] => {
+    const tipLabel = (x: number, y: number, source: string, color: string, side: 1 | -1, alpha: number): Node[] => {
         const [tx, ty] = Pm(x, y)
         const length = Math.hypot(tx - ORIGIN_X, ty) || 1
         const dx = (tx - ORIGIN_X) / length, dy = ty / length
         const normalX = -dy * side, normalY = dx * side
-        return chip(tex(source, { size: 34, color, display: false }), [tx - dx * 10 + normalX * 34, ty - dy * 10 + normalY * 34])
+        return chip(tex(source, { size: 34, color, display: false }), [tx - dx * 20 + normalX * 46, ty - dy * 20 + normalY * 46], alpha)
     }
 
-    const basis = dynamic(() => [
+    const basisArrows = dynamic(() => [
         arrow(P(0, 0), Pm(1, 0), { stroke: 'green', width: 5, tip: 22 }),
         arrow(P(0, 0), Pm(0, 1), { stroke: 'red', width: 5, tip: 22 }),
-        ...tipLabel(1, 0, '\\hat{\\imath}', 'green', 1),
-        ...tipLabel(0, 1, '\\hat{\\jmath}', 'red', -1),
-    ])
+    ]).zIndex(2)
+    const basisLabels = dynamic(() => {
+        const a = basisAlpha.value
+        if (a <= 0.001) return null
+        return [
+            ...tipLabel(1, 0, '\\hat{\\imath}', 'green', 1, a),
+            ...tipLabel(0, 1, '\\hat{\\jmath}', 'red', -1, a),
+        ]
+    }).zIndex(3)
 
     const square = dynamic(() => {
+        const a = squareAlpha.value
+        if (a <= 0.001) return null
         const corners = [Pm(0, 0), Pm(1, 0), Pm(1, 1), Pm(0, 1)]
         const cx = corners.reduce((sum, c) => sum + c[0], 0) / 4, cy = corners.reduce((sum, c) => sum + c[1], 0) / 4
         return [
-            shape(polyPath(corners, true), { fill: 'yellow', stroke: 'yellow', width: 2.5 }).set('fillOpacity', 0.32),
-            ...chip(tex(determinant().toFixed(2), { size: 30, color: 'yellow', display: false }), [cx, cy], 6),
+            shape(polyPath(corners, true), { fill: 'yellow', stroke: 'yellow', width: 2.5 }).set('fillOpacity', 0.32 * a).opacity(a),
+            ...chip(tex(determinant().toFixed(2), { size: 30, color: 'yellow', display: false }), [cx, cy], a, 13),
         ]
-    })
+    }).zIndex(1)
 
     // The fan: one short arrow per direction, tinted by direction, all from the origin.
     const FAN = 56
@@ -107,38 +118,38 @@ export default film({
         node.zIndex(6)
         return node
     }
-    const title = place(text('A matrix moves the whole plane.', { font: 'text-serif', size: 46, maxWidth: 440, leading: 1.08 }), -490)
-    const matrix = place(tex('A = \\begin{bmatrix} 2 & 1 \\\\ 0.5 & 1.5 \\end{bmatrix}', { size: 44 }), -340)
+    const title = place(text('A matrix moves the whole plane.', { font: 'text-serif', size: 44, maxWidth: 430, leading: 1.08 }), -496)
+    const matrix = place(tex('A = \\begin{bmatrix} 2 & 1 \\\\ 0.5 & 1.5 \\end{bmatrix}', { size: 42 }), -362)
     // Column one is where the first arrow lands. Column two is where the second lands.
     for (const i of [3, 5, 6, 7]) matrix.glyphs[i]!.fill('green')
     for (const i of [4, 8, 9, 10]) matrix.glyphs[i]!.fill('red')
 
-    const label = (content: string, top: number) => place(text(content, { size: 19, color: 'dim', uppercase: true, tracking: 0.08, weight: 600 }), top)
-    const tracksLabel = label('Where the arrows land', -196)
+    const label = (content: string, top: number) => place(text(content, { size: 26, color: 'dim', weight: 600 }), top)
+    const tracksLabel = label('Where the arrows land', -218)
     const reads = dynamic(() => {
         const [ix, iy] = moved(1, 0), [jx, jy] = moved(0, 1)
         const row = (name: string, x: number, y: number, color: string, top: number) =>
             place(text(`${name} (${x.toFixed(2)}, ${y.toFixed(2)})`, { font: 'mono', size: 30, color }), top)
-        return [row('i', ix, iy, 'green', -162), row('j', jx, jy, 'red', -116)]
+        return [row('i', ix, iy, 'green', -180), row('j', jx, jy, 'red', -136)]
     }).zIndex(6)
-    const areaLabel = label('Area of the unit square', -42)
-    const areaRead = dynamic(() => place(text(determinant().toFixed(2), { font: 'mono', size: 72, color: 'yellow' }), -12)).zIndex(6)
-    const detEq = place(tex('\\det A = 2 \\cdot 1.5 - 1 \\cdot 0.5 = 2.5', { size: 30 }), 96)
+    const areaLabel = label('Area of the unit square', -76)
+    const areaRead = dynamic(() => place(text(determinant().toFixed(2), { font: 'mono', size: 66, color: 'yellow' }), -42)).zIndex(6)
+    const detEq = place(tex('\\det A = 2 \\cdot 1.5 - 1 \\cdot 0.5 = 2.5', { size: 30 }), 56)
 
-    const eigenLabel = label('Arrows that keep their line', 180)
-    const eqA = place(tex('A \\vec{v} = \\lambda \\vec{v}', { size: 48, color: 'ink' }), 214)
-    const stretchRow = place(tex('\\vec{v} = (2, 1), \\quad \\lambda = 2.5', { size: 30, color: 'yellow' }), 296)
-    const fixedRow = place(tex('\\vec{v} = (1, -1), \\quad \\lambda = 1', { size: 30, color: 'teal' }), 346)
-    const closing = place(tex('\\lambda_1 \\lambda_2 = 2.5 \\cdot 1 = \\det A', { size: 34, color: 'ink' }), 416)
+    const eigenLabel = label('Arrows that keep their line', 148)
+    const eqA = place(tex('A \\vec{v} = \\lambda \\vec{v}', { size: 46, color: 'ink' }), 186)
+    const stretchRow = place(tex('\\vec{v} = (2, 1), \\quad \\lambda = 2.5', { size: 30, color: 'yellow' }), 268)
+    const fixedRow = place(tex('\\vec{v} = (1, -1), \\quad \\lambda = 1', { size: 30, color: 'teal' }), 318)
+    const closing = place(tex('\\lambda_1 \\lambda_2 = 2.5 \\cdot 1 = \\det A', { size: 34, color: 'ink' }), 392)
 
     // ── Timeline ────────────────────────────────────────────────────────────
 
-    s.add(still, grid)
+    s.add(still, grid, square, basisLabels)
     s.add(column, rule)
     s.chapter('Two arrows')
     s.play(write(title), draw(grid.major, { lag: 0.015 }), draw(grid.axes), { duration: 2.4 })
-    s.play(grow(basis, { from: P(0, 0) }), write(matrix), { duration: 1.4 })
-    s.play(fadeIn([tracksLabel, reads], { shift: [0, 8] }), { duration: 0.8 })
+    s.play(grow(basisArrows, { from: P(0, 0) }), write(matrix), { duration: 1.2 })
+    s.play(basisAlpha.to(1), fadeIn([tracksLabel, reads], { shift: [0, 8] }), { duration: 0.8 })
     s.wait(1.2)
 
     s.chapter('The move')
@@ -150,15 +161,15 @@ export default film({
 
     s.chapter('Area')
     s.play(applyMatrix(grid, INVERSE, { origin: [ORIGIN_X, 0] }), k.to(0), { duration: 1.8 })
-    s.add(square)
-    s.play(fadeIn(square), fadeIn([areaLabel, areaRead], { shift: [0, 8] }), { duration: 0.8 })
+    s.play(squareAlpha.to(1), fadeIn([areaLabel, areaRead], { shift: [0, 8] }), { duration: 0.8 })
     s.wait(0.5)
     s.play(applyMatrix(grid, A, { origin: [ORIGIN_X, 0] }), k.to(1), { duration: 3.2 })
     s.play(write(detEq), { duration: 1.4 })
     s.wait(1)
 
     s.chapter('Lines that stay')
-    s.play(applyMatrix(grid, INVERSE, { origin: [ORIGIN_X, 0] }), k.to(0), fade(square, 0), fade(basis, 0), { duration: 1.8 })
+    s.play(squareAlpha.to(0), basisAlpha.to(0), fade(basisArrows, 0), { duration: 0.55 })
+    s.play(applyMatrix(grid, INVERSE, { origin: [ORIGIN_X, 0] }), k.to(0), { duration: 1.6 })
     s.add(fan)
     s.play(grow(fan, { from: P(0, 0) }), draw(lineStretch), draw(lineFixed), { duration: 1.4 })
     s.add(eigen)

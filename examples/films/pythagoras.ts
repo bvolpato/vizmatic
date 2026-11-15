@@ -21,6 +21,7 @@ export default film({
     title: 'Pythagoras by rearrangement',
     description: 'Four triangles slide inside a square, and the leftover area shows why a squared plus b squared equals c squared.',
     fps: 60,
+    look: 'chalk',
 }, (s) => {
     // A single right triangle, introduced at the center.
     const triangle: Vec[] = [[0, 0], [A, 0], [0, B]]
@@ -36,9 +37,9 @@ export default film({
     hero.moveTo([0, 40])
     const heroBounds = hero.bounds()
     const heroAt = (x: number, y: number): Vec => [heroBounds.x + x * UNIT, heroBounds.y + y * UNIT]
-    const labelA = tex('a', { size: 44, color: 'yellow', display: false }).moveTo([heroAt(A / 2, 0)[0], heroAt(0, 0)[1] - 30])
-    const labelB = tex('b', { size: 44, color: 'teal', display: false }).moveTo([heroAt(0, 0)[0] - 30, heroAt(0, B / 2)[1]])
-    const labelC = tex('c', { size: 44, color: 'pink', display: false }).moveTo([heroAt(A / 2, B / 2)[0] + 28, heroAt(A / 2, B / 2)[1] + 22])
+    const labelA = tex('a', { size: 44, color: 'yellow', display: false }).moveTo([heroAt(A / 2, 0)[0], heroAt(0, 0)[1] - 36])
+    const labelB = tex('b', { size: 44, color: 'teal', display: false }).moveTo([heroAt(0, 0)[0] - 36, heroAt(0, B / 2)[1]])
+    const labelC = tex('c', { size: 44, color: 'pink', display: false }).moveTo([heroAt(A / 2, B / 2)[0] + 34, heroAt(A / 2, B / 2)[1] + 28])
     const corner = shape(polyPath([heroAt(0.3, 0), heroAt(0.3, 0.3), heroAt(0, 0.3)]), { stroke: 'ink', width: 2 })
 
     const title = text('Move the pieces. Keep the square.', { font: 'text-serif', size: 66 })
@@ -72,10 +73,10 @@ export default film({
         return tex(label, { size: 34, color, display: false }).moveTo(mid)
     }
     const edgeLabels = new Node().add(
-        sideMark(LEFT_X, [0, 0], [A, 0], 'a', 'yellow', [0, -30]),
-        sideMark(LEFT_X, [A, 0], [SIDE, 0], 'b', 'teal', [0, -30]),
-        sideMark(LEFT_X, [0, 0], [0, B], 'b', 'teal', [-28, 0]),
-        sideMark(LEFT_X, [0, B], [0, SIDE], 'a', 'yellow', [-28, 0]),
+        sideMark(LEFT_X, [0, 0], [A, 0], 'a', 'yellow', [0, -36]),
+        sideMark(LEFT_X, [A, 0], [SIDE, 0], 'b', 'teal', [0, -36]),
+        sideMark(LEFT_X, [0, 0], [0, B], 'b', 'teal', [-36, 0]),
+        sideMark(LEFT_X, [0, B], [0, SIDE], 'a', 'yellow', [-36, 0]),
     )
 
     // Squares the moved triangles reveal.
@@ -108,11 +109,12 @@ export default film({
     s.wait(0.8)
 
     s.chapter('Four copies')
-    s.play(fadeOut([labelA, labelB, labelC, corner]), to(hero, (node) => {
+    s.play(fadeOut([labelA, labelB, labelC, corner]), { duration: 0.45 })
+    s.play(to(hero, (node) => {
         node.set('px', 0)
         node.set('py', 0)
         node.at(at(0, 0, 0))
-    }), { duration: 0.9 })
+    }), { duration: 0.75 })
     const center = placements.map((placement) => triangleAt(0, placement))
     const frameCenter = rect(SIDE * UNIT, SIDE * UNIT, { stroke: 'ink', width: 3 }).at(0, CY)
     s.add(center[0]!)
@@ -180,6 +182,12 @@ export default film({
     s.play(fadeIn([...equation.part('='), ...equation.part('+')]), { duration: 0.6 })
     s.wait(1)
     check.moveTo([430, 448])
-    s.play(to(equation, (eq) => eq.shift(-300, 0)), fadeIn([tilesA, tilesB], { lag: 0.02 }), delay(fadeIn(check, { shift: [-30, 0] }), 0.5), fade(aSquared, 0), fade(bSquared, 0), { duration: 1.4 })
+    s.play(
+        to(equation, (eq) => eq.shift(-300, 0), { duration: 1.2 }),
+        fade(aSquared, 0, { duration: 0.45 }),
+        fade(bSquared, 0, { duration: 0.45 }),
+        delay(fadeIn([tilesA, tilesB], { lag: 0.02, duration: 0.95 }), 0.45),
+        delay(fadeIn(check, { shift: [-30, 0], duration: 0.9 }), 0.5),
+    )
     s.wait(3)
 })

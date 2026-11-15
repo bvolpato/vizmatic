@@ -5,7 +5,7 @@
  * is measured from the drawn geometry, not assumed.
  */
 import {
-    Node, dot, dynamic, fade, fadeIn, film, flash, line, morphMatching, polyPath, rect, shape, smooth, smoother, smoothPath, text, tex, write,
+    Node, dot, dynamic, fade, fadeIn, fadeOut, film, flash, line, morphMatching, polyPath, rect, shape, smooth, smoother, smoothPath, text, tex, write,
     type Vec,
 } from 'vizmatic/stage'
 
@@ -131,8 +131,13 @@ export default film({
         return strokes(secondGrid, (z) => toStageB(mobius(z, k.value)), reveal2.value, secondAlpha.value)
     })
 
+    const markerAAlpha = s.value(0)
+    const markerBAlpha = s.value(0)
+    const pointsBAlpha = s.value(0)
+
     /** A right-angle marker built from the images of two short steps along the grid directions. */
-    const marker = (map: (z: C) => Vec, at: C, color: string, label: string): Node[] => {
+    const marker = (map: (z: C) => Vec, at: C, color: string, label: string, alpha: number): Node[] | null => {
+        if (alpha <= 0.001) return null
         const z = zoom.value
         const scale = 1 / Math.pow(z, 0.85)
         const h = 1e-4
@@ -145,36 +150,47 @@ export default film({
             [o[0], o[1]], [o[0] + u[0] * size, o[1] + u[1] * size],
             [o[0] + (u[0] + v[0]) * size, o[1] + (u[1] + v[1]) * size], [o[0] + v[0] * size, o[1] + v[1] * size],
         ], true)
-        const tag = tex(label, { size: 30 * scale, color, display: false })
-        tag.moveTo([o[0] - (u[0] + v[0]) * 30 * scale, o[1] - (u[1] + v[1]) * 30 * scale])
+        const diagLen = Math.hypot(u[0] + v[0], u[1] + v[1]) || 1
+        const du = (u[0] + v[0]) / diagLen, dv = (u[1] + v[1]) / diagLen
+        const tag = tex(label, { size: 32 * scale, color, display: false })
+        tag.moveTo([o[0] - du * 48 * scale, o[1] - dv * 48 * scale]).opacity(alpha)
         const b2 = tag.bounds()
         return [
-            shape(corner, { fill: color, stroke: color, width: 2.6 * scale }).set('fillOpacity', 0.28),
-            dot(6.5 * scale, color).at(o),
-            rect(b2.width + 10 * scale, b2.height + 8 * scale, { fill: 'bg', stroke: null, radius: 5 * scale })
-                .at(b2.x + b2.width / 2, b2.y + b2.height / 2).opacity(0.94),
+            shape(corner, { fill: color, stroke: color, width: 2.6 * scale }).set('fillOpacity', 0.28 * alpha).opacity(alpha),
+            dot(6.5 * scale, color).at(o).opacity(alpha),
+            rect(b2.width + 26 * scale, b2.height + 24 * scale, { fill: 'bg', stroke: null, radius: 6 * scale })
+                .at(b2.x + b2.width / 2, b2.y + b2.height / 2),
             tag,
         ]
     }
 
-    const markerA = dynamic(() => firstAlpha.value <= 0 ? null : marker((z) => toStageA(power(z, p.value)), Z0, 'yellow', 'z_0'))
-    const markerB = dynamic(() => secondAlpha.value <= 0 ? null : marker((z) => toStageB(mobius(z, k.value)), Z1, 'yellow', 'z_0'))
+    const markerA = dynamic(() => firstAlpha.value <= 0 ? null : marker((z) => toStageA(power(z, p.value)), Z0, 'yellow', 'z_0', markerAAlpha.value)).zIndex(2)
+    const markerB = dynamic(() => secondAlpha.value <= 0 ? null : marker((z) => toStageB(mobius(z, k.value)), Z1, 'yellow', 'z_0', markerBAlpha.value)).zIndex(2)
 
     // Four landmarks of the second map.
-    const landmarks: readonly [C, string][] = [[[0, 1], 'i'], [[0, 0], '0'], [[1, 0], '1'], [[-1, 0], '-1']]
-    const pointsB = dynamic(() => landmarks.flatMap(([z, label]) => {
-        const at = toStageB(mobius(z, k.value))
-        const tag = tex(label, { size: 30, color: 'ink', display: false })
-        tag.moveTo([at[0] + 26, at[1] - 22])
-        const b = tag.bounds()
-        return [
-            dot(7, 'teal').at(at),
-            rect(b.width + 10, b.height + 8, { fill: 'bg', stroke: null, radius: 5 }).at(b.x + b.width / 2, b.y + b.height / 2).opacity(0.94),
-            tag,
-        ]
-    }))
+    const landmarks: readonly [C, string, Vec][] = [
+        [[0, 1], 'i', [36, -30]],
+        [[0, 0], '0', [-36, 32]],
+        [[1, 0], '1', [36, 32]],
+        [[-1, 0], '-1', [-42, -32]],
+    ]
+    const pointsB = dynamic(() => {
+        const a = pointsBAlpha.value
+        if (a <= 0.001 || secondAlpha.value <= 0) return null
+        return landmarks.flatMap(([z, label, off]) => {
+            const at = toStageB(mobius(z, k.value))
+            const tag = tex(label, { size: 32, color: 'ink', display: false })
+            tag.moveTo([at[0] + off[0], at[1] + off[1]]).opacity(a)
+            const b = tag.bounds()
+            return [
+                dot(7, 'teal').at(at).opacity(a),
+                rect(b.width + 26, b.height + 24, { fill: 'bg', stroke: null, radius: 6 }).at(b.x + b.width / 2, b.y + b.height / 2),
+                tag,
+            ]
+        })
+    }).zIndex(2)
 
-    const infinityMark = tex('\\infty', { size: 38, color: 'teal', display: false }).moveTo([ORIGIN_X + 410 + 34, -32])
+    const infinityMark = tex('\\infty', { size: 38, color: 'teal', display: false }).moveTo([ORIGIN_X + 410 + 46, -38]).zIndex(2)
 
     // ── Column ──────────────────────────────────────────────────────────────
 
@@ -185,18 +201,18 @@ export default film({
         node.pin().zIndex(6)
         return node
     }
-    const label = (content: string, top: number) => place(text(content, { size: 19, color: 'dim', uppercase: true, tracking: 0.08, weight: 600 }), top)
+    const label = (content: string, top: number) => place(text(content, { size: 26, color: 'dim', weight: 600 }), top)
 
-    const title = place(text('The grid bends. Its right angles survive.', { font: 'text-serif', size: 46, maxWidth: 440, leading: 1.08 }), -490)
-    const eqIdentity = place(tex('w = z', { size: 54 }), -296)
-    const eqPower = place(tex('w = z^{p}', { size: 54 }), -296)
-    const eqSquare = place(tex('w = z^{2}', { size: 54, color: 'ink' }), -296)
-    const eqMobius = place(tex('w = \\frac{z - i}{z + i}', { size: 46 }), -356)
+    const title = place(text('The grid bends. Its right angles survive.', { font: 'text-serif', size: 44, maxWidth: 430, leading: 1.08 }), -496)
+    const eqIdentity = place(tex('w = z', { size: 52 }), -366)
+    const eqPower = place(tex('w = z^{p}', { size: 52 }), -366)
+    const eqSquare = place(tex('w = z^{2}', { size: 52, color: 'ink' }), -366)
+    const eqMobius = place(tex('w = \\frac{z - i}{z + i}', { size: 44 }), -384)
 
-    const pLabel = label('Exponent', -196)
-    const pRead = dynamic(() => place(text(`p = ${p.value.toFixed(2)}`, { font: 'mono', size: 44, color: 'ink' }), -168)).pin().zIndex(6)
-    const kLabel = label('Along the Mobius family', -196)
-    const kRead = dynamic(() => place(text(`k = ${k.value.toFixed(2)}`, { font: 'mono', size: 44, color: 'ink' }), -168)).pin().zIndex(6)
+    const pLabel = label('Exponent', -256)
+    const pRead = dynamic(() => place(text(`p = ${p.value.toFixed(2)}`, { font: 'mono', size: 42, color: 'ink' }), -220)).pin().zIndex(6)
+    const kLabel = label('Mobius family parameter', -256)
+    const kRead = dynamic(() => place(text(`k = ${k.value.toFixed(2)}`, { font: 'mono', size: 42, color: 'ink' }), -220)).pin().zIndex(6)
 
     const derivative = (): { size: number; angle: number; crossing: number } => {
         const act = secondAlpha.value > 0.5
@@ -208,35 +224,34 @@ export default film({
         const crossing = Math.abs(Math.atan2(dx[0] * dy[1] - dx[1] * dy[0], dx[0] * dy[0] + dx[1] * dy[1])) * 180 / Math.PI
         return { size: abs(dx), angle: Math.atan2(dx[1], dx[0]) * 180 / Math.PI, crossing }
     }
-    const angleLabel = label('Angle between grid lines at z0', -92)
-    const angleRead = dynamic(() => place(text(`${derivative().crossing.toFixed(2)} deg`, { font: 'mono', size: 44, color: 'yellow' }), -64)).pin().zIndex(6)
-    const scaleLabel = label('Local stretch', 20)
-    const scaleRead = dynamic(() => place(text(derivative().size.toFixed(2), { font: 'mono', size: 36, color: 'ink' }), 48)).pin().zIndex(6)
-    const turnLabel = label('Local turn', 20)
-    turnLabel.alignTo([COLUMN + 200, 0], 'left')
+    const angleLabel = label('Angle between grid lines at z₀', -144)
+    const angleRead = dynamic(() => place(text(`${derivative().crossing.toFixed(2)}°`, { font: 'mono', size: 42, color: 'yellow' }), -108)).pin().zIndex(6)
+    const scaleLabel = label('Local stretch', -30)
+    const scaleRead = dynamic(() => place(text(derivative().size.toFixed(2), { font: 'mono', size: 36, color: 'ink' }), 6)).pin().zIndex(6)
+    const turnLabel = label('Local turn', -30)
+    turnLabel.alignTo([COLUMN + 216, 0], 'left')
     const turnRead = dynamic(() => {
-        const node = place(text(`${derivative().angle.toFixed(1)} deg`, { font: 'mono', size: 36, color: 'ink' }), 48)
-        node.alignTo([COLUMN + 200, 0], 'left')
+        const node = place(text(`${derivative().angle.toFixed(1)}°`, { font: 'mono', size: 36, color: 'ink' }), 6)
+        node.alignTo([COLUMN + 216, 0], 'left')
         return node
     }).pin().zIndex(6)
     const note = place(text('Near any point, a complex derivative is one rotation and one scale. A small square can only come out as another square.', {
-        size: 24, color: 'dim', maxWidth: 400, leading: 1.42,
-    }), 130)
-    const deriv = place(tex("f(z_0 + h) \\approx f(z_0) + f'(z_0)\\, h", { size: 30 }), 316)
+        size: 26, color: 'dim', maxWidth: 420, leading: 1.35,
+    }), 80)
+    const deriv = place(tex("f(z_0 + h) \\approx f(z_0) + f'(z_0)\\, h", { size: 30 }), 262)
     const note2 = place(text('A map of this kind sends lines to circles. The whole upper half-plane lands inside the unit disk.', {
-        size: 24, color: 'dim', maxWidth: 400, leading: 1.42,
-    }), 130)
-    const landing = place(tex('i \\mapsto 0, \\quad 0 \\mapsto -1', { size: 32, color: 'teal' }), 300)
-    const landing2 = place(tex('1 \\mapsto -i, \\quad -1 \\mapsto i', { size: 32, color: 'teal' }), 354)
+        size: 26, color: 'dim', maxWidth: 420, leading: 1.35,
+    }), 80)
+    const landing = place(tex('i \\mapsto 0, \\quad 0 \\mapsto -1', { size: 32, color: 'teal' }), 242)
+    const landing2 = place(tex('1 \\mapsto -i, \\quad -1 \\mapsto i', { size: 32, color: 'teal' }), 300)
 
     // ── Timeline ────────────────────────────────────────────────────────────
 
     s.add(firstField, markerA)
-    markerA.opacity(0)
     s.add(backing, rule)
     s.chapter('The grid')
     s.play(reveal.to(1, { ease: smooth }), write(title), { duration: 2.4 })
-    s.play(write(eqIdentity), fade(markerA, 1), fadeIn([angleLabel, angleRead, scaleLabel, scaleRead, turnLabel, turnRead]), { duration: 1.2 })
+    s.play(write(eqIdentity), markerAAlpha.to(1), fadeIn([angleLabel, angleRead, scaleLabel, scaleRead, turnLabel, turnRead]), { duration: 1.2 })
     s.play(fadeIn(note, { shift: [0, 8] }), write(deriv), { duration: 1.2 })
     s.wait(0.8)
 
@@ -255,17 +270,16 @@ export default film({
     })
     const offset = 240
     s.play(zoom.to(3.4, { ease: smoother }), focusX.to(target[0] + offset / 3.4, { ease: smoother }), focusY.to(target[1], { ease: smoother }), fade(title, 0.25), { duration: 3 })
-    s.play(flash([-240, 0], { color: 'yellow', radius: 74 }), { duration: 0.8 })
+    s.play(flash(target, { color: 'yellow', radius: 26 }), { duration: 0.8 })
     s.wait(2)
     s.play(zoom.to(1, { ease: smoother }), focusX.to(0, { ease: smoother }), focusY.to(0, { ease: smoother }), fade(title, 1), { duration: 2.4 })
 
     s.chapter('A different map')
-    s.add(secondField, markerB)
-    markerB.opacity(0)
+    s.add(secondField, markerB, pointsB)
     backing.zIndex(5)
-    s.play(firstAlpha.to(0), fade(markerA, 0), fadeIn(eqMobius), fade(eqSquare, 0), fade(pLabel, 0), fade(pRead, 0), fade(note, 0), fade(deriv, 0), { duration: 1 })
-    s.play(reveal2.to(1), secondAlpha.to(1, { ease: smoother }), fadeIn([kLabel, kRead]), fadeIn(note2, { shift: [0, 8] }), { duration: 2.2 })
-    s.play(fade(markerB, 1), fadeIn(pointsB), { duration: 0.8 })
+    s.play(firstAlpha.to(0), markerAAlpha.to(0), fadeOut([eqSquare, pLabel, pRead, note, deriv]), { duration: 0.8 })
+    s.play(write(eqMobius), reveal2.to(1), secondAlpha.to(1, { ease: smoother }), fadeIn([kLabel, kRead]), fadeIn(note2, { shift: [0, 8] }), { duration: 2 })
+    s.play(markerBAlpha.to(1), pointsBAlpha.to(1), { duration: 0.8 })
     s.wait(0.6)
     s.play(k.to(1, { ease: smoother }), { duration: 8 })
     s.play(write(landing), write(landing2), write(infinityMark), { duration: 1.6 })
