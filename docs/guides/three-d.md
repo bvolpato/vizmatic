@@ -66,4 +66,4 @@ export default film({ fps: 30 }, (s) => {
 
 Each frame projects the 3D objects to ordinary paths. The same code paints to a canvas in the browser and to a rasterizer during export, so the two match. Large meshes cost more than they would on a GPU. Keep `resolution` near what the frame needs, because a mesh of 40 by 40 cells is 1600 faces.
 
-See the [gradient descent film](../films.html) for a surface with real iterates, and the [Lorenz film](../films.html) for trails.
+Browse the [films showcase](../films.html) for full-length spatial and mathematical animations, including 3D singular value decomposition, optimization landscapes, and strange attractors.

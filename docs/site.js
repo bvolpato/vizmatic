@@ -816,21 +816,8 @@
     $$('.hero-film').forEach(revealHero)
     if (films.length > 0) loadStage().catch((error) => console.error('Could not load the film engine.', error))
     document.addEventListener('vizmatic-site-theme', () => {
-      // Replacing the element recompiles the film in the new look and keeps its place.
-      $$('vz-film').forEach((film) => {
-        const { look } = filmTheme()
-        if (film.hasAttribute('data-fixed-look') || film.getAttribute('look') === look) return
-        const next = film.cloneNode(false)
-        const player = film.controller
-        applyFilmTheme(next)
-        if (player) next.setAttribute('start', String(player.time))
-        if (next.classList.contains('hero-film')) {
-          next.classList.remove('is-ready')
-          revealHero(next)
-        }
-        film.replaceWith(next)
-        next.dispatchEvent(new CustomEvent('vizmatic-film-replaced', { bubbles: true, detail: { film: next } }))
-      })
+      // <vz-film> observes look and background, recompiling in place without losing playhead or pause state.
+      $$('vz-film').forEach(applyFilmTheme)
     })
   }
 
@@ -1026,12 +1013,83 @@
     })
   }
 
+  function installFilmFilters() {
+    const toolbar = $('[data-film-filters]')
+    if (!toolbar) return
+    const wall = toolbar.parentElement?.querySelector('.wall') ?? $('.wall')
+    if (!wall) return
+    const items = $$('.wall-item[data-topic]', wall)
+    const pillsWrap = $('.filter-pills', toolbar)
+    const countEl = $('[data-film-count]', toolbar)
+    if (pillsWrap && $$('[data-film-topic]', pillsWrap).length === 0 && items.length > 0) {
+      const topics = [...new Set(items.map((item) => item.dataset.topic).filter(Boolean))]
+      const makePill = (value, label, pressed) => {
+        const button = document.createElement('button')
+        button.type = 'button'
+        button.dataset.filmTopic = value
+        button.setAttribute('aria-pressed', String(pressed))
+        button.textContent = label
+        return button
+      }
+      pillsWrap.append(makePill('all', 'All', true), ...topics.map((topic) => makePill(topic, topic, false)))
+    }
+    const buttons = $$('[data-film-topic]', toolbar)
+    if (buttons.length === 0 || items.length === 0) return
+
+    function selectTopic(topic) {
+      const active = buttons.some((button) => button.dataset.filmTopic === topic) ? topic : 'all'
+      buttons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.filmTopic === active)))
+      wall.classList.toggle('is-filtered', active !== 'all')
+      let shown = 0
+      items.forEach((item) => {
+        const match = active === 'all' || item.dataset.topic === active
+        item.hidden = !match
+        if (match) shown++
+        else {
+          item.querySelector('vz-film')?.remove()
+          const poster = item.querySelector('img')
+          if (poster) poster.style.opacity = ''
+        }
+      })
+      if (countEl) countEl.textContent = `${shown} ${shown === 1 ? 'film' : 'films'}`
+    }
+
+    buttons.forEach((button) => {
+      button.addEventListener('click', () => selectTopic(button.dataset.filmTopic || 'all'))
+    })
+    const initialTopic = new URLSearchParams(window.location.search).get('topic')
+    if (initialTopic) selectTopic(initialTopic)
+  }
+
   function installFilmPage() {
     const root = $('[data-film-page]')
     if (!root) return
     const film = $('vz-film', root)
     const list = $('[data-chapters]', root)
-    if (!film || !list) return
+    if (!film) return
+
+    const picker = $('[data-look-picker]', root)
+    const lookButtons = picker ? $$('[data-look-choice]', picker) : []
+    const syncLookButtons = () => {
+      const active = film.getAttribute('look') || filmTheme().look
+      lookButtons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.lookChoice === active)))
+    }
+    if (lookButtons.length > 0) {
+      syncLookButtons()
+      lookButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+          const chosen = button.dataset.lookChoice
+          if (!chosen) return
+          film.setAttribute('data-fixed-look', '')
+          film.removeAttribute('background')
+          film.setAttribute('look', chosen)
+          syncLookButtons()
+        })
+      })
+      document.addEventListener('vizmatic-site-theme', syncLookButtons)
+    }
+
+    if (!list) return
 
     function attach(current) {
       whenFilmReady(current, (player) => {
@@ -1054,13 +1112,16 @@
           return item
         }))
         const buttons = $$('button', list)
-        current.addEventListener('timeupdate', (event) => {
-          let active = -1
+        const updateActive = (time) => {
+          const stepped = current.hasAttribute('stepped')
+          let active = chapters.length > 0 ? 0 : -1
           chapters.forEach((chapter, i) => {
-            if (event.detail.time >= chapter.time) active = i
+            if (stepped ? time > chapter.time + 1e-4 : time >= chapter.time) active = i
           })
           buttons.forEach((button, i) => button.classList.toggle('is-active', i === active))
-        })
+        }
+        current.addEventListener('timeupdate', (event) => updateActive(event.detail.time))
+        updateActive(player.time)
         list.hidden = chapters.length === 0
       })
     }
@@ -1165,6 +1226,7 @@
     installScrub()
     installCodeSync()
     installFilmWall()
+    installFilmFilters()
     installFilmPage()
     installLab()
     installFigures()

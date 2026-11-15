@@ -12,6 +12,7 @@ interface CatalogEntry {
     title?: string
     description?: string
     summary?: string
+    look?: string
 }
 
 /** Copy hand-written films so people can open them in the code editor. */
@@ -25,7 +26,7 @@ async function copyFilmCatalog(): Promise<number> {
     }
     const parsed = JSON.parse(raw) as CatalogEntry[] | { films?: CatalogEntry[] }
     const list = Array.isArray(parsed) ? parsed : parsed.films ?? []
-    const films: { id: string; title: string; description: string; file: string; poster?: string }[] = []
+    const films: { id: string; title: string; description: string; file: string; poster?: string; look?: string }[] = []
     await mkdir(`${out}/films`, { recursive: true })
     for (const entry of list) {
         const stem = (entry.id ?? entry.slug ?? entry.name ?? entry.file?.replace(/\.tsx?$/, '') ?? '').toString()
@@ -37,10 +38,17 @@ async function copyFilmCatalog(): Promise<number> {
         const imports = [...source.matchAll(/from\s+['"]([^'"]+)['"]/g)].map((match) => match[1])
         if (imports.some((name) => name !== 'vizmatic/stage')) continue
         await writeFile(`${out}/films/${stem}.tsx`, source)
-        // Posters are optional: the rendered films may not be built yet.
-        const poster = await access(`docs/assets/films/${stem}.png`).then(() => `assets/films/${stem}.png`, () => undefined)
+        // Prefer compact site posters, then fall back to rendered film stills if present.
+        const poster = await access(`docs/assets/site/posters/${stem}_dark.webp`).then(
+            () => `assets/site/posters/${stem}_dark.webp`,
+            () => access(`docs/assets/films/${stem}.png`).then(() => `assets/films/${stem}.png`, () => undefined),
+        )
         films.push({
-            id: stem, title: entry.title ?? stem, description: entry.summary ?? entry.description ?? '', file: `${stem}.tsx`,
+            id: stem,
+            title: entry.title ?? stem,
+            description: entry.summary ?? entry.description ?? '',
+            file: `${stem}.tsx`,
+            ...(entry.look ? { look: entry.look } : {}),
             ...(poster ? { poster } : {}),
         })
     }

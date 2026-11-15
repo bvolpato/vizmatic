@@ -12,7 +12,7 @@ import { buildSiteMedia } from './build-site-media'
 import { applySiteShell, configureSiteShell, registerSitePages, sitePages } from './site-shell'
 import { highlight, highlightPage } from './site-highlight'
 import { escapeHtml } from './site-markdown'
-import { formatDuration, loadFilmCatalog, renderClaims, renderFigures, renderFilmWall } from './site-content'
+import { formatDuration, loadFilmCatalog, renderClaims, renderFigures, renderFilmFilters, renderFilmWall } from './site-content'
 import { toPlaygroundExample } from './playground-example'
 
 const templatePath = 'docs/index.template.html'
@@ -321,7 +321,21 @@ await Promise.all(films.map(async (film, index) => {
     const code = await highlight(source, sourcePath.endsWith('x') ? 'tsx' : 'ts')
     const previous = films[index - 1]
     const next = films[index + 1]
-    const meta = [film.topic, formatDuration(film.duration)].filter(Boolean).join(', ')
+    const meta = [film.topic, formatDuration(film.duration), film.stepped ? 'Interactive deck' : ''].filter(Boolean).join(' \u00b7 ')
+    const modeAttr = film.stepped ? 'stepped' : 'autoplay'
+    const lookAttr = film.look && film.look !== 'midnight' ? ` data-fixed-look look="${escapeHtml(film.look)}"` : ''
+    const audioHref = film.audio ? (/^(https?:|\.\.\/)/.test(film.audio) ? film.audio : `../${film.audio.replace(/^\.?\//, '')}`) : ''
+    const audioAttr = audioHref ? ` audio="${escapeHtml(audioHref)}"` : ''
+    const activeLook = film.look ?? 'midnight'
+    const lookChoices: readonly [string, string][] = [
+        ['midnight', 'Midnight'],
+        ['paper', 'Paper'],
+        ['blueprint', 'Blueprint'],
+        ['chalk', 'Chalk'],
+        ['neon', 'Neon'],
+    ]
+    const lookPicker = `<div class="look-picker filter-pills" data-look-picker role="group" aria-label="Film look"><span class="look-picker-label">Look</span>${lookChoices.map(([id, label]) => `<button type="button" data-look-choice="${id}" aria-pressed="${activeLook === id}">${label}</button>`).join('')}</div>`
+    const steppedNote = film.stepped ? '<p class="film-note">Interactive presentation: press Right / Left Arrow or click chapters to step.</p>' : ''
     const page = applySiteShell(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -332,7 +346,8 @@ await Promise.all(films.map(async (film, index) => {
   <main id="main-content" tabindex="-1">
     <article class="section" style="padding-top:0" data-film-page>
       <header class="film-page-head"><h1>${escapeHtml(film.title)}</h1><span class="meta">${escapeHtml(meta)}</span></header>
-      <vz-film src="../assets/stage/films/${film.id}.js" autoplay${film.look && film.look !== 'midnight' ? ` data-fixed-look look="${escapeHtml(film.look)}"` : ''} label="${escapeHtml(film.summary || film.title)}"></vz-film>
+      <vz-film src="../assets/stage/films/${film.id}.js" ${modeAttr}${lookAttr}${audioAttr} label="${escapeHtml(film.summary || film.title)}"></vz-film>
+      <div class="film-toolbar">${steppedNote}${lookPicker}</div>
       <ol class="chapter-list" data-chapters hidden></ol>
       <p class="film-page-summary">${escapeHtml(film.summary)}</p>
       <div class="film-actions">
@@ -391,7 +406,10 @@ const landing = (await readFile(templatePath, 'utf8'))
     .replace('{{FILM_WALL}}', () => landingWall)
     .replace('{{FIGURES}}', () => figures)
     .replace('{{CLAIMS}}', () => claims)
-const filmsPage = (await readFile(filmsTemplatePath, 'utf8')).replace('{{FILM_WALL_ALL}}', () => fullWall)
+const filmFilters = renderFilmFilters(films)
+const filmsPage = (await readFile(filmsTemplatePath, 'utf8'))
+    .replace('{{FILM_FILTERS}}', () => filmFilters)
+    .replace('{{FILM_WALL_ALL}}', () => fullWall)
 const examplesPage = await readFile(examplesTemplatePath, 'utf8')
 const componentsTemplate = catalogReplacements(await readFile(componentsTemplatePath, 'utf8'))
 const playgroundTemplate = catalogReplacements(await readFile(playgroundTemplatePath, 'utf8'))

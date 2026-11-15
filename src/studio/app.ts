@@ -5,7 +5,7 @@ import { BEATS, BEAT_GROUPS, naturalEntrance } from './beats'
 import { defaultProps, KINDS, PALETTE, type PaletteEntry } from './catalog'
 import { compileSource } from './compile-code'
 import { CodePanel } from './code-panel'
-import { openCommandPalette, openExportDialog, openShareDialog, openShortcuts, openWelcome, type Command } from './dialogs'
+import { loadCatalog, openCommandPalette, openExportDialog, openShareDialog, openShortcuts, openWelcome, type Command } from './dialogs'
 import { exportFilm, type ExportProgress, type ExportResult, type ExportSettings } from './export'
 import {
     beatEnd, createId, emptyProject, LIMITS, objectById, projectDuration, round3, VALUE_TRACK,
@@ -223,7 +223,7 @@ export class App {
 
     // ── Start up ────────────────────────────────────────────────────────────
 
-    /** Open a shared link, then an autosave, then the welcome screen. */
+    /** Open a shared link, a catalog film link, then an autosave, then the welcome screen. */
     async start(): Promise<void> {
         const params = new URLSearchParams(location.hash.slice(1))
         const shared = params.get(SHARE_KEY)
@@ -239,6 +239,27 @@ export class App {
                 return
             } catch (error) {
                 toast(error instanceof Error ? error.message : 'Could not open that link.', 'error')
+            }
+        }
+        const filmId = new URLSearchParams(location.search).get('film')
+        if (filmId) {
+            try {
+                const catalog = await loadCatalog(this)
+                const film = catalog.find((entry) => entry.id === filmId)
+                if (!film) throw new Error(`Unknown film "${filmId}".`)
+                const response = await fetch(new URL(`films/${film.file}`, this.studioAssets))
+                if (!response.ok) throw new Error(`HTTP ${response.status}`)
+                const source = await response.text()
+                this.backUp(this.readAutosave())
+                this.codePaused = false
+                const look = film.look && Object.hasOwn(LOOKS, film.look) ? { look: film.look as LookName } : {}
+                this.loadProject({ ...emptyProject(film.title), mode: 'code', source, ...look })
+                history.replaceState(null, '', location.pathname)
+                toast(`Opened film: ${film.title}`)
+                return
+            } catch (error) {
+                history.replaceState(null, '', location.pathname)
+                toast(`Could not open film: ${error instanceof Error ? error.message : filmId}`, 'error')
             }
         }
         const saved = this.readAutosave()
@@ -315,7 +336,7 @@ export class App {
         if (project.mode !== this.appliedMode) this.applyMode()
         if (kinds.has('project')) {
             if (project.mode === 'code') {
-                if (project.codeLook) this.lookSelect.value = project.codeLook
+                this.lookSelect.value = project.codeLook ?? project.look
                 // Undo and redo reach here too, and the editor and film follow them.
                 if (this.codePanel.writer.value !== project.source) {
                     this.codePanel.writer.value = project.source

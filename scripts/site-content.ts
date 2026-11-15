@@ -10,6 +10,8 @@ export interface FilmEntry {
     posterTime?: number
     featured?: boolean
     look?: string
+    stepped?: boolean
+    audio?: string
 }
 
 const exists = (path: string) => access(path).then(() => true, () => false)
@@ -24,7 +26,12 @@ export async function loadFilmCatalog(): Promise<FilmEntry[]> {
     const listed = Array.isArray(parsed) ? parsed : parsed.films
     const names = (await readdir('examples/films').catch(() => [] as string[])).filter((name) => /\.tsx?$/.test(name) && !name.startsWith('_') && !name.endsWith('.d.ts')).sort()
     const ids = new Set(names.map((name) => name.replace(/\.tsx?$/, '')))
-    const out = listed.filter((film) => ids.has(film.id))
+    const out = listed
+        .filter((film) => ids.has(film.id))
+        .map((film) => ({
+            ...film,
+            ...(film.stepped === undefined && film.topic === 'Presentation' ? { stepped: true } : {}),
+        }))
     const known = new Set(listed.map((film) => film.id))
     for (const name of names) {
         const id = name.replace(/\.tsx?$/, '')
@@ -32,7 +39,8 @@ export async function loadFilmCatalog(): Promise<FilmEntry[]> {
         const source = await readFile(`examples/films/${name}`, 'utf8')
         const title = /\btitle:\s*'([^']+)'/.exec(source)?.[1] ?? id.replace(/-/g, ' ')
         const summary = /\bdescription:\s*'([^']+)'/.exec(source)?.[1] ?? ''
-        out.push({ id, title, summary })
+        const stepped = /<vz-film\b[^>]*\bstepped\b/.test(source) ? true : undefined
+        out.push({ id, title, summary, ...(stepped ? { stepped } : {}) })
     }
     return out
 }
@@ -49,6 +57,17 @@ function wideIndexes(count: number): Map<number, 'left' | 'right'> {
     return wide
 }
 
+export function renderFilmFilters(films: readonly FilmEntry[]): string {
+    const shown = films.filter((film) => film.topic !== 'Brand')
+    const topics = [...new Set(shown.map((film) => film.topic).filter((topic): topic is string => Boolean(topic)))]
+    if (topics.length <= 1) return ''
+    const pills = [
+        '<button type="button" data-film-topic="all" aria-pressed="true">All</button>',
+        ...topics.map((topic) => `<button type="button" data-film-topic="${escapeHtml(topic)}" aria-pressed="false">${escapeHtml(topic)}</button>`),
+    ].join('')
+    return `<div class="gallery-toolbar films-toolbar" data-film-filters><div class="filter-pills" role="toolbar" aria-label="Filter films by topic">${pills}</div><span class="catalog-count" data-film-count>${shown.length} ${shown.length === 1 ? 'film' : 'films'}</span></div>`
+}
+
 export async function renderFilmWall(films: readonly FilmEntry[], root: string, options: { limit?: number; emphasize?: boolean } = {}): Promise<string> {
     if (films.length === 0) return '<p class="film-empty">The first films are rendering. Check back soon.</p>'
     // The title film is the hero of the home page, and is not a film to study.
@@ -57,12 +76,13 @@ export async function renderFilmWall(films: readonly FilmEntry[], root: string, 
     const wide = options.emphasize === false ? new Map<number, 'left' | 'right'>() : wideIndexes(shown.length)
     const items = await Promise.all(shown.map(async (film, index) => {
         const hasPoster = await exists(`docs/assets/site/posters/${film.id}_dark.webp`)
-        const meta = [film.topic, formatDuration(film.duration)].filter(Boolean).join(', ')
+        const meta = [film.topic, formatDuration(film.duration), film.stepped ? 'Interactive deck' : ''].filter(Boolean).join(' \u00b7 ')
         // Posters come from the site's themes. Films follow the same theme unless they have their own look.
         const fixedLook = film.look && film.look !== 'midnight' ? ` data-look="${escapeHtml(film.look)}"` : ''
         const poster = hasPoster ? `<img data-theme-image src="${root}assets/site/posters/${film.id}_dark.webp" alt="" width="960" height="540" loading="lazy" decoding="async">` : ''
         const side = wide.get(index)
-        return `<a class="wall-item${side ? ` is-wide is-${side}` : ''}" href="${root}film/${film.id}.html"><span class="wall-frame" data-live-src="assets/stage/films/${film.id}.js"${film.posterTime !== undefined ? ` data-poster-time="${film.posterTime}"` : ''}${fixedLook} data-label="${escapeHtml(film.summary || film.title)}">${poster}</span><h3>${escapeHtml(film.title)}</h3><p>${escapeHtml(film.summary)}</p>${meta ? `<span class="meta">${escapeHtml(meta)}</span>` : ''}</a>`
+        const topicAttr = ` data-topic="${escapeHtml(film.topic ?? '')}"`
+        return `<a class="wall-item${side ? ` is-wide is-${side}` : ''}"${topicAttr} href="${root}film/${film.id}.html"><span class="wall-frame" data-live-src="assets/stage/films/${film.id}.js"${film.posterTime !== undefined ? ` data-poster-time="${film.posterTime}"` : ''}${fixedLook} data-label="${escapeHtml(film.summary || film.title)}">${poster}</span><h3>${escapeHtml(film.title)}</h3><p>${escapeHtml(film.summary)}</p>${meta ? `<span class="meta">${escapeHtml(meta)}</span>` : ''}</a>`
     }))
     return `<div class="wall">${items.join('')}</div>`
 }

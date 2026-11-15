@@ -2,6 +2,7 @@ import { transform } from 'sucrase'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as stage from '../src/stage/index'
 import { compileFilm, film, frameToSvg, isFilm, rect, type CompiledFilm, type FilmDefinition } from '../src/stage/index'
+import { App } from '../src/studio/app'
 import { defaultProps } from '../src/studio/catalog'
 import { projectToSource } from '../src/studio/codegen'
 import { compileProject } from '../src/studio/compile'
@@ -396,5 +397,168 @@ describe('Studio SandboxHost iframe isolation and message protocol', () => {
         host.destroy()
         await expect(pendingDestroy).rejects.toThrow(/closed/)
         expect(iframeStub.remove).toHaveBeenCalled()
+    })
+})
+
+describe('Studio ?film= catalog deep-link in App.start()', () => {
+    it('loads the catalog film in code mode, backs up autosave, applies look, cleans URL, and toasts', async () => {
+        const storage = new Map<string, string>()
+        const existingWork: StudioProject = {
+            ...emptyProject('Visitor draft'),
+            source: "import { film } from 'vizmatic/stage'\nexport default film(() => {})\n",
+        }
+        storage.set('vizmatic-studio-autosave-v1', JSON.stringify(existingWork))
+
+        const toastEl = {
+            textContent: '',
+            classes: new Set<string>(),
+            classList: {
+                toggle(cls: string, force?: boolean) {
+                    if (force ?? !toastEl.classes.has(cls)) toastEl.classes.add(cls)
+                    else toastEl.classes.delete(cls)
+                },
+                add(cls: string) {
+                    toastEl.classes.add(cls)
+                },
+                remove(cls: string) {
+                    toastEl.classes.delete(cls)
+                },
+            },
+        }
+        const replaceState = vi.fn()
+        vi.stubGlobal('location', {
+            hash: '',
+            search: '?film=deck-example',
+            pathname: '/studio.html',
+        })
+        vi.stubGlobal('history', { replaceState })
+        vi.stubGlobal('localStorage', {
+            getItem: (k: string) => storage.get(k) ?? null,
+            setItem: (k: string, v: string) => storage.set(k, v),
+        })
+        vi.stubGlobal('window', {
+            clearTimeout: vi.fn(),
+            setTimeout: vi.fn().mockReturnValue(1),
+        })
+        vi.stubGlobal('document', {
+            getElementById: (id: string) => (id === 'studioToast' ? toastEl : null),
+        })
+
+        const deckSource = "import { film } from 'vizmatic/stage'\nexport default film({ title: 'Deck', look: 'paper' }, () => {})\n"
+        vi.stubGlobal('fetch', vi.fn(async (input: URL | string) => {
+            const href = String(input)
+            if (href === 'https://studio-host.invalid/assets/studio/films.json') {
+                return {
+                    ok: true,
+                    status: 200,
+                    headers: new Headers({ 'content-type': 'application/json' }),
+                    json: async () => [
+                        {
+                            id: 'deck-example',
+                            title: 'Why we rebuilt the renderer',
+                            file: 'deck-example.tsx',
+                            look: 'paper',
+                            poster: 'assets/site/posters/deck-example_dark.webp',
+                        },
+                    ],
+                }
+            }
+            if (href === 'https://studio-host.invalid/assets/studio/films/deck-example.tsx') {
+                return {
+                    ok: true,
+                    status: 200,
+                    headers: new Headers({ 'content-type': 'text/plain' }),
+                    text: async () => deckSource,
+                }
+            }
+            return { ok: false, status: 404, headers: new Headers() }
+        }))
+
+        let loadedProject = null as StudioProject | null
+        const appStub = Object.create(App.prototype) as App
+        Object.defineProperty(appStub, 'studioAssets', { value: 'https://studio-host.invalid/assets/studio/' })
+        const internal = appStub as unknown as {
+            codePaused: boolean
+            loadProject: (project: StudioProject) => void
+        }
+        internal.codePaused = true
+        internal.loadProject = vi.fn((project: StudioProject) => {
+            loadedProject = project
+        })
+
+        await appStub.start()
+
+        expect(internal.codePaused).toBe(false)
+        expect(loadedProject).not.toBeNull()
+        expect(loadedProject!.name).toBe('Why we rebuilt the renderer')
+        expect(loadedProject!.mode).toBe('code')
+        expect(loadedProject!.source).toBe(deckSource)
+        expect(loadedProject!.look).toBe('paper')
+        expect(replaceState).toHaveBeenCalledWith(null, '', '/studio.html')
+        expect(toastEl.textContent).toBe('Opened film: Why we rebuilt the renderer')
+        expect(toastEl.classes.has('is-error')).toBe(false)
+
+        // Previous autosave was backed up before opening the film.
+        const backup = JSON.parse(storage.get('vizmatic-studio-backup-v1') ?? '{}') as StudioProject
+        expect(backup.name).toBe('Visitor draft')
+    })
+
+    it('cleans ?film= and falls back to autosave when film ID is unknown', async () => {
+        const storage = new Map<string, string>()
+        const savedWork: StudioProject = {
+            ...emptyProject('Saved work'),
+            source: "import { film } from 'vizmatic/stage'\nexport default film(() => {})\n",
+        }
+        storage.set('vizmatic-studio-autosave-v1', JSON.stringify(savedWork))
+
+        const toastEl = {
+            textContent: '',
+            classes: new Set<string>(),
+            classList: {
+                toggle(cls: string, force?: boolean) {
+                    if (force ?? !toastEl.classes.has(cls)) toastEl.classes.add(cls)
+                    else toastEl.classes.delete(cls)
+                },
+                add(cls: string) {
+                    toastEl.classes.add(cls)
+                },
+                remove(cls: string) {
+                    toastEl.classes.delete(cls)
+                },
+            },
+        }
+        const replaceState = vi.fn()
+        vi.stubGlobal('location', { hash: '', search: '?film=does-not-exist', pathname: '/studio.html' })
+        vi.stubGlobal('history', { replaceState })
+        vi.stubGlobal('localStorage', {
+            getItem: (k: string) => storage.get(k) ?? null,
+            setItem: (k: string, v: string) => storage.set(k, v),
+        })
+        vi.stubGlobal('window', { clearTimeout: vi.fn(), setTimeout: vi.fn().mockReturnValue(1) })
+        vi.stubGlobal('document', { getElementById: () => toastEl })
+        vi.stubGlobal('fetch', vi.fn(async () => ({
+            ok: true,
+            status: 200,
+            headers: new Headers({ 'content-type': 'application/json' }),
+            json: async () => [],
+        })))
+
+        let loadedProject = null as StudioProject | null
+        const appStub = Object.create(App.prototype) as App
+        Object.defineProperty(appStub, 'studioAssets', { value: 'https://studio-host.invalid/assets/studio/' })
+        const internal = appStub as unknown as {
+            codePaused: boolean
+            loadProject: (project: StudioProject) => void
+        }
+        internal.codePaused = false
+        internal.loadProject = vi.fn((project: StudioProject) => {
+            loadedProject = project
+        })
+
+        await appStub.start()
+
+        expect(replaceState).toHaveBeenCalledWith(null, '', '/studio.html')
+        expect(toastEl.classes.has('is-error')).toBe(true)
+        expect(loadedProject?.name).toBe('Saved work')
     })
 })

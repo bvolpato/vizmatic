@@ -46,8 +46,7 @@ The CLI writes `request-lifecycle_dark.mp4` and `video-manifest.json` under
 `./dist/videos`. Add narration with `--audio ./narration.wav`; the audio is
 trimmed or padded to the animation duration and encoded as AAC. Vizmatic renders
 the picture and optional audio. Keep `.vtt` or `.srt` captions as separate files
-and synchronize their cues to the finished timeline. The downloadable source
-and a copyable command are also on the [website video example](https://bvolpato.github.io/vizmatic/#video).
+and synchronize their cues to the finished timeline.
 
 The same workflow is available through the API:
 
@@ -71,26 +70,19 @@ contracts as `renderRgbaVideo` below. Keep a finite film's last state visible
 long enough to read. Use `parallel` tracks for overlapping transitions and
 path helpers for continuous motion.
 
-Watch **[From noise to signal](https://bvolpato.github.io/vizmatic/#video)**,
-an 18-second motion design example built from
-[`examples/videos/signal-to-story.tsx`](https://github.com/bvolpato/vizmatic/blob/main/examples/videos/signal-to-story.tsx).
-Its chart fits actual least-squares coefficients to explicitly synthetic data.
-The source demonstrates staggered entrances, arc-length line reveals,
+The 18-second example in
+[`examples/videos/signal-to-story.tsx`](https://github.com/bvolpato/vizmatic/blob/main/examples/videos/signal-to-story.tsx)
+fits actual least-squares coefficients to explicitly synthetic data.
+Its source demonstrates staggered entrances, arc-length line reveals,
 parallel tracks, camera motion, and an ending held on screen. From a repository
-checkout, generate the film, posters, captions, and downloadable source with:
+checkout, generate the MP4, posters, captions, and downloadable source with:
 
 ```bash
 pnpm install --frozen-lockfile
 pnpm render:video
 ```
 
-The repository's `pnpm render:video` script regenerates the showcase poster,
-captions, downloadable sources, and MP4. `pnpm site:build` regenerates the
-website preview and source downloads without encoding the MP4. Those generated
-media files live under `docs/assets/video/` and are excluded from Git. Pages
-builds the MP4 and verifies it with `pnpm docs:check --require-video` before
-publication. The website loads the poster until playback is requested and
-provides chapter controls and a text description.
+Generated media files from `pnpm render:video` are written under `docs/assets/video/` and excluded from Git. For live browser-compiled vector films and interactive presentations, browse the [films showcase](../films.html).
 
 `renderRgbaVideo` streams caller-rendered RGBA frames to FFmpeg as an H.264 MP4.
 It supports 1–120 fps, even pixel dimensions, optional audio, and backpressure,

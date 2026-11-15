@@ -1,4 +1,4 @@
-import { paintFrame } from '../stage/index'
+import { LOOKS, paintFrame, type LookName } from '../stage/index'
 import type { App } from './app'
 import { compileProject } from './compile'
 import { ExportCancelled, evenSize, type ExportFormat, type ExportQuality, type ExportResult, type ExportSettings } from './export'
@@ -277,19 +277,20 @@ export function openExportDialog(app: App): void {
 
 // ── Welcome ─────────────────────────────────────────────────────────────────
 
-interface CatalogFilm {
+export interface CatalogFilm {
     id: string
     title: string
     description?: string
     file: string
     poster?: string
+    look?: string
 }
 
-async function loadCatalog(app: App): Promise<CatalogFilm[]> {
+export async function loadCatalog(app: App): Promise<CatalogFilm[]> {
     try {
         const response = await fetch(new URL('films.json', app.studioAssets))
         const type = response.headers.get('content-type') ?? ''
-        if (!response.ok || !type.includes('json')) return []
+        if (!response.ok || type.includes('html')) return []
         const films = await response.json() as unknown
         return Array.isArray(films) ? films.filter((film): film is CatalogFilm => !!film && typeof film.file === 'string' && typeof film.title === 'string') : []
     } catch {
@@ -340,7 +341,8 @@ export function openWelcome(app: App): void {
                         const response = await fetch(new URL(`films/${film.file}`, app.studioAssets))
                         if (!response.ok) throw new Error(`HTTP ${response.status}`)
                         const source = await response.text()
-                        load({ ...emptyProject(film.title), mode: 'code', source })
+                        const look = film.look && Object.hasOwn(LOOKS, film.look) ? { look: film.look as LookName } : {}
+                        load({ ...emptyProject(film.title), mode: 'code', source, ...look })
                     } catch (error) {
                         toast(`Could not open ${film.title}. ${error instanceof Error ? error.message : ''}`, 'error')
                     }

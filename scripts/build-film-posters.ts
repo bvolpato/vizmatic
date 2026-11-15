@@ -10,7 +10,7 @@ import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promise
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { chromium } from 'playwright'
-import { compileFilm, isFilm, type FilmDefinition } from '../src/stage/index'
+import { compileFilm, isFilm, type FilmDefinition, type LookName } from '../src/stage/index'
 import { renderFilmFrame } from '../src/stage/export'
 import { loadFilmCatalog } from './site-content'
 
@@ -39,9 +39,12 @@ export async function buildFilmPosters(force = false): Promise<number> {
             const module = await import(resolve('examples/films', `${film.id}.ts`)) as { default?: FilmDefinition }
             if (!isFilm(module.default)) continue
             for (const theme of pending) {
-                // A film with its own art direction keeps it, and only the ground follows the page.
-                const look = film.look && film.look !== 'midnight' ? film.look as 'paper' : theme.look
-                const compiled = await compileFilm(module.default, { look, background: theme.background })
+                // Fixed-look films render on their native look ground so ink contrast holds in both site themes.
+                const fixedLook = film.look && film.look !== 'midnight' ? film.look as LookName : null
+                const compiled = await compileFilm(
+                    module.default,
+                    fixedLook ? { look: fixedLook } : { look: theme.look, background: theme.background },
+                )
                 const png = join(scratch, `${film.id}-${theme.name}.png`)
                 await renderFilmFrame(compiled, film.posterTime ?? compiled.duration * 0.66, png, { width: 1440 })
                 const webp = await page.evaluate(async (source) => {
