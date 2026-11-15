@@ -4,7 +4,7 @@
  */
 import {
     circle, colorAlong, curveThrough, dot, draw, dynamic, fadeIn, fadeOut, film, line, linear, Node, pointAt, polyPath,
-    smooth, tex, text, write, type Vec,
+    tex, text, write, type Vec,
 } from 'vizmatic/stage'
 
 const R = 190
@@ -57,7 +57,6 @@ export default film({
     const axisX = line([HUB[0] - 280, HUB[1]], [WAVE_START + WAVE_WIDTH + 20, HUB[1]], { stroke: 'grid', width: 2 })
     const axisY = line([HUB[0], HUB[1] - 300], [HUB[0], HUB[1] + 300], { stroke: 'grid', width: 2 })
     s.add(axisX, axisY)
-    s.play(draw(axisX), draw(axisY), { duration: 0.9 })
 
     const arms = dynamic(() => {
         const out: Node[] = []
@@ -78,8 +77,7 @@ export default film({
         out.push(dot(8, 'yellow').glow(14).at(x, y))
         return out
     })
-    s.play(fadeIn(arms, { duration: 0.8 }))
-    s.play(phase.to(Math.PI * 2, { duration: 3.4, ease: linear }))
+    s.play(fadeIn(arms), draw(axisX), draw(axisY), { duration: 0.9 })
 
     // ── Its height is a wave ────────────────────────────────────────────
     s.chapter('Its height is a wave')
@@ -115,16 +113,16 @@ export default film({
         return [thread, curve]
     })
     s.add(wave)
-    s.play(waveShown.to(1, { duration: 2.2, ease: smooth }), phase.to(Math.PI * 2 + 3.2, { duration: 2.2, ease: linear }))
-    s.play(phase.to(Math.PI * 2 + 7, { duration: 1.8, ease: linear }))
+    const tracedPhase = TURNS_ON_WAVE * Math.PI * 2
+    s.play(waveShown.to(1), phase.to(tracedPhase), { duration: 4, ease: linear })
 
     // ── Stack circles ───────────────────────────────────────────────────
     s.chapter('Add circles and the wave sharpens')
     const heading = s.add(tex('\\sum_{k=1}^{n} \\frac{\\sin\\,(2k-1)\\theta}{2k-1}', { size: 58 }).at(350, -380))
-    s.play(write(heading, { duration: 1.2 }), phase.to(Math.PI * 2 + 8.6, { duration: 1.2, ease: linear }))
-    s.play(terms.to(2, { duration: 1 }), phase.to(Math.PI * 2 + 10, { duration: 1, ease: linear }))
-    s.play(terms.to(4, { duration: 1.2 }), phase.to(Math.PI * 2 + 11.4, { duration: 1.2, ease: linear }))
-    s.play(terms.to(MAX_TERMS, { duration: 2.4 }), phase.to(Math.PI * 2 + 14, { duration: 2.4, ease: linear }))
+    s.play(write(heading, { duration: 1.2 }), phase.to(tracedPhase + 1.6, { duration: 1.2, ease: linear }))
+    s.play(terms.to(2, { duration: 1 }), phase.to(tracedPhase + 3, { duration: 1, ease: linear }))
+    s.play(terms.to(4, { duration: 1.2 }), phase.to(tracedPhase + 4.4, { duration: 1.2, ease: linear }))
+    s.play(terms.to(MAX_TERMS, { duration: 2.4 }), phase.to(tracedPhase + 7, { duration: 2.4, ease: linear }))
 
     // ── Any shape ───────────────────────────────────────────────────────
     s.chapter('Enough circles can draw anything')
