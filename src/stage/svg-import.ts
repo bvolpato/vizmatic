@@ -1,6 +1,6 @@
-import { apply, IDENTITY, matScale, mul, parseSvgPath, pathBounds, rectPath, arcPath, polyPath, transformPath, type Mat, type Path, type Ring } from './geometry'
+import { apply, compose, IDENTITY, matScale, mul, parseSvgPath, pathBounds, pointAt, rectPath, arcPath, polyPath, tangentAt, transformPath, type Mat, type Path, type Ring } from './geometry'
 import { Node, type StageImage } from './node'
-import { parseColor, type Paint, type Rgba } from './color'
+import { parseColor, radialGradient, type Paint, type Rgba } from './color'
 import { filmFont, text, type TextOptions } from './text'
 
 interface XmlElement {
@@ -91,6 +91,8 @@ interface InheritedStyle {
     /** The `font-family` of the SVG, as written. The importer reads one thing from it: whether it is monospace. */
     family: string
     anchor: string
+    contextFill?: string | null
+    contextStroke?: string | null
 }
 
 // A family that sets code: the generic name, a name that ends in "Mono" or "Code", and the common ones with neither.
@@ -202,12 +204,40 @@ function splitIntoGlyphs(path: Path): Path[] {
     return glyphs.sort((a, b) => a.x - b.x).map((glyph) => glyph.rings)
 }
 
+interface SvgParseBudget {
+    nodes: number
+    embedDepth: number
+}
+
+function decodeSvgDataUri(href: string): string | null {
+    if (!/^data:image\/svg\+xml[,;]/i.test(href)) return null
+    const comma = href.indexOf(',')
+    if (comma < 0) return null
+    const header = href.slice(0, comma).toLowerCase()
+    const body = href.slice(comma + 1)
+    try {
+        if (header.includes(';base64')) {
+            const binary = atob(body.trim())
+            const bytes = new Uint8Array(binary.length)
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+            return new TextDecoder().decode(bytes)
+        }
+        return decodeURIComponent(body)
+    } catch {
+        return null
+    }
+}
+
 /**
  * Turn SVG markup into stage nodes. Each shape becomes a leaf whose origin is its
  * center, so it can be drawn, faded, scaled, and morphed like anything else.
  * Filters and masks are skipped, because shapes draw without them.
  */
 export function fromSvg(source: string, options: FromSvgOptions = {}): SvgNode {
+    return parseSvgInternal(source, options, { nodes: 0, embedDepth: 0 })
+}
+
+function parseSvgInternal(source: string, options: FromSvgOptions, budget: SvgParseBudget): SvgNode {
     const root = parseXml(source)
     const svg = root.children.find((child) => child.name === 'svg')
     if (!svg) throw new Error('fromSvg needs markup with an <svg> element.')
@@ -243,7 +273,6 @@ export function fromSvg(source: string, options: FromSvgOptions = {}): SvgNode {
     const splitting = options.splitGlyphs ?? true
     const keepBackground = options.background ?? false
     let firstShape = true
-    let expandedNodes = 0
 
     const gradientOf = (id: string, m: Mat, path: Path, seen: ReadonlySet<string> = new Set()): Paint | null => {
         if (seen.has(id) || seen.size >= MAX_SVG_DEPTH) return null
@@ -255,15 +284,14 @@ export function fromSvg(source: string, options: FromSvgOptions = {}): SvgNode {
             // Satori wraps gradients in a pattern: the fill spans the shape's own box.
             const inner = element.children.find((child) => child.name === 'linearGradient')
             if (inner) return linear(inner, m, path, true, nextSeen)
+            const innerRadial = element.children.find((child) => child.name === 'radialGradient')
+            if (innerRadial) return radial(innerRadial, m, path, true, nextSeen)
             const fill = element.children.find((child) => child.attrs['fill']?.startsWith('url(#'))
             const nested = fill?.attrs['fill']?.match(/url\(#([^)]+)\)/)?.[1]
             return nested ? gradientOf(nested, m, path, nextSeen) : null
         }
         if (element.name === 'linearGradient') return linear(element, m, path, element.attrs['gradientUnits'] !== 'userSpaceOnUse', nextSeen)
-        if (element.name === 'radialGradient') {
-            const stops = stopsOf(element, nextSeen)
-            return stops.length ? stops[stops.length - 1]![1] : null
-        }
+        if (element.name === 'radialGradient') return radial(element, m, path, element.attrs['gradientUnits'] !== 'userSpaceOnUse', nextSeen)
         return null
     }
 
@@ -309,6 +337,29 @@ export function fromSvg(source: string, options: FromSvgOptions = {}): SvgNode {
         return { type: 'linear', from, to, stops }
     }
 
+    const radial = (element: XmlElement, m: Mat, path: Path, objectBox: boolean, seen: ReadonlySet<string> = new Set()): Paint | null => {
+        const stops = stopsOf(element, seen)
+        if (stops.length === 0) return null
+        const coordinate = (value: string | undefined, fallback: number) => {
+            if (value === undefined) return fallback
+            return value.endsWith('%') ? parseFloat(value) / 100 : parseFloat(value)
+        }
+        const cxRaw = coordinate(element.attrs['cx'], 0.5)
+        const cyRaw = coordinate(element.attrs['cy'], 0.5)
+        const rRaw = Math.max(0, coordinate(element.attrs['r'], 0.5))
+        let center: readonly [number, number]
+        let radius: number
+        if (objectBox) {
+            const b = pathBounds(path) ?? { x: 0, y: 0, width: 1, height: 1 }
+            center = [b.x + cxRaw * b.width, b.y + cyRaw * b.height]
+            radius = Math.max(0.5, rRaw * Math.max(b.width, b.height))
+        } else {
+            center = apply(m, cxRaw, cyRaw)
+            radius = Math.max(0.5, rRaw * matScale(m))
+        }
+        return radialGradient(center, radius, stops)
+    }
+
     const shapePath = (element: XmlElement): Path | null => {
         const a = element.attrs
         const num = (key: string, fallback = 0) => {
@@ -346,10 +397,16 @@ export function fromSvg(source: string, options: FromSvgOptions = {}): SvgNode {
         const style: InheritedStyle = { ...inherited }
         const color = pick('color')
         if (color) style.color = color
+        const resolvePaintRef = (raw: string): string | null => {
+            if (raw === 'currentColor') return style.color
+            if (raw === 'context-stroke') return style.contextStroke ?? style.color
+            if (raw === 'context-fill') return style.contextFill ?? style.color
+            return raw
+        }
         const fill = pick('fill')
-        if (fill) style.fill = fill === 'currentColor' ? style.color : fill
+        if (fill) style.fill = resolvePaintRef(fill)
         const stroke = pick('stroke')
-        if (stroke) style.stroke = stroke === 'currentColor' ? style.color : stroke
+        if (stroke) style.stroke = resolvePaintRef(stroke)
         const width = pick('stroke-width')
         if (width !== undefined) style.strokeWidth = parseFloat(width) || 0
         const fo = pick('fill-opacity')
@@ -408,6 +465,80 @@ export function fromSvg(source: string, options: FromSvgOptions = {}): SvgNode {
         })
     }
 
+    const initial: InheritedStyle = {
+        fill: '#000000', stroke: null, strokeWidth: 1, fillOpacity: 1, strokeOpacity: 1,
+        cap: 'butt', join: 'miter', dash: null, dashOffset: 0, color: '#000000', fontSize: 16, family: '', anchor: 'start',
+    }
+    const { style: rootStyle } = styleOf(svg, initial)
+
+    const markerUrlOf = (element: XmlElement, key: 'marker-start' | 'marker-end', camel: 'markerStart' | 'markerEnd'): string | null => {
+        const inline = parseStyle(element.attrs['style'])
+        const cls = (element.attrs['class'] ?? '').split(/\s+/).filter(Boolean)
+        const merged: Record<string, string> = { ...rules.get(element.name) }
+        for (const name of cls) Object.assign(merged, rules.get(`.${name}`))
+        if (element.attrs['id']) Object.assign(merged, rules.get(`#${element.attrs['id']}`))
+        const raw = inline[key] ?? inline[camel] ?? element.attrs[key] ?? element.attrs[camel] ?? merged[key]
+        return raw?.match(/url\(#([^)]+)\)/)?.[1] ?? null
+    }
+
+    const emitMarker = (
+        markerId: string,
+        where: 'start' | 'end',
+        hostPath: Path,
+        m: Mat,
+        hostStyle: InheritedStyle,
+        depth: number,
+        useStack: ReadonlySet<string>,
+    ): Node | null => {
+        if (useStack.has(`marker:${markerId}`)) return null
+        const markerEl = defs.get(markerId)
+        if (!markerEl || markerEl.name !== 'marker') return null
+        const [px, py] = pointAt(hostPath, where === 'start' ? 0 : 1)
+        const [tx, ty] = tangentAt(hostPath, where === 'start' ? 0.001 : 0.999)
+        const orient = (markerEl.attrs['orient'] ?? '0').trim()
+        let angle = 0
+        if (orient === 'auto') {
+            angle = Math.atan2(ty, tx)
+        } else if (orient === 'auto-start-reverse') {
+            angle = where === 'start' ? Math.atan2(-ty, -tx) : Math.atan2(ty, tx)
+        } else {
+            const deg = orient.endsWith('rad') ? parseFloat(orient) * 180 / Math.PI : parseFloat(orient)
+            angle = (Number.isFinite(deg) ? deg : 0) * Math.PI / 180
+        }
+        const markerUnits = markerEl.attrs['markerUnits'] ?? 'strokeWidth'
+        const unitScale = markerUnits === 'userSpaceOnUse' ? 1 : (hostStyle.strokeWidth > 0 ? hostStyle.strokeWidth : 1)
+        const markerW = (parseFloat(markerEl.attrs['markerWidth'] ?? '3') || 3) * unitScale
+        const markerH = (parseFloat(markerEl.attrs['markerHeight'] ?? '3') || 3) * unitScale
+        const vb = (markerEl.attrs['viewBox'] ?? '').trim().split(/[\s,]+/).filter(Boolean).map(Number)
+        const hasVb = vb.length === 4 && (vb[2] ?? 0) > 0 && (vb[3] ?? 0) > 0
+        const scaleX = hasVb ? markerW / vb[2]! : unitScale
+        const scaleY = hasVb ? markerH / vb[3]! : unitScale
+        const refX = parseFloat(markerEl.attrs['refX'] ?? '0') || 0
+        const refY = parseFloat(markerEl.attrs['refY'] ?? '0') || 0
+        const fullWorld = mul(m, compose(px, py, angle, scaleX, scaleY, refX, refY))
+        const [worldPx, worldPy] = apply(m, px, py)
+        const dirX = m[0] * Math.cos(angle) + m[2] * Math.sin(angle)
+        const dirY = m[1] * Math.cos(angle) + m[3] * Math.sin(angle)
+        const worldAngle = Math.atan2(dirY, dirX)
+        const childMatrix = mul(compose(0, 0, -worldAngle, 1, 1, worldPx, worldPy), fullWorld)
+        const markerNode = new Node().at(worldPx, worldPy)
+        markerNode.base.rotation = worldAngle
+        markerNode.data['marker'] = where
+        const markerBaseStyle: InheritedStyle = {
+            ...rootStyle,
+            contextFill: hostStyle.fill,
+            contextStroke: hostStyle.stroke,
+        }
+        const { style: markerStyle, opacity: markerOpacity } = styleOf(markerEl, markerBaseStyle)
+        if (markerOpacity < 1) markerNode.base.opacity = markerOpacity
+        const nextStack = new Set(useStack)
+        nextStack.add(`marker:${markerId}`)
+        for (const child of markerEl.children) {
+            walk(child, markerNode, markerStyle, childMatrix, depth + 1, nextStack)
+        }
+        return markerNode.children.length > 0 ? markerNode : null
+    }
+
     const walk = (
         element: XmlElement,
         parent: Node,
@@ -417,18 +548,93 @@ export function fromSvg(source: string, options: FromSvgOptions = {}): SvgNode {
         useStack: ReadonlySet<string> = new Set(),
     ): void => {
         if (depth > MAX_SVG_DEPTH) throw new Error(`fromSvg exceeds the maximum nesting depth (${MAX_SVG_DEPTH}).`)
-        if (++expandedNodes > MAX_SVG_NODES) throw new Error(`fromSvg exceeds the ${MAX_SVG_NODES}-node budget.`)
+        if (++budget.nodes > MAX_SVG_NODES) throw new Error(`fromSvg exceeds the ${MAX_SVG_NODES}-node budget.`)
         if (NOT_DRAWN.has(element.name)) return
         // Filter groups in Satori output hold soft shadows that need a blur to look right.
         if (element.attrs['filter']) return
         const { style, opacity } = styleOf(element, inherited)
         const m = mul(parentMatrix, parseTransform(element.attrs['transform']))
+        const decodeSvgToken = (token: string): string => (
+            token === 'empty'
+                ? ''
+                : token.replace(/_u([0-9a-f]+)_/gi, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16)))
+        )
+        const GRAPH_NODE_ID = /^vizmatic-graph-(?:index-\d+|id-.+?)-node-(.+)$/
+        const GRAPH_ANY_ID = /^vizmatic-graph-(?:index-\d+|id-.+?)-(?:node|edge)-(.+)$/
+        const registerAlias = (key: string, node: Node) => {
+            if (!key) return
+            if (!out.byId.has(key)) out.byId.set(key, node)
+            if (key.startsWith('custom-') && key.length > 7 && !out.byId.has(key.slice(7))) {
+                out.byId.set(key.slice(7), node)
+            }
+        }
         const register = (node: Node) => {
-            if (element.attrs['id']) out.byId.set(element.attrs['id'], node)
+            const explicitId = element.attrs['id']
+            if (explicitId) {
+                out.byId.set(explicitId, node)
+                const graphMatch = GRAPH_ANY_ID.exec(explicitId)
+                if (graphMatch) registerAlias(decodeSvgToken(graphMatch[1]!), node)
+                return
+            }
+            const dataKey = element.attrs['data-vizmatic-graph-node-id']
+                ?? element.attrs['data-vizmatic-graph-edge-id']
+                ?? element.attrs['data-node-id']
+                ?? element.attrs['data-id']
+            if (dataKey) {
+                out.byId.set(dataKey, node)
+                registerAlias(dataKey, node)
+                try {
+                    const decoded = decodeURIComponent(dataKey)
+                    if (decoded !== dataKey) registerAlias(decoded, node)
+                } catch {
+                    // Keep literal key when percent sequence is invalid.
+                }
+            }
         }
         if (element.name === 'g' || element.name === 'svg' || element.name === 'a') {
             const group = new Node()
             if (opacity < 1) group.base.opacity = opacity
+            const explicitId = element.attrs['id'] ?? ''
+            const nodeMatch = element.name === 'g' ? GRAPH_NODE_ID.exec(explicitId) : null
+            if (nodeMatch) {
+                const hitRect = element.children.find((c) => c.name === 'rect')
+                    ?? element.children.find((c) => c.name === 'a')?.children.find((c) => c.name === 'rect')
+                if (hitRect) {
+                    const rx = parseFloat(hitRect.attrs['x'] ?? '0') || 0
+                    const ry = parseFloat(hitRect.attrs['y'] ?? '0') || 0
+                    const rw = parseFloat(hitRect.attrs['width'] ?? '0') || 0
+                    const rh = parseFloat(hitRect.attrs['height'] ?? '0') || 0
+                    if (rw > 0 && rh > 0) {
+                        const [p0x, p0y] = apply(m, rx, ry)
+                        const [p1x, p1y] = apply(m, rx + rw, ry + rh)
+                        const bx0 = Math.min(p0x, p1x), by0 = Math.min(p0y, p1y)
+                        const bx1 = Math.max(p0x, p1x), by1 = Math.max(p0y, p1y)
+                        const bw = bx1 - bx0, bh = by1 - by0
+                        const captured = out.children.filter((child) => {
+                            if (child === parent || child.data['graphNode'] || child.data['svgEmbed']) return false
+                            const b = child.bounds()
+                            if (b.width <= 0 && b.height <= 0) return false
+                            if (b.width > bw + 6 || b.height > bh + 6) return false
+                            return b.x >= bx0 - 3 && b.y >= by0 - 3 && b.x + b.width <= bx1 + 3 && b.y + b.height <= by1 + 3
+                        })
+                        if (captured.length > 0) {
+                            const firstIdx = out.children.indexOf(captured[0]!)
+                            const capturedSet = new Set(captured)
+                            out.children = out.children.filter((child) => !capturedSet.has(child))
+                            out.children.splice(firstIdx, 0, group)
+                            group.parent = out
+                            group.data['graphNode'] = decodeSvgToken(nodeMatch[1]!)
+                            for (const item of captured) {
+                                item.parent = group
+                                group.children.push(item)
+                            }
+                            register(group)
+                            for (const child of element.children) walk(child, group, style, m, depth + 1, useStack)
+                            return
+                        }
+                    }
+                }
+            }
             register(group)
             parent.add(group)
             for (const child of element.children) walk(child, group, style, m, depth + 1, useStack)
@@ -454,7 +660,38 @@ export function fromSvg(source: string, options: FromSvgOptions = {}): SvgNode {
             const href = element.attrs['href'] ?? element.attrs['xlink:href']
             if (!href) return
             const width = parseFloat(element.attrs['width'] ?? '0'), height = parseFloat(element.attrs['height'] ?? '0')
-            const [x, y] = apply(m, parseFloat(element.attrs['x'] ?? '0') || 0, parseFloat(element.attrs['y'] ?? '0') || 0)
+            const ix = parseFloat(element.attrs['x'] ?? '0') || 0, iy = parseFloat(element.attrs['y'] ?? '0') || 0
+            const inlineSvg = width > 0 && height > 0 && budget.embedDepth < 8 ? decodeSvgDataUri(href) : null
+            if (inlineSvg) {
+                const subBudget = { nodes: budget.nodes, embedDepth: budget.embedDepth + 1 }
+                const inner = parseSvgInternal(inlineSvg, {
+                    splitGlyphs: options.splitGlyphs,
+                    background: true,
+                    font: options.font,
+                }, subBudget)
+                budget.nodes = subBudget.nodes
+                const sx = inner.pictureWidth > 0 ? width / inner.pictureWidth : 1
+                const sy = inner.pictureHeight > 0 ? height / inner.pictureHeight : 1
+                const embedMat = mul(m, [sx, 0, 0, sy, ix + width / 2, iy + height / 2])
+                const holder = new Node().at(embedMat[4], embedMat[5])
+                const rot = Math.atan2(embedMat[1], embedMat[0])
+                holder.base.rotation = rot
+                holder.base.sx = Math.hypot(embedMat[0], embedMat[1])
+                holder.base.sy = Math.hypot(embedMat[2], embedMat[3]) * (embedMat[0] * embedMat[3] - embedMat[1] * embedMat[2] < 0 ? -1 : 1)
+                holder.data['svgEmbed'] = true
+                if (opacity < 1) holder.base.opacity = opacity
+                for (const child of inner.children) {
+                    child.parent = holder
+                    holder.children.push(child)
+                }
+                for (const [id, target] of inner.byId) {
+                    if (!out.byId.has(id)) out.byId.set(id, target)
+                }
+                register(holder)
+                parent.add(holder)
+                return
+            }
+            const [x, y] = apply(m, ix, iy)
             const unit = matScale(m)
             const image: StageImage = { src: href, width, height }
             const node = new Node().at(x, y)
@@ -489,8 +726,21 @@ export function fromSvg(source: string, options: FromSvgOptions = {}): SvgNode {
         firstShape = false
         if (isBackground) return
         const leaves = leafFrom(path, m, element, style)
-        if (leaves.length === 0) return
-        if (leaves.length === 1) {
+        const markers: Node[] = []
+        if (element.name === 'path' || element.name === 'line' || element.name === 'polyline') {
+            const startId = markerUrlOf(element, 'marker-start', 'markerStart')
+            if (startId) {
+                const startNode = emitMarker(startId, 'start', path, m, style, depth, useStack)
+                if (startNode) markers.push(startNode)
+            }
+            const endId = markerUrlOf(element, 'marker-end', 'markerEnd')
+            if (endId) {
+                const endNode = emitMarker(endId, 'end', path, m, style, depth, useStack)
+                if (endNode) markers.push(endNode)
+            }
+        }
+        if (leaves.length === 0 && markers.length === 0) return
+        if (leaves.length === 1 && markers.length === 0) {
             if (opacity < 1) leaves[0]!.base.opacity = opacity
             register(leaves[0]!)
             parent.add(leaves[0]!)
@@ -498,17 +748,12 @@ export function fromSvg(source: string, options: FromSvgOptions = {}): SvgNode {
         }
         const group = new Node()
         if (opacity < 1) group.base.opacity = opacity
-        group.add(...leaves)
+        group.add(...leaves, ...markers)
         register(group)
         parent.add(group)
     }
 
-    const initial: InheritedStyle = {
-        fill: '#000000', stroke: null, strokeWidth: 1, fillOpacity: 1, strokeOpacity: 1,
-        cap: 'butt', join: 'miter', dash: null, dashOffset: 0, color: '#000000', fontSize: 16, family: '', anchor: 'start',
-    }
-    const { style } = styleOf(svg, initial)
-    for (const child of svg.children) walk(child, out, style, base)
+    for (const child of svg.children) walk(child, out, rootStyle, base)
     return out
 }
 

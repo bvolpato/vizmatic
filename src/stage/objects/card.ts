@@ -1,9 +1,11 @@
 import type { Bounds } from '../geometry'
+import type { Anim, AnimOptions } from '../anim'
 import { Node, ownLabels } from '../node'
 import { rect } from '../shapes'
 import { text, type TextOptions } from '../text'
 import type { ColorInput } from '../color'
 import { oneNode } from '../layout'
+import { reveal, sampleAt, staggered, stepAt } from './util'
 
 export interface CardOptions {
     /** Outer width, in pixels. Defaults to 420. */
@@ -148,6 +150,30 @@ export class Card extends Node {
         this.caption = caption
         // The card places its title and its caption. The figure is of the film, so the film check judges its text.
         ownLabels(this, { name: 'card', labels: [title, caption] })
+    }
+
+    /** The frame traces in, then the title, figure, and caption settle in top to bottom. */
+    enter(options: AnimOptions = {}): Anim {
+        return {
+            label: 'card.enter', duration: options.duration ?? 0.85, ease: options.ease,
+            schedule: (ctx) => {
+                reveal(this, ctx.t0, ctx.stage)
+                const span = ctx.t1 - ctx.t0
+                const fillTarget = sampleAt(this.frame, 'fillOpacity', ctx.t0)
+                stepAt(this.frame, 'trimTo', 0, ctx.t0)
+                stepAt(this.frame, 'fillOpacity', 0, ctx.t0)
+                this.frame.tween('trimTo', 1, ctx.t0, ctx.t0 + span * 0.65, ctx.ease)
+                this.frame.tween('fillOpacity', fillTarget, ctx.t0 + span * 0.2, ctx.t0 + span * 0.8, ctx.ease)
+                const items = [this.title, this.figure, this.caption].filter((item): item is Node => item !== null)
+                const windows = staggered(items.length, Math.max(0, options.lag ?? 0.2), ctx.t0 + span * 0.25, ctx.t1)
+                items.forEach((item, index) => {
+                    const [start, end] = windows[index]!
+                    const target = sampleAt(item, 'opacity', ctx.t0)
+                    stepAt(item, 'opacity', 0, ctx.t0)
+                    item.tween('opacity', target, start, end, ctx.ease)
+                })
+            },
+        }
     }
 }
 

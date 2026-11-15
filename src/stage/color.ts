@@ -237,7 +237,7 @@ export function linearGradient(from: readonly [number, number], to: readonly [nu
     return { type: 'linear', from, to, stops: normalizeStops(colors) }
 }
 
-export function radialGradient(center: readonly [number, number], radius: number, colors: readonly ColorInput[]): RadialGradient {
+export function radialGradient(center: readonly [number, number], radius: number, colors: readonly ColorInput[] | readonly (readonly [number, ColorInput])[]): RadialGradient {
     return { type: 'radial', center, radius, stops: normalizeStops(colors) }
 }
 

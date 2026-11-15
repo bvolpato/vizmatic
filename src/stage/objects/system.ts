@@ -2,12 +2,12 @@ import { apply, invert, parseSvgPath, pathLength, pointAt, polyPath, rectPath, t
 import { Node, ownLabels, type Edge, objectName } from '../node'
 import { filmFont, text, type TextOptions } from '../text'
 import { circle, dot, line } from '../shapes'
-import { toPaint, type ColorInput } from '../color'
+import { toPaint, type ColorInput, type Paint } from '../color'
 import { morphMatching, type Anim, type AnimOptions } from '../anim'
 import { linear, smooth, type Ease } from '../ease'
 import { clock } from '../track'
 import { reveal, staggered, stepAt } from './util'
-import { Block, nodeOrPoint, oneNode } from '../layout'
+import { Block, Box, nodeOrPoint, oneNode } from '../layout'
 import type { Stage } from '../stage'
 import { pictogram } from './pictograms'
 
@@ -295,12 +295,18 @@ export interface ConnectorOptions {
     radius?: number
     /** Dashes travel along the line at this many pixels per second. */
     flow?: number
+    /** Obstacles to route cleanly around instead of cutting straight through. */
+    avoid?: readonly (Node | Block | Box)[]
 }
 
 /** How `connector.send` sends a mark along a line. */
 export interface SendOptions extends AnimOptions {
     /** Travel from the second end of the line to the first, as the answer to a request does. */
     reverse?: boolean
+    /** Align the mark's rotation tangent to the travel direction along the connector. */
+    orient?: boolean
+    /** Leave a tapered glowing comet trail behind the travelling mark. */
+    trail?: boolean
     /**
      * The part of the way where the message is lost, from 0 to 1. It stops there, with a cross ahead of it.
      * The way of a message that stops ends before the node, with room for the cross: at 1, it stops where a
@@ -375,6 +381,169 @@ interface ActivePulse {
     glow: number
 }
 
+interface ActiveTrail {
+    t0: number
+    arrives: number
+    leaves: number
+    ease: Ease
+    reverse: boolean
+    first: number
+    stop: number
+    color: Paint
+    width: number
+    glow: number
+    length: number
+}
+
+interface ObstacleRect {
+    left: number
+    top: number
+    right: number
+    bottom: number
+}
+
+function pointInRect(p: Vec, r: ObstacleRect): boolean {
+    return p[0] > r.left && p[0] < r.right && p[1] > r.top && p[1] < r.bottom
+}
+
+function segmentHitsRect(a: Vec, b: Vec, r: ObstacleRect): boolean {
+    if (pointInRect(a, r) || pointInRect(b, r)) return true
+    let t0 = 0, t1 = 1
+    const dx = b[0] - a[0], dy = b[1] - a[1]
+    const clip = (p: number, q: number): boolean => {
+        if (Math.abs(p) < 1e-9) return q >= 0
+        const t = q / p
+        if (p < 0) {
+            if (t > t1) return false
+            if (t > t0) t0 = t
+        } else {
+            if (t < t0) return false
+            if (t < t1) t1 = t
+        }
+        return true
+    }
+    if (!clip(-dx, a[0] - r.left)) return false
+    if (!clip(dx, r.right - a[0])) return false
+    if (!clip(-dy, a[1] - r.top)) return false
+    if (!clip(dy, r.bottom - a[1])) return false
+    return t1 > t0 + 1e-6
+}
+
+function pathHitsObstacles(path: Path, obstacles: readonly ObstacleRect[]): boolean {
+    if (obstacles.length === 0 || path.length === 0) return false
+    const samples = 36
+    let prev = pointAt(path, 0)
+    for (let i = 1; i <= samples; i++) {
+        const next = pointAt(path, i / samples)
+        for (const obs of obstacles) {
+            if (i < samples && pointInRect(next, obs)) return true
+            if (segmentHitsRect(prev, next, obs)) return true
+        }
+        prev = next
+    }
+    return false
+}
+
+function simplifyOrtho(points: readonly Vec[]): Vec[] {
+    if (points.length <= 2) return [...points]
+    const deduped: Vec[] = [points[0]!]
+    for (let i = 1; i < points.length; i++) {
+        const prev = deduped[deduped.length - 1]!
+        const cur = points[i]!
+        if (Math.hypot(cur[0] - prev[0], cur[1] - prev[1]) > 0.5) deduped.push(cur)
+    }
+    if (deduped.length <= 2) return deduped
+    const out: Vec[] = [deduped[0]!]
+    for (let i = 1; i < deduped.length - 1; i++) {
+        const prev = out[out.length - 1]!, cur = deduped[i]!, next = deduped[i + 1]!
+        const cross = (cur[0] - prev[0]) * (next[1] - cur[1]) - (cur[1] - prev[1]) * (next[0] - cur[0])
+        const dot = (cur[0] - prev[0]) * (next[0] - cur[0]) + (cur[1] - prev[1]) * (next[1] - cur[1])
+        if (Math.abs(cross) < 1e-3 && dot >= 0) continue
+        out.push(cur)
+    }
+    out.push(deduped[deduped.length - 1]!)
+    return out
+}
+
+function detourWaypoints(a: Anchor, b: Anchor, obstacles: readonly ObstacleRect[]): Vec[] | null {
+    const stub = 18
+    const tryLead = (anchor: Anchor): Vec => {
+        const candidate: Vec = [anchor.point[0] + anchor.normal[0] * stub, anchor.point[1] + anchor.normal[1] * stub]
+        return obstacles.some((obs) => segmentHitsRect(anchor.point, candidate, obs)) ? anchor.point : candidate
+    }
+    const start = tryLead(a), end = tryLead(b)
+    const xSet = new Set<number>([start[0], end[0], a.point[0], b.point[0], (start[0] + end[0]) / 2])
+    const ySet = new Set<number>([start[1], end[1], a.point[1], b.point[1], (start[1] + end[1]) / 2])
+    for (const obs of obstacles) {
+        xSet.add(obs.left - 2)
+        xSet.add(obs.right + 2)
+        ySet.add(obs.top - 2)
+        ySet.add(obs.bottom + 2)
+    }
+    const xs = [...xSet].sort((u, v) => u - v)
+    const ys = [...ySet].sort((u, v) => u - v)
+    const nx = xs.length, ny = ys.length
+    const count = nx * ny
+    const indexOf = (x: number, y: number): number => xs.indexOf(x) * ny + ys.indexOf(y)
+    const startIdx = indexOf(start[0], start[1])
+    const endIdx = indexOf(end[0], end[1])
+    if (startIdx < 0 || endIdx < 0) return null
+
+    // State is (vertex * 3 + dir), where dir: 0 = none, 1 = horizontal, 2 = vertical.
+    const states = count * 3
+    const dist = new Float64Array(states).fill(Infinity)
+    const prev = new Int32Array(states).fill(-1)
+    const used = new Uint8Array(states)
+    dist[startIdx * 3] = 0
+
+    const neighbors = [
+        [1, 0, 1],
+        [-1, 0, 1],
+        [0, 1, 2],
+        [0, -1, 2],
+    ] as const
+
+    for (let step = 0; step < states; step++) {
+        let best = -1, bestCost = Infinity
+        for (let s = 0; s < states; s++) {
+            if (!used[s] && dist[s]! < bestCost) {
+                bestCost = dist[s]!
+                best = s
+            }
+        }
+        if (best < 0 || bestCost === Infinity) break
+        used[best] = 1
+        const v = Math.floor(best / 3)
+        if (v === endIdx) {
+            const chain: Vec[] = []
+            for (let cur = best; cur >= 0; cur = prev[cur]!) {
+                const node = Math.floor(cur / 3)
+                const ix = Math.floor(node / ny), iy = node % ny
+                chain.push([xs[ix]!, ys[iy]!])
+            }
+            chain.reverse()
+            return simplifyOrtho([a.point, ...chain, b.point])
+        }
+        const dir = best % 3
+        const ix = Math.floor(v / ny), iy = v % ny
+        const p0: Vec = [xs[ix]!, ys[iy]!]
+        for (const [dx, dy, nextDir] of neighbors) {
+            const jx = ix + dx, jy = iy + dy
+            if (jx < 0 || jx >= nx || jy < 0 || jy >= ny) continue
+            const p1: Vec = [xs[jx]!, ys[jy]!]
+            if (obstacles.some((obs) => segmentHitsRect(p0, p1, obs))) continue
+            const turnPenalty = dir !== 0 && dir !== nextDir ? 18 : 0
+            const nextState = (jx * ny + jy) * 3 + nextDir
+            const nextCost = bestCost + Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) + turnPenalty
+            if (nextCost < dist[nextState]!) {
+                dist[nextState] = nextCost
+                prev[nextState] = best
+            }
+        }
+    }
+    return null
+}
+
 /**
  * A line between two nodes that is routed fresh on every frame. Move a node and
  * the line follows. `draw(connector)` traces it, and `.pulse()` sends a signal.
@@ -384,6 +553,7 @@ export class Connector extends Node {
     private readonly toEnd: ConnectorEnd
     private readonly options: ConnectorOptions
     private readonly pulses: ActivePulse[] = []
+    private readonly trails: ActiveTrail[] = []
     /** The label is made on the first frame that shows it. Its font is the one of the film that made the connector. */
     private readonly labelFont: NonNullable<TextOptions['font']>
     private plate: Node | null = null
@@ -400,6 +570,13 @@ export class Connector extends Node {
             } catch (error) {
                 throw new Error((error as Error).message.replace('Give a node, or a point', 'Give a node, a block of the layout, or a point'))
             }
+        }
+        if (options.avoid) {
+            options.avoid.forEach((item, index) => {
+                if (!(item instanceof Node || item instanceof Block || item instanceof Box)) {
+                    throw new Error(`connector: avoid[${index}] must be a Node, Block, or Box`)
+                }
+            })
         }
         this.fromEnd = from
         this.toEnd = to
@@ -433,30 +610,77 @@ export class Connector extends Node {
         return [anchor(fromEnd, a, sideFrom, options.fromOffset ?? 0), anchor(toEnd, b, sideTo, options.toOffset ?? 0)]
     }
 
+    private obstaclesNow(a: Vec, b: Vec): { expanded: ObstacleRect[]; tight: ObstacleRect[] } {
+        const list = this.options.avoid
+        if (!list || list.length === 0) return { expanded: [], tight: [] }
+        const clearance = Math.max(18, (this.options.gap ?? 3) + 16)
+        const tightPad = 6
+        const expanded: ObstacleRect[] = []
+        const tight: ObstacleRect[] = []
+        for (const item of list) {
+            if (item instanceof Node && !item.get('visible')) continue
+            const raw = item instanceof Box
+                ? { x: item.left, y: item.top, width: item.width, height: item.height }
+                : item instanceof Block
+                    ? { x: item.box.left, y: item.box.top, width: item.box.width, height: item.box.height }
+                    : item.bounds()
+            if (raw.width <= 0 && raw.height <= 0) continue
+            const exp: ObstacleRect = {
+                left: raw.x - clearance,
+                top: raw.y - clearance,
+                right: raw.x + raw.width + clearance,
+                bottom: raw.y + raw.height + clearance,
+            }
+            if (pointInRect(a, exp) || pointInRect(b, exp)) continue
+            expanded.push(exp)
+            tight.push({
+                left: raw.x - tightPad,
+                top: raw.y - tightPad,
+                right: raw.x + raw.width + tightPad,
+                bottom: raw.y + raw.height + tightPad,
+            })
+        }
+        return { expanded, tight }
+    }
+
     /** Geometry from end to end at this moment, in stage coordinates. */
     routeNow(): Path {
         const [a, b] = this.anchors()
         const route = this.options.route ?? 'curve'
-        if (route === 'straight') return polyPath([a.point, b.point])
-        if (route === 'ortho') {
+        let candidate: Path
+        if (route === 'straight') {
+            candidate = polyPath([a.point, b.point])
+        } else if (route === 'ortho') {
             const r = this.options.radius ?? 8
             const horizontalA = a.normal[0] !== 0, horizontalB = b.normal[0] !== 0
             if (horizontalA && horizontalB) {
                 const mid = (a.point[0] + b.point[0]) / 2
-                return fillet([a.point, [mid, a.point[1]], [mid, b.point[1]], b.point], r)
-            }
-            if (!horizontalA && !horizontalB) {
+                candidate = fillet([a.point, [mid, a.point[1]], [mid, b.point[1]], b.point], r)
+            } else if (!horizontalA && !horizontalB) {
                 const mid = (a.point[1] + b.point[1]) / 2
-                return fillet([a.point, [a.point[0], mid], [b.point[0], mid], b.point], r)
+                candidate = fillet([a.point, [a.point[0], mid], [b.point[0], mid], b.point], r)
+            } else {
+                const corner: Vec = horizontalA ? [b.point[0], a.point[1]] : [a.point[0], b.point[1]]
+                candidate = fillet([a.point, corner, b.point], r)
             }
-            const corner: Vec = horizontalA ? [b.point[0], a.point[1]] : [a.point[0], b.point[1]]
-            return fillet([a.point, corner, b.point], r)
+        } else {
+            const distance = Math.hypot(b.point[0] - a.point[0], b.point[1] - a.point[1])
+            const reach = Math.max(18, distance * (this.options.curvature ?? 0.42))
+            const c1: Vec = [a.point[0] + a.normal[0] * reach, a.point[1] + a.normal[1] * reach]
+            const c2: Vec = [b.point[0] + b.normal[0] * reach, b.point[1] + b.normal[1] * reach]
+            candidate = parseSvgPath(`M${a.point[0]} ${a.point[1]}C${c1[0]} ${c1[1]} ${c2[0]} ${c2[1]} ${b.point[0]} ${b.point[1]}`)
         }
-        const distance = Math.hypot(b.point[0] - a.point[0], b.point[1] - a.point[1])
-        const reach = Math.max(18, distance * (this.options.curvature ?? 0.42))
-        const c1: Vec = [a.point[0] + a.normal[0] * reach, a.point[1] + a.normal[1] * reach]
-        const c2: Vec = [b.point[0] + b.normal[0] * reach, b.point[1] + b.normal[1] * reach]
-        return parseSvgPath(`M${a.point[0]} ${a.point[1]}C${c1[0]} ${c1[1]} ${c2[0]} ${c2[1]} ${b.point[0]} ${b.point[1]}`)
+        if (!this.options.avoid?.length) return candidate
+        const { expanded, tight } = this.obstaclesNow(a.point, b.point)
+        if (expanded.length === 0 || !pathHitsObstacles(candidate, expanded)) return candidate
+        const waypoints = detourWaypoints(a, b, expanded)
+        if (!waypoints || waypoints.length < 2) return candidate
+        const defaultRadius = route === 'ortho' ? (this.options.radius ?? 10) : (this.options.radius ?? 24)
+        for (const radius of [defaultRadius, 10, 4, 0]) {
+            const routed = radius > 0 ? fillet(waypoints, radius) : polyPath(waypoints)
+            if (!pathHitsObstacles(routed, tight)) return routed
+        }
+        return polyPath(waypoints)
     }
 
     private build(time: number): Node[] {
@@ -495,6 +719,40 @@ export class Connector extends Node {
             const from = Math.max(0, a * (1 + entry.length) - entry.length), to = Math.min(1, a * (1 + entry.length))
             const lit = trimPath(whole, from, to)
             if (lit.length) out.push(new Node(lit).stroke(entry.color, entry.width).glow(entry.glow))
+        }
+        for (const trail of this.trails) {
+            if (time < trail.t0 || time >= trail.leaves) continue
+            let headPos: number
+            let tailPos: number
+            if (time <= trail.arrives) {
+                const raw = trail.arrives > trail.t0 ? (time - trail.t0) / (trail.arrives - trail.t0) : 1
+                const eased = trail.ease(Math.max(0, Math.min(1, raw)))
+                headPos = trail.first + (trail.stop - trail.first) * eased
+                tailPos = Math.max(trail.first, headPos - trail.length)
+            } else {
+                const catchUp = Math.min(0.18, Math.max(0.02, trail.leaves - trail.arrives))
+                const drain = Math.min(1, (time - trail.arrives) / catchUp)
+                headPos = trail.stop
+                const arrivedTail = Math.max(trail.first, trail.stop - trail.length)
+                tailPos = arrivedTail + (trail.stop - arrivedTail) * drain
+            }
+            if (headPos - tailPos <= 0.002) continue
+            const slices = 6
+            for (let k = 0; k < slices; k++) {
+                const u0 = tailPos + (headPos - tailPos) * (k / slices)
+                const u1 = tailPos + (headPos - tailPos) * ((k + 1) / slices)
+                const f0 = trail.reverse ? 1 - u1 : u0
+                const f1 = trail.reverse ? 1 - u0 : u1
+                const seg = trimPath(whole, f0, f1)
+                if (!seg.length) continue
+                const weight = (k + 1) / slices
+                const segNode = new Node(seg)
+                    .stroke(trail.color, trail.width * (0.25 + 0.75 * weight))
+                    .opacity(0.14 + 0.72 * weight * weight)
+                if (k >= slices - 2) segNode.glow(trail.glow * weight)
+                segNode.data['decoration'] = true
+                out.push(segNode)
+            }
         }
         if (options.label && progress > 0.5) {
             const size = options.labelSize ?? 12
@@ -580,6 +838,39 @@ export class Connector extends Node {
                 const place = (alpha: number): Vec => apply(inverse, ...point(first + (stop - first) * alpha))
                 mark.track('x').add({ t0: ctx.t0, t1: arrives, ease: ctx.ease, to: place(1)[0], at: (alpha) => place(alpha)[0] })
                 mark.track('y').add({ t0: ctx.t0, t1: arrives, ease: ctx.ease, to: place(1)[1], at: (alpha) => place(alpha)[1] })
+                if (options.orient) {
+                    const baseRotation = mark.get('rotation')
+                    const angleAt = (alpha: number): number => {
+                        const part = first + (stop - first) * alpha
+                        const u = Math.min(0.999, Math.max(0.001, reverse ? 1 - part : part))
+                        const [tx, ty] = tangentAt(route, u)
+                        const dx = reverse ? -tx : tx
+                        const dy = reverse ? -ty : ty
+                        const lx = inverse[0] * dx + inverse[2] * dy
+                        const ly = inverse[1] * dx + inverse[3] * dy
+                        return Math.atan2(ly, lx)
+                    }
+                    mark.track('rotation').add({ t0: ctx.t0, t1: arrives, ease: ctx.ease, to: angleAt(1), at: angleAt })
+                    stepAt(mark, 'rotation', baseRotation, ctx.t1)
+                }
+                if (options.trail) {
+                    const markLeaf = mark.leaves().find((leaf) => leaf.get('stroke') || leaf.get('fill'))
+                    const trailPaint = markLeaf?.get('stroke') ?? markLeaf?.get('fill') ?? this.get('stroke') ?? toPaint('yellow')
+                    const trailSpan = Math.min(0.28, Math.max(0.08, 96 / Math.max(1, length)))
+                    this.trails.push({
+                        t0: ctx.t0,
+                        arrives,
+                        leaves: stopped ? arrives + Math.min(0.18, Math.max(0.04, leaves - arrives)) : ctx.t1,
+                        ease: ctx.ease,
+                        reverse,
+                        first,
+                        stop,
+                        color: trailPaint,
+                        width: Math.max(this.get('strokeWidth') + 2.4, Math.min(box.width, box.height) * 0.42),
+                        glow: 7,
+                        length: trailSpan,
+                    })
+                }
                 // A node grows in over a moment, stays, and shrinks out. It is hidden after that, at its own size.
                 const life = (node: Node, from: number) => {
                     for (const prop of ['sx', 'sy'] as const) {

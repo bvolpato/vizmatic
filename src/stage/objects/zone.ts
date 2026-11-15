@@ -1,9 +1,11 @@
 import { parseSvgPath, pathLength, unionBounds, type Bounds } from '../geometry'
+import type { Anim, AnimOptions } from '../anim'
 import { Node, ownLabels } from '../node'
 import { rect, shape } from '../shapes'
 import { text, type TextOptions } from '../text'
 import type { ColorInput } from '../color'
 import { nodesFor, type Block } from '../layout'
+import { reveal, sampleAt, staggered, stepAt } from './util'
 
 export interface ZoneOptions {
     /** The name of the zone. It sits in a gap of the top border. */
@@ -114,6 +116,36 @@ export class Zone extends Node {
         this.at(cx, cy)
         // The zone places its title in the gap of its border. The content is of the film, so the film check judges its text against the border.
         ownLabels(this, { name: 'zone', labels: [title] })
+    }
+
+    /** The border traces around the zone, then its title and enclosed content settle in. */
+    enter(options: AnimOptions = {}): Anim {
+        return {
+            label: 'zone.enter', duration: options.duration ?? 0.8, ease: options.ease,
+            schedule: (ctx) => {
+                reveal(this, ctx.t0, ctx.stage)
+                const span = ctx.t1 - ctx.t0
+                stepAt(this.frame, 'trimTo', 0, ctx.t0)
+                this.frame.tween('trimTo', 1, ctx.t0, ctx.t0 + span * 0.7, ctx.ease)
+                if (this.backdrop) {
+                    const fillTarget = sampleAt(this.backdrop, 'fillOpacity', ctx.t0)
+                    stepAt(this.backdrop, 'fillOpacity', 0, ctx.t0)
+                    this.backdrop.tween('fillOpacity', fillTarget, ctx.t0 + span * 0.15, ctx.t0 + span * 0.85, ctx.ease)
+                }
+                if (this.title) {
+                    const titleTarget = sampleAt(this.title, 'opacity', ctx.t0)
+                    stepAt(this.title, 'opacity', 0, ctx.t0)
+                    this.title.tween('opacity', titleTarget, ctx.t0 + span * 0.25, ctx.t0 + span * 0.85, ctx.ease)
+                }
+                const windows = staggered(this.content.length, Math.max(0, options.lag ?? 0.2), ctx.t0 + span * 0.3, ctx.t1)
+                this.content.forEach((item, index) => {
+                    const [start, end] = windows[index]!
+                    const target = sampleAt(item, 'opacity', ctx.t0)
+                    stepAt(item, 'opacity', 0, ctx.t0)
+                    item.tween('opacity', target, start, end, ctx.ease)
+                })
+            },
+        }
     }
 }
 

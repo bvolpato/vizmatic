@@ -74,120 +74,91 @@ export default film({ title: 'Completing the square' }, (s) => {
 })
 `
 
-const architecture = `import { arrow, draw, fadeIn, film, group, lagged, line, pulse, rect, text, write, type Node, type Vec } from 'vizmatic/stage'
+const architecture = `import { column, connector, draw, fadeIn, film, infoBox, lagged, place, row, sceneKit, write, zone } from 'vizmatic/stage'
 
-// An engineering figure, not a slide: each box carries its role, runtime, and live numbers.
-const W = 232, H = 136
-
-function service(name: string, runtime: string, stats: readonly string[], x: number, y: number, color = 'blue'): Node {
-    const rows = stats.map((row, i) => text(row, { size: 15, font: 'mono', color: 'dim' }).at(x, y + 6 + i * 20))
-    return group(
-        rect(W, H, { radius: 6, stroke: color, width: 1.5, fill: 'surface' }).at(x, y),
-        text(name, { size: 21, weight: 600 }).at(x, y - 46),
-        text(runtime, { size: 15, color }).at(x, y - 21),
-        ...rows,
-    )
-}
-
-function tier(label: string, x: number, width: number): Node {
-    const top = -290, bottom = 250
-    return group(
-        rect(width, bottom - top, { radius: 8, stroke: 'grid', width: 1.25 }).at(x, (top + bottom) / 2),
-        text(label, { size: 14, font: 'mono', color: 'faint', uppercase: true, tracking: 0.08 }).at(x, top + 24),
-    )
-}
+// An engineering figure, not a slide: relational layout places every tier, box, and routed edge.
+const { area, heading, source } = sceneKit({ size: 36 })
 
 export default film({ title: 'The checkout read path' }, (s) => {
-    const heading = s.add(text('The checkout read path', { font: 'serif', size: 52 }).alignTo([-830, 0], 'left').shift(0, -410))
-    const note = s.add(text('Peak hour, 12.4k requests per second. p99 budget 180 ms.', { size: 20, color: 'dim' }).alignTo([-830, 0], 'left').shift(0, -350))
-    s.play(write(heading), fadeIn(note))
+    const title = s.add(heading('The checkout read path'))
+    const foot = s.add(source('Peak hour: 12.4k requests per second at the edge, p99 budget 180 ms'))
+    s.play(write(title), fadeIn(foot))
 
-    const tiers = [tier('Edge', -690, 280), tier('Services', -210, 620), tier('Stores', 480, 660)]
-    s.play(lagged(tiers.map((t) => draw(t, { lag: 0 })), { lag: 0.2 }))
+    const box = (name: string, subtitle: string, accent: string, rows: readonly [string, string][]) =>
+        infoBox({ title: name, subtitle, accent, size: 16, width: 224, rows: rows.map(([label, value]) => ({ label, value })) })
 
-    const nodes = {
-        cdn: service('CDN', 'Fastly, 214 POPs', ['hit rate 91%', 'p50 18 ms', '12.4k rps'], -690, -130, 'dim'),
-        gateway: service('Gateway', 'Envoy, 24 pods', ['auth, routing', 'p99 9 ms', '1.1k rps'], -690, 120, 'blue'),
-        cart: service('Cart', 'Go, 42 pods', ['p99 48 ms', 'cpu 61%', '840 rps'], -360, -130, 'teal'),
-        pricing: service('Pricing', 'Rust, 18 pods', ['p99 22 ms', 'cpu 44%', '790 rps'], -60, -130, 'teal'),
-        search: service('Search', 'Java, 30 pods', ['p99 96 ms', 'cpu 72%', '310 rps'], -360, 120, 'teal'),
-        ranker: service('Ranker', 'Python, 12 GPUs', ['p99 71 ms', 'gpu 83%', '310 rps'], -60, 120, 'purple'),
-        orders: service('Orders DB', 'Postgres 16', ['primary + 3', '2.8 TB', 'lag 40 ms'], 310, -130, 'gold'),
-        cache: service('Price cache', 'Redis 7', ['hit rate 97%', '64 GB', 'p99 2 ms'], 650, -130, 'gold'),
-        index: service('Search index', 'Vespa', ['2.1 B documents', '11 nodes', 'p99 38 ms'], 310, 120, 'gold'),
-        features: service('Feature store', 'ScyllaDB', ['900 features', '18 TB', 'p99 6 ms'], 650, 120, 'gold'),
-    }
-    s.play(lagged(Object.values(nodes).map((node) => fadeIn(node, { shift: [0, 8] })), { lag: 0.08 }))
+    const cdn = box('CDN', 'Fastly, 214 POPs', 'dim', [['hit rate', '91%'], ['p50', '18 ms'], ['edge', '12.4k rps']])
+    const gateway = box('Gateway', 'Envoy, 24 pods', 'blue', [['role', 'auth + route'], ['p99', '9 ms'], ['load', '1.1k rps']])
+    const cart = box('Cart', 'Go, 42 pods', 'teal', [['p99', '48 ms'], ['cpu', '61%'], ['load', '840 rps']])
+    const pricing = box('Pricing', 'Rust, 18 pods', 'teal', [['p99', '22 ms'], ['cpu', '44%'], ['load', '790 rps']])
+    const search = box('Search', 'Java, 30 pods', 'teal', [['p99', '96 ms'], ['cpu', '72%'], ['load', '310 rps']])
+    const ranker = box('Ranker', 'Python, 12 GPUs', 'purple', [['p99', '71 ms'], ['gpu', '83%'], ['load', '310 rps']])
+    const orders = box('Orders DB', 'Postgres 16', 'gold', [['topology', '1 + 3'], ['size', '2.8 TB'], ['lag', '40 ms']])
+    const cache = box('Price cache', 'Redis 7', 'gold', [['hit rate', '97%'], ['ram', '64 GB'], ['p99', '2 ms']])
+    const index = box('Search index', 'Vespa', 'gold', [['docs', '2.1 B'], ['nodes', '11'], ['p99', '38 ms']])
+    const features = box('Feature store', 'ScyllaDB', 'gold', [['features', '900'], ['size', '18 TB'], ['p99', '6 ms']])
 
-    const route = (from: Vec, to: Vec, label: string, offset: Vec = [0, -14]) => {
-        const edge = arrow(from, to, { stroke: 'dim', width: 1.75, tip: 11, pad: 4 })
-        const tag = text(label, { size: 14, font: 'mono', color: 'dim' }).at((from[0] + to[0]) / 2 + offset[0], (from[1] + to[1]) / 2 + offset[1])
-        return { edge, tag }
-    }
-    const routes = [
-        route([-690, -62], [-690, 52], '1.1k rps', [54, 0]),
-        route([-574, 90], [-476, -100], '840', [30, 0]),
-        route([-574, 120], [-476, 120], '310'),
-        route([-244, -130], [-176, -130], '790'),
-        route([-244, 120], [-176, 120], '310'),
-        route([56, -130], [194, -130], 'read 2 ms'),
-        route([56, 120], [194, 120], 'ann 38 ms'),
-        route([426, -130], [534, -130], 'miss 3%'),
-        route([426, 120], [534, 120], 'join 6 ms'),
+    const [edgeCol, serviceCol, storeCol] = area.inset(0, 18).columns([1.05, 2.1, 2.1], 68)
+    place(column([cdn, gateway], { gap: 68 }), edgeCol!)
+    place(row([column([cart, search], { gap: 68 }), column([pricing, ranker], { gap: 68 })], { gap: 68 }), serviceCol!)
+    place(row([column([orders, index], { gap: 68 }), column([cache, features], { gap: 68 })], { gap: 68 }), storeCol!)
+
+    const tiers = [
+        zone([cdn, gateway], { title: 'Edge', padding: 24, titleSize: 22, borderWidth: 1.5, dash: true }),
+        zone([cart, pricing, search, ranker], { title: 'Services', padding: 24, titleSize: 22, borderWidth: 1.5, dash: true }),
+        zone([orders, cache, index, features], { title: 'Stores', padding: 24, titleSize: 22, borderWidth: 1.5, dash: true }),
     ]
-    s.play(lagged(routes.map(({ edge }) => draw(edge)), { lag: 0.12 }), fadeIn(routes.map(({ tag }) => tag)))
+    s.play(lagged(tiers.map((tier) => tier.enter()), { lag: 0.16 }))
 
-    const legend = group(
-        line([-830, 300], [-790, 300], { stroke: 'yellow', width: 3 }),
-        text('Traced request', { size: 16, color: 'dim' }).alignTo([-776, 0], 'left').shift(0, 300),
-    )
-    s.play(fadeIn(legend))
+    const routes = [
+        connector(cdn, gateway, { label: '1.1k rps', labelSize: 14 }),
+        connector(gateway, cart, { route: 'ortho', label: '840', labelSize: 14 }),
+        connector(gateway, search, { route: 'ortho', label: '310', labelSize: 14 }),
+        connector(cart, pricing, { label: '790', labelSize: 14 }),
+        connector(search, ranker, { label: '310', labelSize: 14 }),
+        connector(pricing, orders, { label: 'read 2 ms', labelSize: 14 }),
+        connector(ranker, index, { label: 'ann 38 ms', labelSize: 14 }),
+        connector(orders, cache, { label: 'miss 3%', labelSize: 14 }),
+        connector(index, features, { label: 'join 6 ms', labelSize: 14 }),
+    ]
+    s.play(lagged(routes.map((edge) => draw(edge)), { lag: 0.1 }))
 
-    const shaft = (index: number) => routes[index]!.edge.data['shaft'] as Node
     s.chapter('A cache hit')
-    for (const index of [0, 1, 3, 5]) s.play(pulse(shaft(index), { color: 'yellow', duration: 0.5 }))
+    for (const edgeIndex of [0, 1, 3, 5]) s.play(routes[edgeIndex]!.pulse({ color: 'yellow', duration: 0.5 }))
     s.chapter('A search')
-    for (const index of [0, 2, 4, 6, 8]) s.play(pulse(shaft(index), { color: 'teal', duration: 0.5 }))
+    for (const edgeIndex of [0, 2, 4, 6, 8]) s.play(routes[edgeIndex]!.pulse({ color: 'teal', duration: 0.5 }))
     s.wait(1.5)
 })
 `
 
-const chart = `import { axes, draw, fadeIn, film, grow, lagged, rect, text, write } from 'vizmatic/stage'
+const chart = `import { barChart, fadeIn, film, indicate, place, sceneKit, write } from 'vizmatic/stage'
 
-// Bars that arrive in order, with the takeaway in the title.
+// Bars that arrive in order, placed inside the scene frame with the takeaway in the heading.
+const { area, heading, source } = sceneKit({ size: 36 })
+
 const data = [
-    { label: 'Mon', value: 42 },
-    { label: 'Tue', value: 58 },
-    { label: 'Wed', value: 51 },
-    { label: 'Thu', value: 73 },
-    { label: 'Fri', value: 96 },
+    { label: 'Mon', value: 42, color: 'blue' },
+    { label: 'Tue', value: 58, color: 'blue' },
+    { label: 'Wed', value: 51, color: 'blue' },
+    { label: 'Thu', value: 73, color: 'teal' },
+    { label: 'Fri', value: 96, color: 'yellow' },
 ]
 
 export default film({ title: 'Friday doubled Monday' }, (s) => {
-    const title = s.add(text('Friday doubled Monday', { font: 'serif', size: 68 }).at(0, -430))
-    s.play(write(title))
+    const title = s.add(heading('Friday doubled Monday'))
+    const foot = s.add(source('Orders per minute across the weekday peak window'))
+    s.play(write(title), fadeIn(foot))
 
-    const plot = s.add(axes({ x: [0, 6], y: [0, 100], width: 1240, height: 680, yStep: 25, xStep: 7, tips: false, grid: true }).at(0, 70))
-    s.play(draw(plot.lines), draw(plot.grid, { lag: 0.02 }), fadeIn(plot.numbers), { duration: 1 })
-
-    const bars = data.map(({ value }, i) => {
-        const x = i + 1
-        const [left, top] = plot.world(x - 0.32, value)
-        const [right, bottom] = plot.world(x + 0.32, 0)
-        const color = value === 96 ? 'yellow' : 'blue'
-        return { bar: rect(right - left, bottom - top, { fill: color, stroke: null }).at((left + right) / 2, (top + bottom) / 2), base: [(left + right) / 2, bottom] as const }
-    })
-    s.play(lagged(bars.map(({ bar, base }) => grow(bar, { from: base })), { lag: 0.3 }))
-
-    const labels = data.flatMap(({ label, value }, i) => {
-        const [x, base] = plot.world(i + 1, 0)
-        const [, top] = plot.world(i + 1, value)
-        return [
-            text(label, { size: 24, color: 'dim' }).at(x, base + 30),
-            text(String(value), { size: 28, weight: 600 }).at(x, top - 26),
-        ]
-    })
-    s.play(fadeIn(labels))
+    const bars = place(barChart(data, {
+        width: area.width - 220,
+        height: area.height - 180,
+        max: 100,
+        ticks: 4,
+        showValues: true,
+        labelSize: 28,
+    }), area)
+    s.play(bars.enter({ lag: 0.18 }))
+    s.play(indicate(bars.bar(4), { color: 'yellow', scale: 1.04 }))
     s.wait(1.5)
 })
 `

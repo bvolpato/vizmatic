@@ -4,9 +4,11 @@ import { hiddenAtStart, sortedBeats } from './compile'
 import { projectDuration, VALUE_TRACK, type StudioObject, type StudioProject } from './model'
 
 const IMPORTABLE = [
-    'film', 'text', 'tex', 'rect', 'ellipse', 'regularPolygon', 'line', 'arrow', 'dot', 'brace', 'axes', 'plane', 'decimal',
-    'matrix', 'numberLine', 'complexPlane', 'vectorField', 'barChart', 'donut', 'pie', 'lineChart', 'heatmap', 'sparkline',
-    'infoBox', 'graph', 'codeBlock', 'neuralNet', 'arrayCells', 'tokens', 'scene3d', 'surface', 'axes3d', 'morphCode', 'write',
+    'film', 'text', 'tex', 'passage', 'rect', 'ellipse', 'regularPolygon', 'line', 'arrow', 'dot', 'brace', 'group', 'axes', 'plane', 'decimal',
+    'matrix', 'numberLine', 'complexPlane', 'vectorField', 'barChart', 'histogram', 'scatter', 'dotChart', 'unitChart', 'segmentedBar',
+    'donut', 'pie', 'lineChart', 'heatmap', 'table', 'sparkline', 'infoBox', 'card', 'pictogram', 'zone', 'connector', 'steps',
+    'graph', 'tree', 'lanes', 'pipeline', 'requestQueue', 'ringBuffer', 'bitField', 'stateGrid', 'eventLog', 'terminal', 'layerStack',
+    'codeBlock', 'neuralNet', 'arrayCells', 'tokens', 'scene3d', 'surface', 'sphere', 'curve3d', 'axes3d', 'morphCode', 'write',
     'draw', 'fadeIn', 'fadeOut', 'grow', 'appear', 'erase', 'vanish', 'moveTo', 'scaleBy', 'rotate', 'recolor', 'fade',
     'morph', 'morphMatching', 'along', 'applyMatrix', 'indicate', 'circumscribe', 'flash', 'ripple', 'pulse', 'shake',
     ...Object.values(EASES).map((ease) => ease.code.replace('()', '')),

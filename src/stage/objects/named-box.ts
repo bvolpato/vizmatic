@@ -1,8 +1,10 @@
+import type { Anim, AnimOptions } from '../anim'
 import { Node } from '../node'
 import { rect } from '../shapes'
 import { text, type TextOptions } from '../text'
 import { capHeight, fittedSize } from '../text-fit'
 import type { ColorInput } from '../color'
+import { reveal, sampleAt, staggered, stepAt } from './util'
 
 export interface NamedBoxOptions {
     /** Outer width, in pixels. */
@@ -94,6 +96,30 @@ export class NamedBox extends Node {
         this.sub = sub ? text(sub, { font, size: subSize, color: options.subColor ?? 'dim' }).at(0, size * 0.55) : null
         this.add(this.frame, this.name)
         if (this.sub) this.add(this.sub)
+    }
+
+    /** The border traces in and the name settles inside it. */
+    enter(options: AnimOptions = {}): Anim {
+        return {
+            label: 'namedBox.enter', duration: options.duration ?? 0.6, ease: options.ease,
+            schedule: (ctx) => {
+                reveal(this, ctx.t0, ctx.stage)
+                const span = ctx.t1 - ctx.t0
+                const fillTarget = sampleAt(this.frame, 'fillOpacity', ctx.t0)
+                stepAt(this.frame, 'trimTo', 0, ctx.t0)
+                stepAt(this.frame, 'fillOpacity', 0, ctx.t0)
+                this.frame.tween('trimTo', 1, ctx.t0, ctx.t0 + span * 0.65, ctx.ease)
+                this.frame.tween('fillOpacity', fillTarget, ctx.t0 + span * 0.2, ctx.t0 + span * 0.85, ctx.ease)
+                const lines = [this.name, ...(this.sub ? [this.sub] : [])]
+                const windows = staggered(lines.length, Math.max(0, options.lag ?? 0.2), ctx.t0 + span * 0.3, ctx.t1)
+                lines.forEach((line, index) => {
+                    const [start, end] = windows[index]!
+                    const target = sampleAt(line, 'opacity', ctx.t0)
+                    stepAt(line, 'opacity', 0, ctx.t0)
+                    line.tween('opacity', target, start, end, ctx.ease)
+                })
+            },
+        }
     }
 }
 

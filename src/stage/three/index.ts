@@ -13,7 +13,7 @@ import { text, type TextOptions } from '../text'
 import { tex } from '../tex'
 import { solidColor, stepsBetween, tweenValue } from '../objects/util'
 import type { DrawOp, PathOp } from '../display'
-import type { Mat, Path, Ring, Vec } from '../geometry'
+import { pathBounds, type Bounds, type Mat, type Path, type Ring, type Vec } from '../geometry'
 
 export type Vec3 = readonly [number, number, number]
 type Reactive3 = Vec3 | (() => Vec3)
@@ -73,6 +73,7 @@ export class View3D {
     alpha = 1
     scale = 1
     light: Vec3 = [0, 0, 1]
+    fillLight: Vec3 = [0, 0, -1]
     half: Vec3 = [0, 0, 1]
     ambient = 0.4
     shine = 0.2
@@ -80,6 +81,7 @@ export class View3D {
     fogColor: Rgba = [0, 0, 0, 1]
     depthRange = 1
     brightness = 1
+    measuring = false
     // The last projected point.
     px = 0
     py = 0
@@ -221,7 +223,7 @@ export abstract class Object3D extends Node {
     }
 
     protected objectAlpha(view: View3D): number {
-        return view.alpha * this.get('opacity')
+        return view.measuring ? 1 : view.alpha * this.get('opacity')
     }
 }
 
@@ -289,6 +291,7 @@ export class Scene3D extends Node {
         view.scale = Math.sqrt(Math.abs(matrix[0] * matrix[3] - matrix[1] * matrix[2]))
         const light = normalize(this.settings.light ?? [-0.45, -0.55, 0.85])
         view.light = light
+        view.fillLight = normalize([-light[0], -light[1], -light[2] * 0.35])
         view.half = normalize([light[0] + view.dx, light[1] + view.dy, light[2] + view.dz])
         view.ambient = this.settings.ambient ?? 0.26
         view.shine = this.settings.shine ?? 0.2
@@ -313,6 +316,54 @@ export class Scene3D extends Node {
         const depths = view.depths
         order.sort((a, b) => depths[a]! - depths[b]!)
         for (let i = 0; i < count; i++) ops.push(view.ops[order[i]!]!)
+    }
+
+    override bounds(): Bounds {
+        const base = super.bounds()
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+        if (base.width > 0 || base.height > 0) {
+            minX = base.x
+            minY = base.y
+            maxX = base.x + base.width
+            maxY = base.y + base.height
+        }
+        const time = clock.now
+        const view = this.view(this.worldMatrix(), 1, time)
+        view.measuring = true
+        for (const child of this.children) {
+            if (child instanceof Object3D && child.get('visible')) child.emit(view, time)
+        }
+        for (const op of view.ops) {
+            for (const r of op.path) {
+                if (r.straight) {
+                    const p = r.p
+                    if (p.length >= 2) {
+                        const x0 = p[0]!, y0 = p[1]!
+                        if (x0 < minX) minX = x0
+                        if (x0 > maxX) maxX = x0
+                        if (y0 < minY) minY = y0
+                        if (y0 > maxY) maxY = y0
+                        for (let o = 6; o < p.length; o += 6) {
+                            const x = p[o]!, y = p[o + 1]!
+                            if (x < minX) minX = x
+                            if (x > maxX) maxX = x
+                            if (y < minY) minY = y
+                            if (y > maxY) maxY = y
+                        }
+                    }
+                } else {
+                    const b = pathBounds([r])
+                    if (b) {
+                        if (b.x < minX) minX = b.x
+                        if (b.y < minY) minY = b.y
+                        if (b.x + b.width > maxX) maxX = b.x + b.width
+                        if (b.y + b.height > maxY) maxY = b.y + b.height
+                    }
+                }
+            }
+        }
+        if (!Number.isFinite(minX)) return { x: 0, y: 0, width: 0, height: 0 }
+        return { x: minX, y: minY, width: maxX - minX, height: maxY - minY }
     }
 
     /** Move the camera over time. Any subset of phi, theta, distance, unit, and focus. */
@@ -548,9 +599,9 @@ export class Surface3D extends Object3D {
         const solid = this.ramp || this.checkerColors || options.colorAt ? null : solidOf(this.get('fill'))
         const shaded = options.shaded ?? true
         const opaque = alpha >= 0.995
-        const reveal = this.get('trimTo')
+        const reveal = view.measuring ? 1 : this.get('trimTo')
         const rows = Math.ceil(reveal * nu)
-        const { light, half, ambient, shine, brightness, dx, dy, dz } = view
+        const { light, fillLight, half, ambient, shine, brightness, dx, dy, dz } = view
         const cull = options.cull ?? false
         const meshColor = this.meshColor
         const meshAlpha = (options.meshOpacity ?? 0.35) * alpha
@@ -577,11 +628,15 @@ export class Surface3D extends Object3D {
                 }
                 if (shaded) {
                     const wrap = 0.5 + 0.5 * (nx * light[0] + ny * light[1] + nz * light[2])
-                    const diffuse = (ambient + (1 - ambient) * wrap * wrap) * brightness
+                    const key = (ambient + (1 - ambient) * wrap * wrap) * brightness
+                    const fillDot = Math.max(0, nx * fillLight[0] + ny * fillLight[1] + nz * fillLight[2])
+                    const fill = 0.18 * fillDot * fillDot * brightness
+                    const rim = 1 - Math.abs(nx * dx + ny * dy + nz * dz)
+                    const rimLift = 0.08 * rim * rim * fillDot * brightness
                     const spec = shine > 0 ? shine * Math.pow(Math.max(0, nx * half[0] + ny * half[1] + nz * half[2]), 42) * 255 : 0
-                    r = Math.min(255, r * diffuse + spec)
-                    g = Math.min(255, g * diffuse + spec)
-                    bl = Math.min(255, bl * diffuse + spec)
+                    r = Math.min(255, r * (key + fill * 0.78) + rimLift * 150 + spec)
+                    g = Math.min(255, g * (key + fill * 0.92) + rimLift * 195 + spec)
+                    bl = Math.min(255, bl * (key + fill * 1.12) + rimLift * 245 + spec)
                 }
                 const depth = (screenZ[a]! + screenZ[b]! + screenZ[c]! + screenZ[d]!) / 4
                 const color = view.fogged(r, g, bl, depth)
@@ -649,6 +704,27 @@ export interface Line3DStyle {
     onTop?: boolean
     /** Nudge toward the camera so a line lying on a surface stays visible. */
     bias?: number
+    /** Background-colored occlusion understroke (`true` adds 4 px, or pass pixel padding). */
+    halo?: boolean | number
+}
+
+export interface Curve3DOptions extends Line3DStyle {
+    samples?: number
+    /** Background-colored occlusion understroke (`true` adds 4 px, or pass pixel padding). Defaults to false. */
+    halo?: boolean | number
+}
+
+export interface Vector3DOptions extends Line3DStyle {
+    tip?: number
+    /** Background-colored occlusion understroke (`true` adds 4 px, or pass pixel padding). Defaults to true. */
+    halo?: boolean | number
+}
+
+function haloPad(halo: boolean | number | undefined, fallback: number): number {
+    if (halo === false) return 0
+    if (halo === true) return 4
+    if (typeof halo === 'number') return halo > 0 && Number.isFinite(halo) ? halo : 0
+    return fallback
 }
 
 const ON_TOP = 1e6
@@ -658,7 +734,7 @@ export class Curve3D extends Object3D {
     private readonly points: Float64Array
     private readonly stops: readonly (readonly [number, Rgba])[] | null
 
-    constructor(f: (t: number) => Vec3, from: number, to: number, private readonly style: Line3DStyle & { samples?: number } = {}) {
+    constructor(f: (t: number) => Vec3, from: number, to: number, private readonly style: Curve3DOptions = {}) {
         super()
         const samples = style.samples ?? 240
         this.points = new Float64Array((samples + 1) * 3)
@@ -679,15 +755,16 @@ export class Curve3D extends Object3D {
     }
 
     emit(view: View3D): void {
-        const alpha = this.objectAlpha(view) * (this.style.opacity ?? 1) * this.get('strokeOpacity')
+        const alpha = view.measuring ? 1 : this.objectAlpha(view) * (this.style.opacity ?? 1) * this.get('strokeOpacity')
         if (alpha <= 0.002) return
-        const trim = this.get('trimTo')
+        const trim = view.measuring ? 1 : this.get('trimTo')
         const count = this.points.length / 3 - 1
         const last = Math.floor(trim * count)
         if (last < 1) return
         const piece = Math.max(2, Math.ceil(count / 72))
         const base = this.get('stroke') ?? toPaint('yellow')
         const width = this.get('strokeWidth') * view.scale
+        const pad = haloPad(this.style.halo, 0) * view.scale
         const bias = this.style.onTop ? ON_TOP : this.style.bias ?? 0.12
         const glow = (this.style.glow ?? 0) * view.scale
         for (let start = 0; start < last; start += piece) {
@@ -708,7 +785,11 @@ export class Curve3D extends Object3D {
             scale /= drawn
             const rgb = this.stops ? sampleStops(this.stops, (start + end) / 2 / count) : solidOf(base)
             const color = view.fogged(rgb[0], rgb[1], rgb[2], depth)
-            view.push(strokeOp([chain(coords)], color, alpha, width * scale, glow, 'round'), depth + bias)
+            const seg: Path = [chain(coords)]
+            if (!view.measuring && pad > 0) {
+                view.push(strokeOp(seg, view.fogColor, alpha, (width + pad) * scale, 0, 'round'), depth + bias - 0.002)
+            }
+            view.push(strokeOp(seg, color, alpha, width * scale, glow, 'round'), depth + bias)
         }
     }
 }
@@ -730,7 +811,7 @@ function chain(points: readonly Vec[]): Ring {
     return { p, closed: false, straight: true }
 }
 
-export function curve3d(f: (t: number) => Vec3, from: number, to: number, style: Line3DStyle & { samples?: number } = {}): Curve3D {
+export function curve3d(f: (t: number) => Vec3, from: number, to: number, style: Curve3DOptions = {}): Curve3D {
     return new Curve3D(f, from, to, style)
 }
 
@@ -747,13 +828,14 @@ export class Line3D extends Object3D {
     }
 
     emit(view: View3D): void {
-        const alpha = this.objectAlpha(view) * (this.style.opacity ?? 1) * this.get('strokeOpacity')
+        const alpha = view.measuring ? 1 : this.objectAlpha(view) * (this.style.opacity ?? 1) * this.get('strokeOpacity')
         if (alpha <= 0.002) return
         const a = read3(this.a), b = read3(this.b)
         const pieces = this.style.pieces ?? 14
-        const trim = this.get('trimTo')
+        const trim = view.measuring ? 1 : this.get('trimTo')
         const base = solidOf(this.get('stroke'))
         const width = this.get('strokeWidth') * view.scale
+        const pad = haloPad(this.style.halo, 0) * view.scale
         const bias = this.style.onTop ? ON_TOP : this.style.bias ?? 0
         for (let i = 0; i < pieces; i++) {
             const t0 = (i / pieces) * trim, t1 = ((i + 1) / pieces) * trim
@@ -761,8 +843,13 @@ export class Line3D extends Object3D {
             const x0 = view.px, y0 = view.py, z0 = view.pz, s0 = view.ps
             if (!view.project(a[0] + (b[0] - a[0]) * t1, a[1] + (b[1] - a[1]) * t1, a[2] + (b[2] - a[2]) * t1)) continue
             const depth = (z0 + view.pz) / 2
+            const sMid = (s0 + view.ps) / 2
             const color = view.fogged(base[0], base[1], base[2], depth)
-            view.push(strokeOp([lineRing(x0, y0, view.px, view.py)], color, alpha, width * (s0 + view.ps) / 2, 0, 'butt'), depth + bias)
+            const seg: Path = [lineRing(x0, y0, view.px, view.py)]
+            if (!view.measuring && pad > 0) {
+                view.push(strokeOp(seg, view.fogColor, alpha, (width + pad) * sMid, 0, 'round'), depth + bias - 0.002)
+            }
+            view.push(strokeOp(seg, color, alpha, width * sMid, 0, 'butt'), depth + bias)
         }
     }
 }
@@ -777,25 +864,27 @@ export class Vector3D extends Line3D {
     private readonly to3: Reactive3
     private readonly tipSize: number
     private readonly tipBias: number
+    private readonly haloSetting: boolean | number | undefined
 
-    constructor(from: Reactive3, to: Reactive3, style: Line3DStyle & { tip?: number } = {}) {
+    constructor(from: Reactive3, to: Reactive3, style: Vector3DOptions = {}) {
         super(from, () => {
             // The shaft stops a little short, so its end never pokes through the head.
             const a = read3(from), b = read3(to)
             const length = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) || 1
             const pull = Math.min(0.9, 0.22 / length)
             return [b[0] - (b[0] - a[0]) * pull, b[1] - (b[1] - a[1]) * pull, b[2] - (b[2] - a[2]) * pull]
-        }, { color: 'yellow', width: 4, ...style })
+        }, { color: 'yellow', width: 4, halo: true, ...style })
         this.from3 = from
         this.to3 = to
         this.tipSize = style.tip ?? 24
+        this.haloSetting = style.halo
         // The head sorts with its shaft, so an arrow drawn on top keeps its head.
         this.tipBias = style.onTop ? ON_TOP : style.bias ?? 0
     }
 
     override emit(view: View3D): void {
         super.emit(view)
-        const trim = this.get('trimTo')
+        const trim = view.measuring ? 1 : this.get('trimTo')
         if (trim < 0.98) return
         const a = read3(this.from3), b = read3(this.to3)
         const alpha = this.objectAlpha(view)
@@ -810,11 +899,15 @@ export class Vector3D extends Line3D {
         const rgb = solidOf(this.get('stroke'))
         const color = view.fogged(rgb[0], rgb[1], rgb[2], depth)
         const ring = polygonRing([bx, by, bx - ux * size - uy * half, by - uy * size + ux * half, bx - ux * size + uy * half, by - uy * size - ux * half])
+        const tipHalo = haloPad(this.haloSetting, 4) * view.scale
+        if (!view.measuring && tipHalo > 0) {
+            view.push(strokeOp([ring], view.fogColor, alpha, tipHalo * s, 0, 'round'), depth + 0.008 + this.tipBias)
+        }
         view.push(fillOp([ring], color, alpha, null, 0, 0), depth + 0.01 + this.tipBias)
     }
 }
 
-export function vector3d(from: Reactive3, to: Reactive3, style: Line3DStyle & { tip?: number } = {}): Vector3D {
+export function vector3d(from: Reactive3, to: Reactive3, style: Vector3DOptions = {}): Vector3D {
     return new Vector3D(from, to, style)
 }
 
@@ -1000,9 +1093,9 @@ export class Axes3D extends Object3D {
     }
 
     emit(view: View3D): void {
-        const alpha = this.objectAlpha(view) * this.get('strokeOpacity')
+        const alpha = view.measuring ? 1 : this.objectAlpha(view) * this.get('strokeOpacity')
         if (alpha <= 0.002) return
-        const trim = this.get('trimTo')
+        const trim = view.measuring ? 1 : this.get('trimTo')
         const rgb = solidOf(this.get('stroke'))
         const width = this.get('strokeWidth') * view.scale
         const unitVectors = [[1, 0, 0], [0, 1, 0], [0, 0, 1]] as const

@@ -1,6 +1,8 @@
 import { arcPath, circlePath, parseSvgPath, polyPath, rectPath, transformPath, type Path, type Vec } from '../geometry'
+import type { Anim, AnimOptions } from '../anim'
 import { Node, objectName } from '../node'
 import type { ColorInput } from '../color'
+import { reveal, sampleAt, staggered, stepAt } from './util'
 
 /**
  * Small pictures for the things that system and data films name: a time series, a forecast, logs,
@@ -408,6 +410,30 @@ export class Pictogram extends Node {
             this.add(node)
         }
         this.named(`pictogram:${name}`)
+    }
+
+    /** Strokes draw in and filled marks settle into place. */
+    enter(options: AnimOptions = {}): Anim {
+        return {
+            label: 'pictogram.enter', duration: options.duration ?? 0.65, ease: options.ease,
+            schedule: (ctx) => {
+                reveal(this, ctx.t0, ctx.stage)
+                const marks = this.children
+                const windows = staggered(marks.length, Math.max(0, options.lag ?? 0.15), ctx.t0, ctx.t1)
+                marks.forEach((mark, index) => {
+                    const [start, end] = windows[index]!
+                    if (mark.get('stroke')) {
+                        stepAt(mark, 'trimTo', 0, ctx.t0)
+                        mark.tween('trimTo', 1, start, end, ctx.ease)
+                    }
+                    if (mark.get('fill')) {
+                        const fillTarget = sampleAt(mark, 'fillOpacity', ctx.t0)
+                        stepAt(mark, 'fillOpacity', 0, ctx.t0)
+                        mark.tween('fillOpacity', fillTarget, start, end, ctx.ease)
+                    }
+                })
+            },
+        }
     }
 }
 
