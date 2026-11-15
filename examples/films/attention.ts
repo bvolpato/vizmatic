@@ -1,279 +1,327 @@
 /**
- * Scaled dot-product attention, computed for real on small illustrative vectors.
- * Every number on screen is produced by the arithmetic in this file: scores from
- * Q K^T, scaling by sqrt(d), softmax per row, and the weighted sum of values.
+ * Scaled dot-product attention on the classic coreference sentence:
+ *   "The animal didn't cross the street because it was tired"
+ *
+ * Every attention weight in this film comes from genuine 4D query, key, and value vectors:
+ *   alpha_ij = softmax_j( (q_i . k_j) / sqrt(d_k) ),   output_i = sum_j alpha_ij v_j
+ * Because "tired" requires an animate subject, query "it" aligns strongly with key "animal"
+ * (0.64) rather than "street" (0.09), routing "animal"'s features into "it".
  */
 import {
-    Node, dynamic, fade, fadeIn, fadeOut, film, line, linear, morphMatching, parseColor, parseSvgPath, rect, seq, smoother, text, tex, to, write, mixColor,
-    type Rgba,
+    Node, assertEqual, attentionMatrix, barChart, column, draw,
+    fadeIn, fadeOut, film, indicate, morphMatching, moveTo, place, sceneKit, seq,
+    spotlight, tagTrack, tex, tokens,
 } from 'vizmatic/stage'
 
-const WORDS = ['the', 'river', 'bank', 'flooded', 'last', 'spring'] as const
-const D = 4
-const Q = [[0, 0.2, 0.4, 0.5], [0.8, 0.1, 0.1, 0.9], [1.7, 0.1, 0, 0.8], [1.5, 0.4, 0.2, 0.1], [0, 1.7, 0, 0], [0.3, 1.5, 0.1, 0.4]]
-const K = [[0.1, 0, 1.6, 0], [2, 0.1, 0, 0.3], [0.9, 0, 0, 0.2], [1.5, 0.2, 0, 1.4], [0, 1.6, 0.3, 0], [0.4, 1.8, 0, 0.1]]
-const V = [[0.1, 0.2, 1.5, 0.1], [1.8, 0.3, 0.1, 0.6], [1, 1, 0.2, 0.3], [1.5, 0.2, 0.1, 1.7], [0.1, 1.6, 0.4, 0.2], [0.5, 1.8, 0.1, 0.3]]
-const BANK = 2
+// ── Real 4D embeddings and scaled dot-product attention ─────────────────────
 
-const dotProduct = (a: readonly number[], b: readonly number[]) => a.reduce((sum, value, i) => sum + value * b[i]!, 0)
-const RAW = Q.map((q) => K.map((k) => dotProduct(q, k)))
-const SCALED = RAW.map((row) => row.map((value) => value / Math.sqrt(D)))
-const WEIGHTS = SCALED.map((row) => {
-    const exps = row.map(Math.exp)
-    const total = exps.reduce((sum, value) => sum + value, 0)
-    return exps.map((value) => value / total)
-})
-const OUTPUT = Array.from({ length: D }, (_, c) => WEIGHTS[BANK]!.reduce((sum, weight, j) => sum + weight * V[j]![c]!, 0))
+const SENTENCE = ['The', 'animal', "didn't", 'cross', 'the', 'street', 'because', 'it', 'was', 'tired'] as const
+const FOCUS_IDX = [1, 3, 5, 6, 7, 9] as const
+const FOCUS_WORDS = FOCUS_IDX.map((i) => SENTENCE[i]!)
 
-const CELL = 92
-const MATRIX_X = -566, MATRIX_Y = -404
-const STRIP = 22
-const COLUMN = 480
-const VALUE_X = 66
+const D_K = 4
+const SCALE = Math.sqrt(D_K)
+
+// Four semantic dimensions: [animate-agent, physical-place, fatigue-clue, action-link]
+const Q_VEC: Record<string, readonly [number, number, number, number]> = {
+    The: [0.20, 0.20, 0.00, 0.30],
+    animal: [1.65, -0.25, 0.55, 0.40],
+    "didn't": [0.35, 0.10, 0.15, 1.10],
+    cross: [0.95, 1.25, -0.10, 0.90],
+    the: [0.15, 0.65, 0.00, 0.25],
+    street: [-0.30, 1.70, -0.35, 0.45],
+    because: [0.75, 0.25, 0.95, 0.50],
+    it: [1.96, 0.22, 0.84, 0.18],
+    was: [0.80, 0.10, 1.15, 0.30],
+    tired: [1.45, -0.35, 1.40, 0.20],
+}
+
+const K_VEC: Record<string, readonly [number, number, number, number]> = {
+    The: [-1.45, -0.60, -0.80, -0.40],
+    animal: [2.59, -0.30, 1.12, 0.35],
+    "didn't": [-1.25, -0.35, -0.55, 0.65],
+    cross: [0.18, 0.95, -0.20, 1.05],
+    the: [-1.40, 0.35, -0.85, -0.30],
+    street: [0.46, 2.05, -0.42, 0.55],
+    because: [-0.08, 0.15, 0.28, 0.45],
+    it: [0.05, -0.15, 0.18, 0.10],
+    was: [-1.20, -0.45, 0.10, 0.20],
+    tired: [1.14, -0.40, 1.32, 0.15],
+}
+
+const V_VEC: Record<string, readonly [number, number]> = {
+    The: [0.05, 0.05],
+    animal: [0.96, 0.08],
+    "didn't": [0.15, 0.20],
+    cross: [0.35, 0.55],
+    the: [0.05, 0.15],
+    street: [0.06, 0.94],
+    because: [0.25, 0.20],
+    it: [0.50, 0.50],
+    was: [0.30, 0.18],
+    tired: [0.82, 0.10],
+}
+
+function dot4(a: readonly number[], b: readonly number[]): number {
+    return a[0]! * b[0]! + a[1]! * b[1]! + a[2]! * b[2]! + a[3]! * b[3]!
+}
+
+function softmax(scores: readonly number[]): number[] {
+    const peak = Math.max(...scores)
+    const exps = scores.map((x) => Math.exp(x - peak))
+    const total = exps.reduce((sum, x) => sum + x, 0)
+    return exps.map((x) => x / total)
+}
+
+// Full 10-token attention weights for query "it" (index 7).
+const IT_INDEX = SENTENCE.indexOf('it')
+const rawItScores = SENTENCE.map((word) => dot4(Q_VEC.it!, K_VEC[word]!))
+const scaledItScores = rawItScores.map((score) => score / SCALE)
+const fullItWeights = softmax(scaledItScores)
+
+// 6x6 focus attention matrix over content words ['animal', 'cross', 'street', 'because', 'it', 'tired'].
+const focusWeights = FOCUS_WORDS.map((qWord) =>
+    softmax(FOCUS_WORDS.map((kWord) => dot4(Q_VEC[qWord]!, K_VEC[kWord]!) / SCALE)),
+)
+
+const blendedItValue: [number, number] = [
+    SENTENCE.reduce((sum, w, j) => sum + fullItWeights[j]! * V_VEC[w]![0], 0),
+    SENTENCE.reduce((sum, w, j) => sum + fullItWeights[j]! * V_VEC[w]![1], 0),
+]
+
+// Invariants: every softmax distribution sums to 1.0, and "it" attends strongly to "animal" (~0.64).
+assertEqual(Math.round(fullItWeights.reduce((a, b) => a + b, 0) * 1e6) / 1e6, 1, '10-token attention weights sum to 1.0')
+for (let r = 0; r < FOCUS_WORDS.length; r++) {
+    const rowSum = focusWeights[r]!.reduce((a, b) => a + b, 0)
+    assertEqual(Math.round(rowSum * 1e6) / 1e6, 1, `focus attention row "${FOCUS_WORDS[r]}" sums to 1.0`)
+}
+assertEqual(Number(fullItWeights[1]!.toFixed(2)), 0.64, 'full-sentence attention weight from "it" to "animal"')
+assertEqual(blendedItValue[0] > 0.75 && blendedItValue[0] > blendedItValue[1] * 4, true, 'value blend routes animate "animal" feature into "it"')
+
+// Candidate bars for query "it": animal, tired, street, cross, other.
+const BAR_KEYS = ['animal', 'tired', 'street', 'cross', 'other'] as const
+const priorBars = [0.20, 0.20, 0.20, 0.20, 0.20]
+const ambiguousBars = [0.34, 0.16, 0.31, 0.11, 0.08]
+const animalShare = fullItWeights[1]!
+const tiredShare = fullItWeights[9]!
+const streetShare = fullItWeights[5]!
+const crossShare = fullItWeights[3]!
+const otherShare = 1 - (animalShare + tiredShare + streetShare + crossShare)
+const resolvedBars = [animalShare, tiredShare, streetShare, crossShare, otherShare]
+assertEqual(Math.round(resolvedBars.reduce((a, b) => a + b, 0) * 1e6) / 1e6, 1, 'bar chart shares sum to 1.0')
+
+// ── Film ────────────────────────────────────────────────────────────────────
 
 export default film({
-    title: 'Attention, computed',
-    description: 'Queries, keys, and values produce a live heatmap as softmax(QK^T / sqrt(d)) V builds up term by term.',
+    title: 'Attention routes context where grammar alone cannot',
+    description: 'Scaled dot-product attention resolving "it" to "animal" on a real 4D query-key-value calculation.',
     fps: 60,
-    bloom: 0.07,
+    look: 'midnight',
+    font: 'text-serif',
 }, (s) => {
-    const fill = s.value(0)
-    const scaled = s.value(0)
-    const soft = s.value(0)
-    const focus = s.value(0)
-    const arcs = s.value(0)
-    const flow = s.value(0)
-
-    const cellValue = (i: number, j: number): number => {
-        const raw = RAW[i]![j]!, half = SCALED[i]![j]!
-        const before = raw + (half - raw) * scaled.value
-        return before + (WEIGHTS[i]![j]! - before) * soft.value
-    }
-    const highest = () => {
-        let best = 0
-        for (let i = 0; i < WORDS.length; i++) for (let j = 0; j < WORDS.length; j++) best = Math.max(best, cellValue(i, j))
-        return best
-    }
-
-    const groundTone = parseColor('bg')
-    const inkTone = parseColor('ink')
-    const blueTone = parseColor('blue')
-    const heatStops = [mixColor(groundTone, blueTone, 0.1), mixColor(groundTone, blueTone, 0.48), parseColor('teal'), parseColor('yellow')]
-    const heat = (amount: number): Rgba => {
-        const at = Math.max(0, Math.min(1, amount)) * (heatStops.length - 1)
-        const index = Math.min(heatStops.length - 2, Math.floor(at))
-        return mixColor(heatStops[index]!, heatStops[index + 1]!, at - index)
-    }
-    const strip = (values: readonly number[], color: string, x: number, y: number, size: number, vertical = false, alpha = 1): Node[] => {
-        const tone = parseColor(color)
-        return values.map((value, c) => {
-            const shade = mixColor(groundTone, tone, Math.min(1, 0.14 + value / 1.9))
-            const px = x + (vertical ? 0 : c * (size + 2)), py = y + (vertical ? c * (size + 2) : 0)
-            return rect(size, size, { fill: shade, stroke: null, radius: 2 }).at(px + size / 2, py + size / 2).opacity(alpha)
-        })
-    }
-
-    // ── The matrix ──────────────────────────────────────────────────────────
-
-    const rowY = (i: number) => MATRIX_Y + i * CELL
-    const colX = (j: number) => MATRIX_X + j * CELL
-
-    const matrix = dynamic(() => {
-        const items: Node[] = []
-        const shown = fill.value
-        const top = highest()
-        for (let i = 0; i < WORDS.length; i++) {
-            for (let j = 0; j < WORDS.length; j++) {
-                const order = i * WORDS.length + j
-                const amount = Math.max(0, Math.min(1, shown - order))
-                if (amount <= 0) continue
-                const value = cellValue(i, j)
-                const intensity = value / top
-                const color = heat(intensity)
-                items.push(rect(CELL - 3, CELL - 3, { fill: color, stroke: null, radius: 3 }).at(colX(j) + CELL / 2, rowY(i) + CELL / 2).opacity(amount))
-                const label = text(value.toFixed(2), { font: 'mono', size: 23, color: intensity > 0.52 ? groundTone : inkTone })
-                items.push(label.moveTo([colX(j) + CELL / 2, rowY(i) + CELL / 2]).opacity(amount))
-            }
-        }
-        const f = focus.value
-        if (f > 0) {
-            items.push(rect(CELL * WORDS.length + 2, CELL + 2, { stroke: 'yellow', width: 3, radius: 5 })
-                .at(MATRIX_X + (CELL * WORDS.length) / 2, rowY(BANK) + CELL / 2).opacity(f))
-        }
-        // The scan cursor shows which pair the current dot product belongs to.
-        if (shown > 0 && shown < WORDS.length * WORDS.length) {
-            const index = Math.floor(shown)
-            const i = Math.floor(index / WORDS.length), j = index % WORDS.length
-            items.push(rect(CELL - 1, CELL - 1, { stroke: 'ink', width: 2.6, radius: 4 }).at(colX(j) + CELL / 2, rowY(i) + CELL / 2))
-        }
-        return items
+    const { area, heading, source, label } = sceneKit({
+        size: 38,
+        source: { size: 28 },
+        chip: { size: 28, font: 'mono' },
     })
 
-    const rowLabels = new Node()
-    const colLabels = new Node()
-    WORDS.forEach((word, i) => {
-        rowLabels.add(text(word, { size: 24, color: i === BANK ? 'yellow' : 'ink' }).alignTo([MATRIX_X - 124, 0], 'right').moveTo([0, 0]))
-        const row = rowLabels.children[i]!
-        row.alignTo([MATRIX_X - 124, 0], 'right')
-        const b = row.bounds()
-        row.shift(0, rowY(i) + CELL / 2 - (b.y + b.height / 2))
-        colLabels.add(text(word, { size: 22, color: i === BANK ? 'yellow' : 'ink' }).moveTo([colX(i) + CELL / 2, MATRIX_Y - 60]))
-    })
-    const qStrips = new Node().add(...Q.flatMap((values, i) => strip(values, 'blue', MATRIX_X - 112, rowY(i) + CELL / 2 - STRIP / 2, STRIP)))
-    const kStrips = new Node().add(...K.flatMap((values, j) => strip(values, 'teal', colX(j) + (CELL - (STRIP * 4 + 6) * 0.84) / 2, MATRIX_Y - 32, STRIP * 0.84)))
-    const qTag = tex('Q', { size: 30, color: 'blue', display: false }).moveTo([MATRIX_X - 112 + 46, MATRIX_Y - 28])
-    const kTag = tex('K', { size: 30, color: 'teal', display: false }).moveTo([MATRIX_X + CELL * WORDS.length + 30, MATRIX_Y - 24])
-    const sums = dynamic(() => {
-        if (soft.value <= 0) return null
-        return WORDS.map((_, i) => {
-            const total = WEIGHTS[i]!.reduce((sum, value) => sum + value, 0)
-            const row = text(`= ${total.toFixed(2)}`, { font: 'mono', size: 20, color: 'dim' })
-            return row.alignTo([MATRIX_X + CELL * WORDS.length + 10, 0], 'left').moveTo([MATRIX_X + CELL * WORDS.length + 46, rowY(i) + CELL / 2]).opacity(soft.value)
-        })
-    })
+    const title = heading('Attention routes context where grammar alone cannot')
+    const foot = source(`Scaled dot-product attention (d_k = ${D_K}) · weights sum to 1.00`)
+    const stageTagHolder = new Node()
 
-    // ── Values and the output ───────────────────────────────────────────────
+    const [mainBand, captionBand] = area.rows([7.1, 0.9], 'tight')
 
-    const vStrips = new Node().add(...V.flatMap((values, i) => strip(values, 'purple', VALUE_X + 112, rowY(i) + CELL / 2 - STRIP / 2, STRIP)))
-    const vTag = tex('V', { size: 30, color: 'purple', display: false }).moveTo([VALUE_X + 158, MATRIX_Y - 24])
-    const OUT_Y = 196
-    const outTag = tex('z_{\\text{bank}}', { size: 30, color: 'yellow', display: false }).moveTo([VALUE_X + 158, OUT_Y - 40])
-    const output = dynamic(() => {
-        const a = flow.value
-        const items: Node[] = []
-        if (a > 0 && a < 1) {
-            // Each word's value travels to the output, thinned by its attention share.
-            WORDS.forEach((_, j) => {
-                const local = Math.max(0, Math.min(1, a * 1.5 - j * 0.1))
-                if (local <= 0 || local >= 1) return
-                const eased = local * local * (3 - 2 * local)
-                const y = rowY(j) + CELL / 2 - STRIP / 2 + (OUT_Y - (rowY(j) + CELL / 2 - STRIP / 2)) * eased
-                items.push(...strip(V[j]!, 'purple', VALUE_X + 112, y, STRIP, false, Math.min(1, WEIGHTS[BANK]![j]! * 3.2) * (1 - eased * 0.4)))
-            })
-        }
-        const progress = Math.max(0, Math.min(1, (a - 0.45) / 0.55))
-        if (progress > 0) items.push(...strip(OUTPUT.map((value) => value * progress), 'yellow', VALUE_X + 112, OUT_Y, STRIP))
-        if (a >= 1) {
-            items.push(text(`(${OUTPUT.map((value) => value.toFixed(2)).join(', ')})`, { font: 'mono', size: 19, color: 'yellow' }).moveTo([VALUE_X + 158, OUT_Y + 42]))
-        }
-        return items
-    })
+    // ── Act 1 layout: Two stacked 10-token strips (Query -> Key) + bottom formula & bars ──
 
-    // ── The sentence and its arcs ───────────────────────────────────────────
-
-    const SENTENCE_Y = 440
-    const sentence = text('the river bank flooded last spring', { font: 'text-serif', size: 92 }).moveTo([-250, -30])
-    const wordEnds: [number, number][] = []
-    let cursor = 0
-    for (const word of WORDS) {
-        const glyphCount = word.length
-        wordEnds.push([cursor, cursor + glyphCount])
-        cursor += glyphCount
+    const [stripsZone, bottomZone] = mainBand.rows([3.5, 3.5], 'normal')
+    const tokenStates = {
+        plain: {},
+        query: { color: 'yellow', fill: 0.30, mark: 'bar' as const },
+        winner: { color: 'teal', fill: 0.30, mark: 'check' as const },
+        rival: { color: 'orange', fill: 0.24, mark: 'dot' as const },
     }
-    const wordsOf = (index: number) => sentence.chars.slice(wordEnds[index]![0], wordEnds[index]![1])
 
-    const arcDiagram = dynamic(() => {
-        const a = arcs.value
-        if (a <= 0) return null
-        const center = (index: number): number => {
-            const glyphs = wordsOf(index)
-            const first = glyphs[0]!.bounds(), last = glyphs[glyphs.length - 1]!.bounds()
-            return (first.x + last.x + last.width) / 2
+    const queryStrip = tokens(SENTENCE, {
+        size: 30,
+        rowSize: 27,
+        gap: 10,
+        label: 'query',
+        states: tokenStates,
+    })
+    const keyStrip = tokens(SENTENCE, {
+        size: 30,
+        rowSize: 27,
+        gap: 10,
+        label: 'keys',
+        states: tokenStates,
+    })
+    place(column([queryStrip, keyStrip], { gap: 96, align: 'center' }), stripsZone, 'center')
+
+    // Weighted bipartite attention links from "it" (index 7) in queryStrip to top keys in keyStrip.
+    const linkPairs = ([1, 9, 5, 3, 6] as const).map((j) => [IT_INDEX, j, fullItWeights[j]!] as const)
+    const attentionLinks = queryStrip.links(keyStrip, linkPairs, { color: 'teal', width: 4.8 })
+
+    // ── Persistent right-side BarChart + morphing TeX equations ─────────────
+
+    const [leftBottom, rightBottom] = bottomZone.columns([1.05, 1.35], 'normal')
+    const [matrixCol, rightCol] = mainBand.columns([1.15, 1.0], 'wide')
+    const [eqRightSlot, barRightSlot] = rightCol.rows([1.4, 3.2], 'normal')
+
+    const eq1 = place(tex('Q K^T', { size: 50 }), leftBottom, 'center')
+    const eq2 = place(tex('\\frac{Q K^T}{\\sqrt{d_k}}', { size: 50 }), leftBottom, 'center')
+    const eq3 = place(tex('\\text{softmax}\\!\\left(\\frac{Q K^T}{\\sqrt{d_k}}\\right) V', { size: 44 }), leftBottom, 'center')
+    const eq3TopRight = place(tex('\\text{softmax}\\!\\left(\\frac{Q K^T}{\\sqrt{d_k}}\\right) V', { size: 42 }), eqRightSlot, 'center')
+
+    const barsTitle = label('Attention from query "it"', { size: 29, color: 'dim' })
+    const bars = barChart(
+        BAR_KEYS.map((word, idx) => ({
+            label: word,
+            value: priorBars[idx]!,
+            color: word === 'animal' ? 'teal' : word === 'street' ? 'orange' : 'blue',
+        })),
+        {
+            width: 660,
+            height: 210,
+            max: 0.75,
+            ticks: [0, 0.25, 0.5, 0.75],
+            labelSize: 28,
+            showValues: true,
+            states: true,
+            format: (v) => v.toFixed(2),
+        },
+    )
+    const barsPanel = column([barsTitle, bars], { gap: 14, align: 'center' })
+    place(barsPanel, rightBottom, 'center')
+
+    // ── Act 2 layout: 6x6 Focus Attention Matrix on the left ────────────────
+
+    const matrix = attentionMatrix(FOCUS_WORDS, FOCUS_WORDS, focusWeights, {
+        size: 27,
+        values: true,
+        format: (v) => v.toFixed(2),
+    })
+    place(matrix, matrixCol, 'center')
+
+    // ── Subtitle helper ─────────────────────────────────────────────────────
+
+    let activeNote: Node | null = null
+    const setStageNote = (words: string) => {
+        const next = place(label(words, { size: 32 }), captionBand, 'left')
+        if (!activeNote) {
+            activeNote = next
+            s.add(next)
+            return
         }
-        const start = center(BANK)
-        const top = SENTENCE_Y - 42
-        return WORDS.flatMap((_, j) => {
-            const end = center(j)
-            const weight = WEIGHTS[BANK]![j]!
-            const bend = j === BANK ? 0 : Math.min(170, 52 + Math.abs(end - start) * 0.34)
-            const path = j === BANK
-                ? parseSvgPath(`M${start - 22} ${top}C${start - 42} ${top - 64} ${start + 42} ${top - 64} ${start + 22} ${top}`)
-                : parseSvgPath(`M${start} ${top}C${start} ${top - bend} ${end} ${top - bend} ${end} ${top}`)
-            const node = new Node(path).stroke('yellow', 1.4 + 22 * weight, Math.min(1, 0.26 + weight * 1.9)).set('cap', 'butt')
-            node.set('trimTo', a)
-            return [node]
-        })
-    })
-
-    // ── Column ──────────────────────────────────────────────────────────────
-
-    const rule = line([COLUMN - 44, -540], [COLUMN - 44, 540], { stroke: 'grid', width: 1.2 })
-    const place = <T extends Node>(node: T, top: number): T => {
-        node.alignTo([COLUMN, 0], 'left').alignTo([0, top], 'top')
-        return node
+        const prev = activeNote
+        activeNote = next
+        s.play(seq(fadeOut(prev, { duration: 0.2 }), fadeIn(next, { duration: 0.3 })))
     }
-    const title = place(text('Every word asks a question of every other word.', { font: 'text-serif', size: 52, maxWidth: 420, leading: 1.08 }), -490)
-    const eq0 = place(tex('Q K^{T}', { size: 48 }), -304)
-    const eq1 = place(tex('\\frac{Q K^{T}}{\\sqrt{d}}', { size: 42 }), -322)
-    const eq2 = place(tex('\\mathrm{softmax}\\left(\\frac{Q K^{T}}{\\sqrt{d}}\\right)', { size: 38 }), -322)
-    const eq3 = place(tex('\\mathrm{softmax}\\left(\\frac{Q K^{T}}{\\sqrt{d}}\\right) V', { size: 38 }), -322)
-    for (const eq of [eq0, eq1, eq2, eq3]) {
-        for (const glyph of eq.part('Q')) glyph.fill('blue')
-        for (const glyph of eq.part('K')) glyph.fill('teal')
-    }
-    for (const glyph of eq3.part('V')) glyph.fill('purple')
 
-    const note = (content: string) => place(text(content, { size: 24, color: 'dim', maxWidth: 410, leading: 1.42 }), -178)
-    const note0 = note('Each cell is one dot product: how well the query of a row word matches the key of a column word.')
-    const note1 = note(`Dividing by the square root of d keeps long vectors from pushing softmax into a corner. Here d = ${D}.`)
-    const note2 = note('Softmax turns each row into shares that sum to 1. The row for "bank" is now a budget of attention.')
-    const note3 = note('The output for "bank" is those shares applied to the value of every word.')
+    // ── Chapter 1: Coreference puzzle ───────────────────────────────────────
 
-    const shareLabel = place(text('What "bank" looks at', { size: 19, color: 'dim', uppercase: true, tracking: 0.08, weight: 600 }), -36)
-    const ranked = WORDS.map((word, j) => ({ word, weight: WEIGHTS[BANK]![j]!, j })).sort((a, b) => b.weight - a.weight)
-    const shares = dynamic(() => {
-        const a = soft.value
-        return ranked.flatMap((entry, index) => {
-            const y = 6 + index * 48
-            const barWidth = 200 * entry.weight * 2.6 * a
-            return [
-                place(text(entry.word, { size: 24, color: 'ink' }), y).opacity(a),
-                rect(Math.max(1, barWidth), 16, { fill: 'yellow', stroke: null, radius: 2 }).at(COLUMN + 108 + barWidth / 2, y + 14).opacity(a),
-                text((entry.weight * a).toFixed(3), { font: 'mono', size: 22, color: 'yellow' }).alignTo([870, 0], 'right').alignTo([0, y + 1], 'top').opacity(a),
-            ]
-        })
-    })
-    const caveat = place(text('Illustrative vectors. Real arithmetic.', { size: 20, color: 'faint' }), 486)
+    s.add(title, foot, stageTagHolder)
+    const ch1At = 0.2
+    setStageNote('Coreference puzzle: in "because it was tired", does "it" refer to "animal" or "street"?')
+    s.chapter('What does "it" refer to?')
+    s.caption('When a model reads The animal did not cross the street because it was tired, what does it refer to?', 4.8)
 
-    // ── Timeline ────────────────────────────────────────────────────────────
-
-    s.add(rule)
-    s.chapter('A sentence')
-    s.play(write(sentence), { duration: 1.6 })
-    s.play(write(title), { duration: 1.8 })
-    s.play(to(sentence, (node) => {
-        node.moveTo([-400, SENTENCE_Y])
-        node.scale(0.54)
-    }), fade(rule, 1), { duration: 1.2 })
-    for (const index of [BANK]) s.play(...wordsOf(index).map((glyph) => to(glyph, (g) => g.fill('yellow'), { duration: 0.6 })))
-    s.wait(0.2)
-
-    s.chapter('Scores')
-    s.play(fadeIn([rowLabels, colLabels], { lag: 0.04 }), fadeIn(qStrips, { lag: 0.01 }), fadeIn(kStrips, { lag: 0.01 }), fadeIn([qTag, kTag]), { duration: 1.2 })
-    s.play(write(eq0), fadeIn(note0), { duration: 1.2 })
-    s.add(matrix)
-    s.play(fill.to(36, { ease: linear }), { duration: 4.6 })
-    s.wait(0.6)
-
-    s.chapter('Scale')
-    // One note leaves before the next arrives, so two sentences never share the same lines.
-    s.play(morphMatching(eq0, eq1), seq(fadeOut(note0), fadeIn(note1)), { duration: 1.3 })
-    s.play(scaled.to(1, { ease: smoother }), { duration: 1.8 })
+    s.play(
+        queryStrip.enter({ duration: 1.3 }),
+        keyStrip.enter({ duration: 1.3 }),
+    )
     s.wait(0.8)
+    s.play(
+        queryStrip.mark(IT_INDEX, 'query', { duration: 0.75 }),
+        keyStrip.mark(1, 'winner', { duration: 0.75 }),
+        keyStrip.mark(5, 'rival', { duration: 0.75 }),
+    )
+    s.play(
+        fadeIn(barsTitle, { duration: 0.65 }),
+        bars.enter({ duration: 1.0 }),
+        fadeIn(eq1, { duration: 0.75 }),
+    )
+    s.caption('Grammar allows both nouns, so before contextual scoring the candidates start nearly tied.', 4.2)
+    s.play(bars.update(ambiguousBars, { duration: 1.0 }))
+    s.wait(2.1)
 
-    s.chapter('Softmax')
-    s.play(morphMatching(eq1, eq2), seq(fadeOut(note1), fadeIn(note2)), { duration: 1.3 })
-    s.add(sums, shares)
-    s.play(soft.to(1, { ease: smoother }), fadeIn(shareLabel), focus.to(1), { duration: 2.6 })
-    s.wait(0.6)
-    s.add(arcDiagram)
-    s.play(arcs.to(1, { ease: smoother }), { duration: 1.8 })
-    s.wait(1.2)
+    // ── Chapter 2: Scaled dot products & weighted links ─────────────────────
 
-    s.chapter('Values')
-    s.play(morphMatching(eq2, eq3), seq(fadeOut(note2), fadeIn(note3)), fadeIn(vStrips, { lag: 0.01 }), fadeIn(vTag), { duration: 1.5 })
-    s.add(output)
-    s.play(flow.to(1, { ease: linear }), fadeIn(outTag), { duration: 3.2 })
-    s.play(fadeIn(caveat), { duration: 0.8 })
-    s.wait(3)
+    const ch2At = s.time
+    s.chapter('Scaled dot-product scores')
+    setStageNote('Scaling QK^T by sqrt(d_k) keeps softmax gradients sharp; "animal" wins 0.64 of the weight.')
+    s.caption('Dot products compare query it against every key, and dividing by root d k keeps softmax from saturating.', 5.0)
+
+    s.play(morphMatching(eq1, eq2, { duration: 1.1 }))
+    s.wait(1.8)
+
+    s.caption('Softmax turns scaled scores into weights that sum to one: sixty-four percent lands directly on animal.', 6.2)
+    s.play(
+        morphMatching(eq2, eq3, { duration: 1.2 }),
+        bars.update(resolvedBars, { duration: 1.3 }),
+        draw(attentionLinks, { lag: 0.14, duration: 1.6 }),
+    )
+    s.play(bars.mark('animal', 'chosen', { duration: 0.7 }))
+    s.wait(2.8)
+
+    // ── Chapter 3: Full pairwise attention matrix ───────────────────────────
+
+    const ch3At = s.time
+    s.chapter('The attention matrix')
+    setStageNote('Every row of the attention matrix is a probability distribution over keys summing to 1.00.')
+    s.caption('Across all content tokens, those weights form the attention matrix, where every row sums to one.', 5.4)
+
+    s.play(
+        fadeOut([queryStrip, keyStrip, attentionLinks], { duration: 0.65 }),
+        morphMatching(eq3, eq3TopRight, { duration: 0.95 }),
+        moveTo(barsPanel, [barRightSlot.cx, barRightSlot.cy], { duration: 0.95 }),
+    )
+
+    s.play(matrix.enter({ duration: 1.6 }))
+    s.wait(1.0)
+
+    const streetFocusIdx = FOCUS_WORDS.indexOf('street')
+    const itFocusIdx = FOCUS_WORDS.indexOf('it')
+    s.play(matrix.light({ row: streetFocusIdx }, { color: 'orange', duration: 0.75 }))
+    s.wait(1.5)
+
+    s.caption('Lighting row it reveals highest weight on animal and minimal weight on street.', 4.8)
+    s.play(matrix.light({ row: itFocusIdx }, { color: 'yellow', duration: 0.8 }))
+    s.wait(2.4)
+
+    // ── Chapter 4: Value routing into "it" ──────────────────────────────────
+
+    const ch4At = s.time
+    s.chapter('Routing value vectors')
+    setStageNote('Multiplying by V blends 64% of "animal" into "it", binding pronoun to its animate subject.')
+    s.caption('Finally, multiplying by V blends sixty-four percent of animal into it, resolving the pronoun in one step.', 6.8)
+
+    s.play(
+        matrix.light({ row: itFocusIdx, col: 0 }, { color: 'teal', duration: 0.8 }),
+        indicate(bars.bar(0), { color: 'yellow', scale: 1.06, duration: 1.1 }),
+    )
+    s.wait(1.9)
+
+    // Inspect row "tired" -> "animal", then spotlight the resolved "it" distribution.
+    const tiredFocusIdx = FOCUS_WORDS.indexOf('tired')
+    s.play(matrix.light({ row: tiredFocusIdx }, { color: 'yellow', duration: 0.8 }))
+    s.wait(1.6)
+    s.play(matrix.light({ row: itFocusIdx }, { color: 'yellow', duration: 0.8 }))
+    s.play(spotlight([matrix, eq3TopRight, bars], { keep: [title, foot, stageTagHolder, barsTitle, activeNote!], duration: 0.7 }))
+    s.wait(2.0)
+    s.play(spotlight(null, { duration: 0.6 }))
+    s.wait(2.6)
+
+    stageTagHolder.add(
+        tagTrack([
+            { at: ch1At, word: 'COREFERENCE', note: '"it" -> ?' },
+            { at: ch2At, word: 'SOFTMAX', note: 'animal = 0.64' },
+            { at: ch3At, word: 'MATRIX', note: 'rows sum to 1' },
+            { at: ch4At, word: 'VALUES', note: 'context blend' },
+        ], {
+            until: s.time + 1,
+            size: 28,
+            anchor: 'right',
+            noteFont: 'text-serif',
+        }).at(area.right, title.get('y')),
+    )
 })

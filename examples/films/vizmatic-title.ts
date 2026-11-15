@@ -36,6 +36,7 @@ export default film({
     description: 'Curves gather into a wordmark and let go again, as a seamless loop.',
     fps: 60,
     bloom: 0.24,
+    bleed: true,
 }, (s) => {
     const mark = text('vizmatic', { font: 'text-serif', size: 280 }).at(0, -6)
     const bounds = mark.bounds()

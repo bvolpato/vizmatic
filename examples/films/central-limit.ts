@@ -15,8 +15,8 @@ const BALLS = 900
 const COLUMN = 480
 const CX = -240
 const DX = 66, DY = 38
-const TOP = -478
-const FLOOR = 482
+const TOP = -482
+const FLOOR = 470
 const BALL = 5.8
 const PER_ROW = 5
 const ROW_HEIGHT = 11
@@ -146,7 +146,7 @@ export default film({
     }
     bins.add(line([binX(0) - DX / 2 - 12, FLOOR], [binX(ROWS) + DX / 2 + 12, FLOOR], { stroke: 'dim', width: 2 }))
     const ticks = new Node()
-    for (let bin = 0; bin <= ROWS; bin++) ticks.add(tex(String(bin), { size: 21, color: 'dim', display: false }).moveTo([binX(bin), FLOOR + 26]))
+    for (let bin = 0; bin <= ROWS; bin++) ticks.add(tex(String(bin), { size: 27, color: 'dim', display: false }).moveTo([binX(bin), FLOOR + 28]))
 
     const action = dynamic(() => {
         const t = time.value
@@ -197,48 +197,48 @@ export default film({
         node.alignTo([COLUMN, 0], 'left').alignTo([0, top], 'top')
         return node
     }
-    const label = (content: string, top: number) => place(text(content, { size: 19, color: 'dim', uppercase: true, tracking: 0.08, weight: 600 }), top)
-    const title = place(text('Twelve coin flips. Nine hundred times.', { font: 'text-serif', size: 46, maxWidth: 440, leading: 1.08 }), -490)
+    const label = (content: string, top: number) => place(text(content, { size: 26, color: 'dim', weight: 600 }), top)
+    const title = place(text('Twelve coin flips. Nine hundred times.', { font: 'text-serif', size: 44, maxWidth: 430, leading: 1.08 }), -496)
 
-    const flipLabel = label('First ball, bounce by bounce', -340)
+    const flipLabel = label('First ball, bounce by bounce', -356)
     const flipRead = dynamic(() => {
         const t = time.value
         const ball = balls[0]!
         const done = Math.max(0, Math.min(ROWS, Math.floor((t - ball.start) / ball.tau)))
         const letters = ball.flips.slice(0, done).map((right) => right ? 'R' : 'L').join(' ')
-        return place(text(letters.length ? letters : '...', { font: 'mono', size: 25, color: 'yellow' }), -306)
+        return place(text(letters.length ? letters : '...', { font: 'mono', size: 27, color: 'yellow' }), -318)
     })
     const rightRead = dynamic(() => {
         const t = time.value
         const ball = balls[0]!
         const done = Math.max(0, Math.min(ROWS, Math.floor((t - ball.start) / ball.tau)))
         const rights = ball.flips.slice(0, done).filter(Boolean).length
-        return place(text(`${rights} right, so far`, { size: 24, color: 'dim' }), -264)
+        return place(text(`${rights} right, so far`, { size: 26, color: 'dim' }), -278)
     })
 
-    const countLabel = label('Balls landed', -196)
-    const countRead = dynamic(() => place(text(String(landedAt(time.value)).padStart(3, ' '), { font: 'mono', size: 64, color: 'ink' }), -170))
-    const statLabelA = label('Mean', -66)
+    const countLabel = label('Balls landed', -212)
+    const countRead = dynamic(() => place(text(String(landedAt(time.value)).padStart(3, ' '), { font: 'mono', size: 60, color: 'ink' }), -178))
+    const statLabelA = label('Mean', -84)
     const statReadA = dynamic(() => {
         const n = landedAt(time.value)
-        return place(text(n ? (sum1[n]! / n).toFixed(2) : '-', { font: 'mono', size: 38, color: 'ink' }), -40)
+        return place(text(n ? (sum1[n]! / n).toFixed(2) : '-', { font: 'mono', size: 38, color: 'ink' }), -48)
     })
-    const statLabelB = label('Std deviation', -66)
-    statLabelB.alignTo([COLUMN + 200, 0], 'left')
+    const statLabelB = label('Std deviation', -84)
+    statLabelB.alignTo([COLUMN + 210, 0], 'left')
     const statReadB = dynamic(() => {
         const n = landedAt(time.value)
         const variance = n ? sum2[n]! / n - (sum1[n]! / n) ** 2 : 0
-        const node = place(text(n > 1 ? Math.sqrt(variance).toFixed(2) : '-', { font: 'mono', size: 38, color: 'ink' }), -40)
-        node.alignTo([COLUMN + 200, 0], 'left')
+        const node = place(text(n > 1 ? Math.sqrt(variance).toFixed(2) : '-', { font: 'mono', size: 38, color: 'ink' }), -48)
+        node.alignTo([COLUMN + 210, 0], 'left')
         return node
     })
-    const expected = place(tex('\\mu = 6, \\quad \\sigma = \\sqrt{3} \\approx 1.73', { size: 30, color: 'dim' }), 28)
+    const expected = place(tex('\\mu = 6, \\quad \\sigma = \\sqrt{3} \\approx 1.73', { size: 30, color: 'dim' }), 24)
 
-    const eqExact = place(tex('P(k) = \\binom{12}{k} \\frac{1}{2^{12}}', { size: 40, color: 'ink' }), 108)
+    const eqExact = place(tex('P(k) = \\binom{12}{k} \\frac{1}{2^{12}}', { size: 40, color: 'ink' }), 104)
     for (const glyph of eqExact.part('P(k)')) glyph.fill('pink')
-    const eqGauss = place(tex('P(k) \\approx \\frac{1}{\\sigma \\sqrt{2\\pi}} e^{-\\frac{(k-\\mu)^2}{2\\sigma^2}}', { size: 40, color: 'ink' }), 108)
+    const eqGauss = place(tex('P(k) \\approx \\frac{1}{\\sigma \\sqrt{2\\pi}} e^{-\\frac{(k-\\mu)^2}{2\\sigma^2}}', { size: 40, color: 'ink' }), 104)
     for (const glyph of eqGauss.part('P(k)')) glyph.fill('ink')
-    const caption = place(text('Add up enough small independent effects, and this shape appears. No shape was put in.', { size: 24, color: 'dim', maxWidth: 400, leading: 1.42 }), 232)
+    const caption = place(text('Add up enough small independent effects, and this shape appears. No shape was put in.', { size: 26, color: 'dim', maxWidth: 420, leading: 1.36 }), 238)
 
     // ── Timeline ────────────────────────────────────────────────────────────
 
@@ -255,11 +255,16 @@ export default film({
     s.play(fadeIn([countLabel, countRead, statLabelA, statReadA, statLabelB, statReadB]), time.to(DEMO_END, { ease: linear }), { duration: 1.2 })
 
     s.chapter('A downpour')
-    s.play(time.to(total + 0.2, { ease: linear }), { duration: total + 0.2 - DEMO_END })
+    s.play(time.to(total + 0.2, { ease: linear }), { duration: 14.2 })
     s.wait(0.5)
 
     s.chapter('The exact answer')
-    s.play(fadeOut([flipLabel, flipRead, rightRead], { duration: 0.6 }), fadeIn(expected), write(eqExact), fadeIn(exactMarks, { lag: 0.06 }), { duration: 1.6 })
+    s.play(
+        fadeOut([flipLabel, flipRead, rightRead], { duration: 0.6 }),
+        fadeIn(expected, { duration: 1.2 }),
+        write(eqExact, { duration: 1.5 }),
+        fadeIn(exactMarks, { lag: 0.06, duration: 1.5 }),
+    )
     s.wait(1)
 
     s.chapter('The bell')

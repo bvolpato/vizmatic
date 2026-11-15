@@ -40,6 +40,7 @@ export default film({
     title: 'Fourier epicycles',
     description: 'An ampersand redrawn by a chain of rotating arrows as the term count grows.',
     fps: 60,
+    bleed: true,
 }, (s) => {
     fontFor('serif', 400, true)
     const glyph = text('&', { font: 'text-serif', italic: true, size: 900 }).at(-300, 40)
@@ -174,37 +175,37 @@ export default film({
     const rule = line([COLUMN - 60, -540], [COLUMN - 60, 540], { stroke: 'grid', width: 1.2 }).pin()
     const title = text('A drawing is a sum of circles.', { font: 'text-serif', size: 66 }).pin()
     title.alignTo([-864, 0], 'left').alignTo([0, -484], 'top')
-    const eqTerm = tex('z(t) = \\sum_{k=1}^{N} c_k \\, e^{2\\pi i n_k t}', { size: 44 }).pin()
-    eqTerm.alignTo([COLUMN, 0], 'left').alignTo([0, -466], 'top')
+    const eqTerm = tex('z(t) = \\sum_{k=1}^{N} c_k \\, e^{2\\pi i n_k t}', { size: 42 }).pin()
+    eqTerm.alignTo([COLUMN, 0], 'left').alignTo([0, -482], 'top')
     const eqNote = text('Each term is one arrow: a length, a start angle, and a whole number of turns per trip.', {
-        size: 22, color: 'dim', maxWidth: 400, leading: 1.4,
+        size: 26, color: 'dim', maxWidth: 420, leading: 1.32,
     }).pin()
-    eqNote.alignTo([COLUMN, 0], 'left').alignTo([0, -300], 'top')
+    eqNote.alignTo([COLUMN, 0], 'left').alignTo([0, -330], 'top')
 
-    const labelStyle = { size: 19, color: 'dim' as const, uppercase: true, tracking: 0.08, weight: 600 as const }
-    const termLabel = text('Arrows in the chain', labelStyle).pin().alignTo([COLUMN, 0], 'left').alignTo([0, -196], 'top')
-    const termRead = dynamic(() => text(String(Math.round(count.value)), { font: 'mono', size: 86, color: 'yellow' })
-        .alignTo([COLUMN, 0], 'left').alignTo([0, -166], 'top')).pin()
-    const energyLabel = text('Energy captured', labelStyle).pin().alignTo([COLUMN, 0], 'left').alignTo([0, -32], 'top')
+    const labelStyle = { size: 26, color: 'dim' as const, weight: 600 as const }
+    const termLabel = text('Arrows in the chain', labelStyle).pin().alignTo([COLUMN, 0], 'left').alignTo([0, -206], 'top')
+    const termRead = dynamic(() => text(String(Math.round(count.value)), { font: 'mono', size: 80, color: 'yellow' })
+        .alignTo([COLUMN, 0], 'left').alignTo([0, -168], 'top')).pin()
+    const energyLabel = text('Energy captured', labelStyle).pin().alignTo([COLUMN, 0], 'left').alignTo([0, -64], 'top')
     const energyRead = dynamic(() => {
         const n = Math.round(count.value)
         const share = (100 * cumulative[Math.min(n, cumulative.length - 1)]!) / totalPower
         return text(`${share.toFixed(2)}%`, { font: 'mono', size: 40, color: 'ink' })
-            .alignTo([COLUMN, 0], 'left').alignTo([0, -2], 'top')
+            .alignTo([COLUMN, 0], 'left').alignTo([0, -26], 'top')
     }).pin()
-    const errorLabel = text('RMS distance to outline', labelStyle).pin().alignTo([COLUMN, 0], 'left').alignTo([0, 82], 'top')
+    const errorLabel = text('RMS distance to outline', labelStyle).pin().alignTo([COLUMN, 0], 'left').alignTo([0, 40], 'top')
     const errorRead = dynamic(() => {
         const n = Math.round(count.value)
         const rest = Math.sqrt(Math.max(0, totalPower - cumulative[Math.min(n, cumulative.length - 1)]!))
         return text(`${rest.toFixed(1)} px`, { font: 'mono', size: 40, color: 'ink' })
-            .alignTo([COLUMN, 0], 'left').alignTo([0, 112], 'top')
+            .alignTo([COLUMN, 0], 'left').alignTo([0, 78], 'top')
     }).pin()
 
     // The spectrum: every frequency in play, lit as its arrow joins the chain.
-    const BAR_X = COLUMN, BAR_WIDTH = 394, BAR_BASE = 446, BAR_HEIGHT = 190, RANGE = 48
+    const BAR_X = COLUMN, BAR_WIDTH = 394, BAR_BASE = 414, BAR_HEIGHT = 180, RANGE = 48
     const logTop = Math.log10(terms[0]!.size + 1)
     const spectrumPaint = ramp(2, 'faint', 'yellow')
-    const spectrumLabel = text('Spectrum, by frequency', labelStyle).pin().alignTo([COLUMN, 0], 'left').alignTo([0, 208], 'top')
+    const spectrumLabel = text('Spectrum, by frequency', labelStyle).pin().alignTo([COLUMN, 0], 'left').alignTo([0, 152], 'top')
     const rankByFrequency = new Map(terms.map((term, k) => [term.n, k]))
     const spectrum = dynamic(() => {
         const n = count.value
@@ -223,12 +224,12 @@ export default film({
             line([BAR_X, BAR_BASE + 3], [BAR_X + BAR_WIDTH, BAR_BASE + 3], { stroke: faintInk, width: 1.2 }),
         ]
     }).pin()
-    const lowLabel = tex(`-${RANGE}`, { size: 20, color: 'dim', display: false }).pin()
-    lowLabel.alignTo([BAR_X, 0], 'left').alignTo([0, BAR_BASE + 12], 'top')
-    const highLabel = tex(`+${RANGE}`, { size: 20, color: 'dim', display: false }).pin()
-    highLabel.alignTo([BAR_X + BAR_WIDTH, 0], 'right').alignTo([0, BAR_BASE + 12], 'top')
-    const nLabel = tex('n', { size: 22, color: 'dim', display: false }).pin()
-    nLabel.moveTo([BAR_X + BAR_WIDTH / 2, BAR_BASE + 24])
+    const lowLabel = tex(`-${RANGE}`, { size: 28, color: 'dim', display: false }).pin()
+    lowLabel.alignTo([BAR_X, 0], 'left').alignTo([0, BAR_BASE + 16], 'top')
+    const highLabel = tex(`+${RANGE}`, { size: 28, color: 'dim', display: false }).pin()
+    highLabel.alignTo([BAR_X + BAR_WIDTH, 0], 'right').alignTo([0, BAR_BASE + 16], 'top')
+    const nLabel = tex('n', { size: 30, color: 'dim', display: false }).pin()
+    nLabel.moveTo([BAR_X + BAR_WIDTH / 2, BAR_BASE + 32])
 
     // ── Timeline ────────────────────────────────────────────────────────────
 

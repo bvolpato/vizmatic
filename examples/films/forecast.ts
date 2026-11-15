@@ -309,7 +309,7 @@ export default film({
 
     s.chapter('A metric arrives')
     s.at(0, () => s.play(write(title), fadeIn([chart, unit, days, method], { duration: 1 }), delay(fadeIn(arrives, { duration: 0.5 }), 0.7)))
-    s.play(now.to(NOW, { ease: linear }), { duration: 9 })
+    s.play(now.to(NOW, { ease: linear }), { duration: 6.6 })
 
     s.chapter('What comes next?')
     s.play(fadeOut(arrives, { duration: 0.4 }))
@@ -335,7 +335,7 @@ export default film({
 
     s.chapter('The truth arrives')
     s.play(fadeOut(range, { duration: 0.3 }), delay(fadeIn(truth, { duration: 0.4 }), 0.25), ...futures.map((path) => fade(path, 0, { duration: 0.6 })), fadeIn(tally, { duration: 0.6 }))
-    s.play(now.to(NOW + AHEAD, { ease: linear }), { duration: 10 })
+    s.play(now.to(NOW + AHEAD, { ease: linear }), { duration: 7.4 })
     s.play(over.to(1), { duration: 0.6 })
     s.play(fadeOut(tally, { duration: 0.3 }), delay(fadeIn([expected, seen], { duration: 0.5 }), 0.25))
     s.wait(2)

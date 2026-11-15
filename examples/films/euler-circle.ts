@@ -18,8 +18,11 @@ export default film({
     title: "Euler's identity from a circle",
     description: 'A point sweeps the unit circle, sine and cosine trace themselves, and the formula collapses at theta equals pi.',
     fps: 60,
+    bleed: true,
 }, (s) => {
     const theta = s.value(0)
+    const handAlpha = s.value(0)
+    const unitAlpha = s.value(0)
     const P = (): Vec => [CX + Math.cos(theta.value) * R, CY - Math.sin(theta.value) * R]
     const plotX = (t: number) => PLOT_X + (t / TAU) * PLOT_W
 
@@ -28,34 +31,52 @@ export default film({
     const axisH = line([CX - R - 34, CY], [CX + R + 34, CY], { stroke: 'faint', width: 1.6 })
     const axisV = line([CX, CY - R - 34], [CX, CY + R + 34], { stroke: 'faint', width: 1.6 })
     const ring = circle(R, { stroke: 'dim', width: 2.4 }).at(CX, CY)
-    const unit = tex('1', { size: 24, color: 'dim', display: false }).moveTo([CX + R + 16, CY + 24])
+    const unit = dynamic(() => {
+        const a = unitAlpha.value
+        if (a <= 0.001) return null
+        const tag = tex('1', { size: 28, color: 'dim', display: false }).moveTo([CX + R + 28, CY + 34]).opacity(a)
+        const ub = tag.bounds()
+        return [
+            rect(ub.width + 24, ub.height + 22, { fill: 'bg', stroke: null, radius: 5 }).at(ub.x + ub.width / 2, ub.y + ub.height / 2),
+            tag,
+        ]
+    }).zIndex(3)
 
     const hand = dynamic(() => {
+        const a = handAlpha.value
+        if (a <= 0.001) return null
         const [px, py] = P()
         const t = theta.value
         const c = Math.cos(t), sn = Math.sin(t)
         const items: Node[] = []
         if (t > 0.02) {
-            items.push(arc(46, 0, -t, { stroke: 'yellow', width: 3 }).at(CX, CY))
+            items.push(arc(46, 0, -t, { stroke: 'yellow', width: 3 }).at(CX, CY).opacity(a))
         }
         items.push(
-            line([CX, CY], [CX + c * R, CY], { stroke: 'blue', width: 7 }),
-            line([CX + c * R, CY], [CX + c * R, CY - sn * R], { stroke: 'pink', width: 7 }),
-            arrow([CX, CY], [px, py], { stroke: 'ink', width: 3.2, tip: 16 }),
-            dot(9.5, 'yellow').at(px, py).glow(14),
+            line([CX, CY], [CX + c * R, CY], { stroke: 'blue', width: 7 }).opacity(a),
+            line([CX + c * R, CY], [CX + c * R, CY - sn * R], { stroke: 'pink', width: 7 }).opacity(a),
+            arrow([CX, CY], [px, py], { stroke: 'ink', width: 3.2, tip: 16 }).opacity(a),
+            dot(9.5, 'yellow').at(px, py).glow(14).opacity(a),
         )
-        if (t > 0.3) {
-            // Drawn last, on a backing, so the sweeping radius passes behind the label.
-            const mid = t / 2
-            const label = tex('\\theta', { size: 28, color: 'yellow', display: false }).moveTo([CX + Math.cos(mid) * 74, CY - Math.sin(mid) * 74])
-            const b = label.bounds()
-            items.push(rect(b.width + 8, b.height + 6, { fill: 'bg', stroke: null, radius: 4 }).at(b.x + b.width / 2, b.y + b.height / 2), label)
-        }
         return items
-    })
+    }).zIndex(2)
+
+    const thetaTag = dynamic(() => {
+        const a = handAlpha.value
+        const t = theta.value
+        if (a <= 0.001 || t <= 0.45) return null
+        const mid = t / 2
+        const label = tex('\\theta', { size: 30, color: 'yellow', display: false }).moveTo([CX + Math.cos(mid) * 86, CY - Math.sin(mid) * 86]).opacity(a)
+        const b = label.bounds()
+        return [
+            rect(b.width + 24, b.height + 22, { fill: 'bg', stroke: null, radius: 6 }).at(b.x + b.width / 2, b.y + b.height / 2),
+            label,
+        ]
+    }).zIndex(3)
 
     // ── The two traces ──────────────────────────────────────────────────────
 
+    const tickMarks: Node[] = []
     const frame = (y: number, label: string, color: string): Node => {
         const parts: Node[] = [
             line([PLOT_X, y], [PLOT_X + PLOT_W + 10, y], { stroke: 'faint', width: 1.6 }),
@@ -65,15 +86,21 @@ export default film({
             // Top middle stays clear: at theta = pi, sine is at 0 and cosine is at its lowest.
             tex(label, { size: 36, color, display: false }).moveTo([PLOT_X + PLOT_W * 0.5, y - R + 6]),
         ]
-        for (const [mark, at] of [['\\frac{\\pi}{2}', 0.25], ['\\pi', 0.5], ['\\frac{3\\pi}{2}', 0.75], ['2\\pi', 1]] as const) {
+        for (const [mark, at] of [['\\pi/2', 0.25], ['\\pi', 0.5], ['3\\pi/2', 0.75], ['2\\pi', 1]] as const) {
             const x = PLOT_X + at * PLOT_W
             parts.push(line([x, y - 6], [x, y + 6], { stroke: 'faint', width: 1.6 }))
-            parts.push(tex(mark, { size: 21, color: 'dim', display: false }).moveTo([x + (at === 1 ? -4 : 0), y + 30]))
+            const tick = tex(mark, { size: 28, color: 'dim', display: false }).moveTo([x + (at === 1 ? -8 : 0), y + 36])
+            const tb = tick.bounds()
+            tickMarks.push(
+                rect(tb.width + 24, tb.height + 22, { fill: 'bg', stroke: null, radius: 5 }).at(tb.x + tb.width / 2, tb.y + tb.height / 2),
+                tick,
+            )
         }
         return new Node().add(...parts)
     }
     const sinFrame = frame(SIN_Y, '\\sin\\theta', 'pink')
     const cosFrame = frame(COS_Y, '\\cos\\theta', 'blue')
+    const waveTicks = new Node().add(...tickMarks).zIndex(3)
 
     const traces = dynamic(() => {
         const end = theta.value
@@ -94,7 +121,7 @@ export default film({
             dot(8, 'pink').at(x, sy),
             dot(8, 'blue').at(x, cy),
         ]
-    })
+    }).zIndex(1)
 
     // ── Readouts, under the circle ──────────────────────────────────────────
 
@@ -104,14 +131,14 @@ export default film({
         const t = theta.value
         const clean = (v: number) => (Math.abs(v) < 0.005 ? 0 : v).toFixed(3).padStart(6, ' ')
         return [
-            readLabel(`theta ${clean(t)}`, 40, 'yellow'),
-            readLabel(`cos   ${clean(Math.cos(t))}`, 84, 'blue'),
-            readLabel(`sin   ${clean(Math.sin(t))}`, 128, 'pink'),
+            readLabel(`θ   ${clean(t)}`, 36, 'yellow'),
+            readLabel(`cos ${clean(Math.cos(t))}`, 80, 'blue'),
+            readLabel(`sin ${clean(Math.sin(t))}`, 124, 'pink'),
         ]
     })
     const note = text('A complex number with length one is a point on this circle. Its angle is the exponent.', {
-        size: 23, color: 'dim', maxWidth: 400, leading: 1.42,
-    }).alignTo([LEFT, 0], 'left').alignTo([0, 206], 'top')
+        size: 26, color: 'dim', maxWidth: 420, leading: 1.36,
+    }).alignTo([LEFT, 0], 'left').alignTo([0, 196], 'top')
 
     // ── Words and equations ─────────────────────────────────────────────────
 
@@ -144,14 +171,15 @@ export default film({
     // ── Timeline ────────────────────────────────────────────────────────────
 
     s.chapter('The point')
+    s.add(unit, hand, thetaTag)
     s.play(write(title), draw(axisH), draw(axisV), draw(ring), { duration: 1.8 })
-    s.play(fadeIn(unit), fadeIn(hand), { duration: 0.8 })
+    s.play(unitAlpha.to(1), handAlpha.to(1), { duration: 0.8 })
     s.play(write(general), fadeIn(note, { shift: [0, 8] }), { duration: 1.8 })
     s.play(theta.to(0.85), fadeIn(reads), { duration: 1.8 })
     s.wait(0.6)
 
     s.chapter('Two shadows')
-    s.play(draw(sinFrame, { lag: 0.03 }), draw(cosFrame, { lag: 0.03 }), { duration: 1.6 })
+    s.play(draw(sinFrame, { lag: 0.03 }), draw(cosFrame, { lag: 0.03 }), fadeIn(waveTicks), { duration: 1.6 })
     s.add(traces)
     s.play(fadeIn(traces), { duration: 0.4 })
     s.play(theta.to(TAU, { ease: linear }), { duration: 8 })
@@ -169,10 +197,11 @@ export default film({
     s.wait(0.7)
 
     s.chapter('The identity')
+    s.play(unitAlpha.to(0), handAlpha.to(0), fadeOut([title, note, reads, traces, sinFrame, cosFrame, waveTicks, axisH, axisV]), { duration: 0.85 })
     s.play(
         morphMatching(reduced, identity),
-        fadeOut([title, note, reads, unit, hand, traces, sinFrame, cosFrame, axisH, axisV], { duration: 1.3 }),
-        to(ring, (r) => r.moveTo([0, 10]).scale(2.3).opacity(0.14)), { duration: 1.9 },
+        to(ring, (r) => r.moveTo([0, 10]).scale(3.15).opacity(0.14)),
+        { duration: 1.7 },
     )
     s.play(fadeIn(caption, { shift: [0, 14] }), { duration: 1.2 })
     s.wait(3.2)
