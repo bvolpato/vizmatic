@@ -10,7 +10,7 @@ import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promise
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { chromium } from 'playwright'
-import { compileFilm, isFilm, type FilmDefinition } from '../src/stage/index'
+import { compileFilm, isFilm, resolveLook, type FilmDefinition } from '../src/stage/index'
 import { renderFilmFrame } from '../src/stage/export'
 import { loadFilmCatalog } from './site-content'
 
@@ -40,9 +40,13 @@ export async function buildFilmPosters(force = false): Promise<number> {
             if (!isFilm(module.default)) continue
             for (const theme of pending) {
                 // Gallery previews share the page palette; film pages retain their authored looks.
+                const base = resolveLook(theme.look)
                 const compiled = await compileFilm(
                     module.default,
-                    { look: theme.look, background: theme.background },
+                    {
+                        look: { ...base, background: theme.background, colors: { ...base.colors, bg: theme.background } },
+                        background: theme.background,
+                    },
                 )
                 const png = join(scratch, `${film.id}-${theme.name}.png`)
                 await renderFilmFrame(compiled, film.posterTime ?? compiled.duration * 0.66, png, { width: 1440 })
