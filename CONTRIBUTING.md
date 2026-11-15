@@ -159,6 +159,6 @@ git push origin main
 # Push annotated vX.Y.Z tag only after CI passes on release commit.
 ```
 
-Tag push starts GitHub `Release` workflow. It verifies exact commit again, publishes npm provenance, and creates release notes with compare link and commits since previous version. Its last step starts the `Pages` workflow, which deploys the site of that tag. Retry existing tag with `gh workflow run release.yml --ref vX.Y.Z -f tag=vX.Y.Z`. Workflow requires `NPM_TOKEN` repository secret with publish access.
+Tag push starts GitHub `Release` workflow. It verifies exact commit again, publishes to npm with provenance via OpenID Connect (OIDC) Trusted Publishing (`id-token: write`, no `NPM_TOKEN` secret), and creates release notes with compare link and commits since previous release. Its last step starts the `Pages` workflow, which deploys the site of that tag. Retry existing tag with `gh workflow run release.yml --ref vX.Y.Z -f tag=vX.Y.Z`.
 
 The workflow keeps package version, plugin metadata, tag, release notes, and npm provenance in sync.

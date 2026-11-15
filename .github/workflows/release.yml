@@ -35,7 +35,6 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
       - name: Validate release tag
         env:
@@ -53,14 +52,13 @@ jobs:
       # fails when committed output changed, or when the build wrote a file with no rule.
       - name: Ensure the build leaves a clean tree
         run: test -z "$(git status --porcelain)"
-      - name: Validate npm token
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm whoami
+      # npm Trusted Publishing (OIDC) requires npm >= 11.5.1; Node 24 bundles npm 11+.
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 24
       - name: Publish to npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
+          npm --version
           PACKAGE_NAME="$(node -p "require('./package.json').name")"
           VERSION="$(node -p "require('./package.json').version")"
           if npm view "${PACKAGE_NAME}@${VERSION}" version >/dev/null 2>&1; then
@@ -74,7 +72,12 @@ jobs:
         run: |
           VERSION="$(node -p "require('./package.json').version")"
           CURRENT_TAG="v${VERSION}"
-          PREVIOUS_TAG="$(git describe --tags --abbrev=0 "${CURRENT_TAG}^" 2>/dev/null || true)"
+          LATEST_RELEASE_TAG="$(gh release list --exclude-drafts --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName // empty' 2>/dev/null || true)"
+          if [ -n "$LATEST_RELEASE_TAG" ] && [ "$LATEST_RELEASE_TAG" != "$CURRENT_TAG" ] && git merge-base --is-ancestor "$LATEST_RELEASE_TAG" "${CURRENT_TAG}^" 2>/dev/null; then
+            PREVIOUS_TAG="$LATEST_RELEASE_TAG"
+          else
+            PREVIOUS_TAG="$(git describe --tags --abbrev=0 "${CURRENT_TAG}^" 2>/dev/null || true)"
+          fi
 
           {
             echo "## Changes since latest version"
