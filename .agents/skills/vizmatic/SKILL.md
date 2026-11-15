@@ -56,7 +56,7 @@ For interactive authoring, `npx vizmatic preview intro.ts` opens a live timeline
 - **`morph(a, b)` replaces `a` with `b`**: after a morph, `a` is hidden and `b` stays on stage. Direct later animations at `b`.
 - **Never reparent mounted nodes**: do not wrap nodes already on stage in `group()`. Pass arrays to verbs (`fadeOut([a, b])`) and use `spotlight(target, { keep })` instead of manual dimming lists.
 - **Guard hidden `dynamic` nodes**: fading a parent or value does not remove a `dynamic(() => ...)` callback from `check`. Return `[]` when its visibility value is near zero.
-- **Verify math with `assertEqual`**: import `assertEqual` from `vizmatic/stage` rather than `node:assert` so the same film runs in browser `preview`. Note that `vizmatic preview` rejects imports from root `vizmatic`; preview films that import pure helpers from `vizmatic` with stills or precompute the numbers.
+- **Verify math with `assertEqual`**: import `assertEqual` (plus pure math helpers such as `stableSoftmax`, `combineSoftmaxMass`, `dotProduct`, `multiplyMatrices`, and camera verbs `focusOn` / `resetCamera`) directly from `vizmatic/stage` rather than `node:assert` or root `vizmatic` so the same film runs in browser `preview` and Studio.
 
 ### Lessons, narrated films, and sound
 

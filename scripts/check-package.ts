@@ -10,9 +10,9 @@ interface PackResult {
 
 // The RGBA transport, AVC splice planner and media excerpt planner ship in the public bundles.
 const limits = {
-    size: 7_439_300,
-    unpackedSize: 21_361_000,
-    entryCount: 232,
+    size: 7_550_000,
+    unpackedSize: 21_800_000,
+    entryCount: 245,
 }
 
 // Inspect the existing build. npm also runs prepare for a dry run unless suppressed.

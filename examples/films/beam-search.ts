@@ -312,16 +312,19 @@ export default film({
     s.play(spotlight(null, { duration: 0.6 }))
     s.wait(2.6)
 
-    modeTagHolder.add(
-        tagTrack([
-            { at: ch1At, word: 'GREEDY k = 1', note: 'trapped at -3.4' },
-            { at: ch2At, word: 'BEAM k = 2', note: 'keep top 2' },
-            { at: ch3At, word: 'OPTIMUM', note: 'proof = -1.9' },
-        ], {
-            until: s.time + 1,
-            size: 28,
-            anchor: 'right',
-            noteFont: 'text-serif',
-        }).at(area.right, title.get('y')),
-    )
+    const endAt = s.time
+    s.at(0, () => {
+        modeTagHolder.add(
+            tagTrack([
+                { at: ch1At, word: 'GREEDY k = 1', note: 'trapped at -3.4' },
+                { at: ch2At, word: 'BEAM k = 2', note: 'keep top 2' },
+                { at: ch3At, word: 'OPTIMUM', note: 'proof = -1.9' },
+            ], {
+                until: endAt + 1,
+                size: 28,
+                anchor: 'right',
+                noteFont: 'text-serif',
+            }).at(area.right, title.get('y')),
+        )
+    })
 })

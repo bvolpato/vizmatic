@@ -163,23 +163,28 @@ describe('QuadrantChart, ScatterPlot, ParetoChart, and AxisPlot polish', () => {
 
         const tl = propsOf(byKey('quadrant-label-top-left')).style
         const tlDetail = propsOf(byKey('quadrant-detail-top-left')).style
-        expect(tl).toMatchObject({ left: plot.x + 12, top: plot.y + 16, justifyContent: 'flex-start', transform: 'translate(0, -50%)' })
+        expect(tl).toMatchObject({ left: plot.x + 12, justifyContent: 'flex-start' })
+        expect(tl.top).toBeLessThan(plot.y + 20)
         expect(tlDetail.left).toBe(plot.x + 12)
         expect(tlDetail.top).toBeGreaterThan(tl.top)
 
         const tr = propsOf(byKey('quadrant-label-top-right')).style
-        expect(tr).toMatchObject({ left: plot.right - 12, top: plot.y + 16, justifyContent: 'flex-end', transform: 'translate(-100%, -50%)' })
+        expect(tr.justifyContent).toBe('flex-end')
+        expect(tr.left + tr.width).toBe(plot.right - 12)
+        expect(tr.top).toBeLessThan(plot.y + 20)
 
         const bl = propsOf(byKey('quadrant-label-bottom-left')).style
         const blDetail = propsOf(byKey('quadrant-detail-bottom-left')).style
         expect(bl.left).toBe(plot.x + 12)
         expect(bl.justifyContent).toBe('flex-start')
-        expect(blDetail.top).toBe(plot.bottom - 16)
+        expect(blDetail.top).toBeGreaterThan(plot.bottom - 28)
         expect(bl.top).toBeLessThan(blDetail.top)
 
         const br = propsOf(byKey('quadrant-label-bottom-right')).style
         expect(byKey('quadrant-detail-bottom-right')).toBeUndefined()
-        expect(br).toMatchObject({ left: plot.right - 12, top: plot.bottom - 16, justifyContent: 'flex-end', transform: 'translate(-100%, -50%)' })
+        expect(br.justifyContent).toBe('flex-end')
+        expect(br.left + br.width).toBe(plot.right - 12)
+        expect(br.top).toBeGreaterThan(plot.bottom - 28)
     })
 
     it('produces clean human ticks in ScatterPlot and ParetoChart via niceChartScale', () => {

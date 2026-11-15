@@ -167,7 +167,13 @@ export function ScatterPlot({
             }),
             ...yTicks.map((tick) => {
                 const y = yInPlot(tick, yDomain, plot)
-                return chartLabel(`y-tick-label-${tick}`, formatChartValue(tick, formatY), plot.x - 8, y, c, { align: 'right', width: 36 })
+                const tickLeft = yAxisLabel ? 20 : 0
+                const tickWidth = Math.max(8, plot.x - 8 - tickLeft)
+                return chartLabel(`y-tick-label-${tick}`, formatChartValue(tick, formatY), plot.x - 8, y, c, {
+                    align: 'right',
+                    width: tickWidth,
+                    bounds: { x: tickLeft, y: 0, width: tickWidth, height, padding: 0 },
+                })
             }),
             xAxisLabel && chartLabel('scatter-x-axis-label', xAxisLabel, plot.x + plot.innerWidth / 2, height - 8, c, {
                 width: plot.innerWidth,
@@ -465,7 +471,13 @@ export function ParetoChart({
             }),
             ...yTicks.map((tick) => {
                 const y = yInPlot(tick, yDomain, plot)
-                return chartLabel(`pareto-y-tick-${tick}`, formatChartValue(tick, formatY), plot.x - 8, y, c, { align: 'right', width: 42 })
+                const tickLeft = yAxisLabel ? 20 : 0
+                const tickWidth = Math.max(8, plot.x - 8 - tickLeft)
+                return chartLabel(`pareto-y-tick-${tick}`, formatChartValue(tick, formatY), plot.x - 8, y, c, {
+                    align: 'right',
+                    width: tickWidth,
+                    bounds: { x: tickLeft, y: 0, width: tickWidth, height, padding: 0 },
+                })
             }),
             showGoal && chartLabel('pareto-goal-label', goalText, plot.right - 2, plot.y + 9, c, {
                 align: 'right',
@@ -711,7 +723,7 @@ export function QuadrantChart({
                     strokeWidth: 3,
                 })),
             ),
-            ...regionEntries.flatMap(({ key, region, width: regionWidth }, index) => {
+            ...regionEntries.flatMap(({ key, region, x: regionX, y: regionY, width: regionWidth, height: regionHeight }, index) => {
                 const color = chartColor(region.color, c, index)
                 const isRight = key.endsWith('right')
                 const isBottom = key.startsWith('bottom')
@@ -726,10 +738,12 @@ export function QuadrantChart({
                     ? plot.bottom - 16
                     : plot.y + 16 + lineStep
                 const maxLabelWidth = Math.max(1, regionWidth - 24)
+                const regionBounds = { x: regionX, y: regionY, width: regionWidth, height: regionHeight, padding: 8 }
                 return [
                     chartLabel(`quadrant-label-${key}`, region.label, cornerX, labelY, c, {
                         align,
                         width: maxLabelWidth,
+                        bounds: regionBounds,
                         color,
                         fontFamily: 'Inter',
                         fontWeight: 600,
@@ -738,6 +752,7 @@ export function QuadrantChart({
                     ...(region.detail ? [chartLabel(`quadrant-detail-${key}`, region.detail, cornerX, detailY, c, {
                         align,
                         width: maxLabelWidth,
+                        bounds: regionBounds,
                         color: c.textMuted,
                         fontSize,
                     })] : []),

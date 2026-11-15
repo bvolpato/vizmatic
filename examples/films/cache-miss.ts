@@ -403,17 +403,20 @@ export default film({
     s.play(comparison.advance(100, { duration: 2.5 }))
     s.wait(3.2)
 
-    regimeHolder.add(
-        tagTrack([
-            { at: ch1At, word: 'WARM CACHE', note: '99.98% hit rate' },
-            { at: ch2At, word: 'STAMPEDE', note: 'TTL = 0 · 480 misses' },
-            { at: ch3At, word: 'SINGLE-FLIGHT', note: 'coalesce per key' },
-            { at: ch4At, word: 'COMPARISON', note: 'tail latency' },
-        ], {
-            until: s.time + 1,
-            size: 28,
-            anchor: 'right',
-            noteFont: 'text-serif',
-        }).at(area.right, title.get('y')),
-    )
+    const endAt = s.time
+    s.at(0, () => {
+        regimeHolder.add(
+            tagTrack([
+                { at: ch1At, word: 'WARM CACHE', note: '99.98% hit rate' },
+                { at: ch2At, word: 'STAMPEDE', note: 'TTL = 0 · 480 misses' },
+                { at: ch3At, word: 'SINGLE-FLIGHT', note: 'coalesce per key' },
+                { at: ch4At, word: 'COMPARISON', note: 'tail latency' },
+            ], {
+                until: endAt + 1,
+                size: 28,
+                anchor: 'right',
+                noteFont: 'text-serif',
+            }).at(area.right, title.get('y')),
+        )
+    })
 })

@@ -10,42 +10,92 @@
     "look": "midnight"
   },
   {
+    "id": "flash-attention",
+    "title": "FlashAttention: tiling beats memory bandwidth",
+    "summary": "Online running-max softmax streams K and V blocks through fast on-chip SRAM without materializing the N by N attention matrix in HBM.",
+    "topic": "Machine learning",
+    "duration": 46.6,
+    "posterTime": 22.5,
+    "featured": true,
+    "look": "blueprint"
+  },
+  {
+    "id": "io-uring",
+    "title": "Zero syscalls: inside io_uring",
+    "summary": "Submission and completion rings in shared memory replace per-read kernel traps with batched tail updates and asynchronous NVMe DMA.",
+    "topic": "Systems",
+    "duration": 45,
+    "posterTime": 22.8,
+    "featured": true,
+    "look": "midnight"
+  },
+  {
+    "id": "svd-3d",
+    "title": "Every matrix is rotate, stretch, rotate",
+    "summary": "A 3D unit sphere rotates under V transpose, stretches along three orthogonal singular axes into a triaxial ellipsoid, and rotates under U.",
+    "topic": "Mathematics",
+    "duration": 41.6,
+    "posterTime": 25,
+    "featured": true,
+    "look": "chalk"
+  },
+  {
     "id": "fourier-epicycles",
     "title": "A drawing is a sum of circles",
     "summary": "A real Fourier transform of an ampersand, redrawn by a chain of rotating arrows as the term count grows from 1 to 200.",
     "topic": "Mathematics",
-    "duration": 48.15,
+    "duration": 48.2,
     "posterTime": 30.5,
     "featured": true,
     "look": "midnight"
   },
   {
-    "id": "linear-maps",
-    "title": "A matrix moves the whole plane",
-    "summary": "A grid under one matrix: basis arrows, the determinant as area, and the two directions that stay on their lines.",
-    "topic": "Mathematics",
+    "id": "rag-citations",
+    "title": "Every claim needs a receipt",
+    "summary": "Retrieved source passages wire directly to generated clauses, catching an unsupported claim when its citation thread snaps.",
+    "topic": "Machine learning",
+    "duration": 41.2,
+    "posterTime": 24,
+    "featured": true,
+    "look": "paper"
+  },
+  {
+    "id": "ring-allreduce",
+    "title": "Eight GPUs, one ring, zero bottleneck",
+    "summary": "Seven reduce-scatter hops and seven all-gather hops saturate every NVLink channel in lockstep so bandwidth stays flat as the cluster grows.",
+    "topic": "Distributed systems",
+    "duration": 39.4,
+    "posterTime": 23,
+    "featured": true,
+    "look": "neon"
+  },
+  {
+    "id": "cache-miss",
+    "title": "One expired key can take down the database",
+    "summary": "At 12,000 requests per second, a single TTL expiry storms a 40-slot Postgres pool with 480 duplicate queries until single-flight coalescing stops it.",
+    "topic": "Systems",
+    "duration": 43.2,
+    "posterTime": 18.5,
+    "featured": true,
+    "look": "blueprint"
+  },
+  {
+    "id": "paxos",
+    "title": "Paxos: two majorities share an acceptor",
+    "summary": "Real single-decree Paxos with lost and late messages: a proposer that hears of two accepted proposals takes the value of the higher number, and 400 random runs never choose two values.",
+    "topic": "Distributed systems",
+    "duration": 55.6,
+    "posterTime": 33.2,
+    "featured": true,
+    "look": "midnight"
+  },
+  {
+    "id": "attention",
+    "title": "Attention routes context where grammar alone cannot",
+    "summary": "Genuine 4D query, key, and value vectors resolve \"it\" to \"animal\" as softmax(QK^T / sqrt(d_k)) V lights up the pairwise attention matrix.",
+    "topic": "Machine learning",
     "duration": 37.6,
-    "posterTime": 36,
-    "featured": true,
-    "look": "midnight"
-  },
-  {
-    "id": "complex-maps",
-    "title": "The grid bends, its right angles survive",
-    "summary": "A grid unfolds under z squared and curls into a disk under a Mobius map, with the angle at every crossing measured live.",
-    "topic": "Mathematics",
-    "duration": 40.5,
-    "posterTime": 38.5,
-    "featured": true,
-    "look": "midnight"
-  },
-  {
-    "id": "euler-circle",
-    "title": "One point, two shadows",
-    "summary": "A point sweeps the unit circle, sine and cosine trace themselves, and the formula collapses into Euler's identity.",
-    "topic": "Mathematics",
-    "duration": 34.8,
-    "posterTime": 15.5,
+    "posterTime": 28.5,
     "featured": true,
     "look": "midnight"
   },
@@ -60,23 +110,63 @@
     "look": "midnight"
   },
   {
-    "id": "attention",
-    "title": "Attention, computed",
-    "summary": "Queries, keys, and values produce a live heatmap as softmax(QK^T / sqrt(d)) V builds up term by term.",
-    "topic": "Machine learning",
-    "duration": 32.9,
-    "posterTime": 31.5,
-    "featured": true,
-    "look": "midnight"
-  },
-  {
     "id": "lorenz",
     "title": "The rules are exact, the future is not",
     "summary": "The Lorenz system integrated with real numbers: two starts a hair apart part ways, then 72 fill the butterfly.",
     "topic": "Physics",
-    "duration": 44,
-    "posterTime": 41,
+    "duration": 40.2,
+    "posterTime": 39,
     "featured": true,
+    "look": "midnight"
+  },
+  {
+    "id": "forecast",
+    "title": "A forecast is a range",
+    "summary": "A small forecaster reads a seeded metric and draws its own past errors again as 1,000 possible futures. Two bands hold half of them and 9 of 10, the truth lands inside the wide one 43 times of 48, and 1,000 runs show how often that band is right.",
+    "topic": "Time series",
+    "duration": 46.4,
+    "posterTime": 34.5,
+    "featured": true,
+    "look": "midnight"
+  },
+  {
+    "id": "complex-maps",
+    "title": "The grid bends, its right angles survive",
+    "summary": "A grid unfolds under z squared and curls into a disk under a Mobius map, with the angle at every crossing measured live.",
+    "topic": "Mathematics",
+    "duration": 40.1,
+    "posterTime": 38,
+    "featured": true,
+    "look": "midnight"
+  },
+  {
+    "id": "linear-maps",
+    "title": "A matrix moves the whole plane",
+    "summary": "A grid under one matrix: basis arrows, the determinant as area, and the two directions that stay on their lines.",
+    "topic": "Mathematics",
+    "duration": 37.8,
+    "posterTime": 36,
+    "featured": false,
+    "look": "midnight"
+  },
+  {
+    "id": "euler-circle",
+    "title": "One point, two shadows",
+    "summary": "A point sweeps the unit circle, sine and cosine trace themselves, and the formula collapses into Euler's identity.",
+    "topic": "Mathematics",
+    "duration": 35.4,
+    "posterTime": 15.5,
+    "featured": false,
+    "look": "midnight"
+  },
+  {
+    "id": "beam-search",
+    "title": "A beam keeps more than one path",
+    "summary": "Greedy decoding locks into a locally higher token and gets trapped at -3.4, while beam width k = 2 keeps two prefixes and discovers -1.9.",
+    "topic": "Machine learning",
+    "duration": 34.9,
+    "posterTime": 30.5,
+    "featured": false,
     "look": "midnight"
   },
   {
@@ -84,8 +174,8 @@
     "title": "Twelve coin flips, nine hundred times",
     "summary": "A Galton board settles into a histogram that meets the Gaussian curve, with mean and deviation measured from the balls.",
     "topic": "Statistics",
-    "duration": 43.82,
-    "posterTime": 42.8,
+    "duration": 36.6,
+    "posterTime": 35,
     "featured": false,
     "look": "midnight"
   },
@@ -94,10 +184,10 @@
     "title": "Move the pieces, keep the square",
     "summary": "A proof by rearrangement: four triangles slide inside a square, and the leftover area writes the theorem.",
     "topic": "Mathematics",
-    "duration": 27.45,
+    "duration": 27.8,
     "posterTime": 26,
     "featured": false,
-    "look": "midnight"
+    "look": "chalk"
   },
   {
     "id": "taylor-series",
@@ -110,53 +200,14 @@
     "look": "midnight"
   },
   {
-    "id": "cache-miss",
-    "title": "One key expires",
-    "summary": "A dense service diagram comes alive: a hot key expires at 12,000 requests per second, and a simulated stampede hits Postgres.",
-    "topic": "Systems",
-    "duration": 49,
-    "posterTime": 30,
-    "featured": true,
-    "look": "midnight"
-  },
-  {
-    "id": "paxos",
-    "title": "Paxos: two majorities share an acceptor",
-    "summary": "Real single-decree Paxos with lost and late messages: a proposer that hears of two accepted proposals takes the value of the higher number, and 400 random runs never choose two values.",
-    "topic": "Distributed systems",
-    "duration": 55.6,
-    "posterTime": 33.2,
-    "featured": true,
-    "look": "midnight"
-  },
-  {
-    "id": "forecast",
-    "title": "A forecast is a range",
-    "summary": "A small forecaster reads a seeded metric and draws its own past errors again as 1,000 possible futures. Two bands hold half of them and 9 of 10, the truth lands inside the wide one 43 times of 48, and 1,000 runs show how often that band is right.",
-    "topic": "Time series",
-    "duration": 51.4,
-    "posterTime": 40,
-    "featured": true,
-    "look": "midnight"
-  },
-  {
     "id": "deck-example",
     "title": "Why we rebuilt the renderer",
-    "summary": "A six-chapter talk that plays in stepped mode, with a live timeline and measured results.",
+    "summary": "A five-slide engineering talk that steps slide by slide or plays straight through, comparing per-frame layout against pure track sampling.",
     "topic": "Presentation",
-    "duration": 33,
-    "posterTime": 16,
+    "duration": 33.9,
+    "posterTime": 24.5,
     "featured": false,
-    "look": "paper"
-  },
-  {
-    "id": "beam-search",
-    "title": "A beam keeps more than one path",
-    "summary": "A tree grows one token at a time, keeps two prefixes, and adds the log probabilities along each path before choosing its best complete continuation.",
-    "topic": "Machine learning",
-    "duration": 17.2,
-    "posterTime": 14,
-    "featured": false,
-    "look": "midnight"
+    "look": "paper",
+    "stepped": true
   }
 ]

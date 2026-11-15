@@ -73,9 +73,14 @@ For a film that follows a recorded voice, use `narrated({ title, timing, scenes 
 
 | Film | What to learn from it |
 |---|---|
-| `attention.ts` | Compute every number on screen from small real inputs. |
-| `cache-miss.ts` | Run a small queueing model, and draw the system from its results. |
-| `beam-search.ts` | Grow a search tree, keep a beam of two, and add the log probabilities along each path. |
+| `flash-attention.ts` | Stream tiles through `segmentedBar` memory hierarchies (`blueprint` look), sweep a `heatmap` window, and assert online softmax equality. |
+| `io-uring.ts` | Contrast `boundary` kernel traps against shared-memory `ringBuffer` queues and `connector.send` DMA packets. |
+| `svd-3d.ts` | Compose `scene3d`, `parametricSurface`, `axes3d`, and `vector3d` with `tex` and `matrix` on the `chalk` look. |
+| `rag-citations.ts` | Wire retrieved `passage` spans to draft clauses on the `paper` look, snap unsupported citation links with `break()`, and audit claims in a `table`. |
+| `ring-allreduce.ts` | Drive an 8-GPU `graph` ring and lockstep `segmentedBar` channels on the `neon` look, and verify shard sums with `assertEqual`. |
+| `attention.ts` | Compute every number on screen from small real inputs (`tokens`, `attentionMatrix`, `barChart`, `morphMatching`). |
+| `cache-miss.ts` | Run a discrete-event queueing model (`infoBox`, `connector`, `requestQueue`, `lanes`) on the `blueprint` look. |
+| `beam-search.ts` | Grow a search `tree`, keep a beam of two, and compare cumulative log probabilities against greedy decoding. |
 | `paxos.ts` | Play a protocol through a schedule of delays and losses, and send each message of the trace along a `connector` with `send`. |
 | `gradient-descent.ts` | Drive motion from real iterates, and compare two runs. |
 | `linear-maps.ts` | Bend a grid with `applyMatrix`, and follow what it does to area. |
@@ -86,7 +91,7 @@ For a film that follows a recorded voice, use `narrated({ title, timing, scenes 
 | `forecast.ts` | Move a window along a series, open a band up to a time, and count the truth against it. |
 | `taylor-series.ts` | Build a result one term at a time. |
 | `pythagoras.ts`, `euler-circle.ts` | Keep a short proof or a short idea to one picture. |
-| `deck-example.ts` | Write a talk with one chapter per step, for `<vz-film stepped>`. |
+| `deck-example.ts` | Write a talk with one chapter per step (`pipeline`, `morphCode`, `barChart`, `card`), for `<vz-film stepped>`. |
 
 ## Patterns
 

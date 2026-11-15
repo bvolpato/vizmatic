@@ -271,18 +271,21 @@ export default film({
     )
     s.wait(4.2)
 
-    deckTagHolder.add(
-        tagTrack([
-            { at: s1At, word: '1 / 5', note: 'Thesis' },
-            { at: s2At, word: '2 / 5', note: 'Architecture' },
-            { at: s3At, word: '3 / 5', note: 'Authoring' },
-            { at: s4At, word: '4 / 5', note: 'Benchmark' },
-            { at: s5At, word: '5 / 5', note: 'Tradeoffs' },
-        ], {
-            until: s.time + 1,
-            size: 28,
-            anchor: 'right',
-            noteFont: 'text-serif',
-        }).at(area.right, footNote.get('y')),
-    )
+    const endAt = s.time
+    s.at(0, () => {
+        deckTagHolder.add(
+            tagTrack([
+                { at: s1At, word: '1 / 5', note: 'Thesis' },
+                { at: s2At, word: '2 / 5', note: 'Architecture' },
+                { at: s3At, word: '3 / 5', note: 'Authoring' },
+                { at: s4At, word: '4 / 5', note: 'Benchmark' },
+                { at: s5At, word: '5 / 5', note: 'Tradeoffs' },
+            ], {
+                until: endAt + 1,
+                size: 28,
+                anchor: 'right',
+                noteFont: 'text-serif',
+            }).at(area.right, footNote.get('y')),
+        )
+    })
 })

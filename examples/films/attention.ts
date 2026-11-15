@@ -311,17 +311,20 @@ export default film({
     s.play(spotlight(null, { duration: 0.6 }))
     s.wait(2.6)
 
-    stageTagHolder.add(
-        tagTrack([
-            { at: ch1At, word: 'COREFERENCE', note: '"it" -> ?' },
-            { at: ch2At, word: 'SOFTMAX', note: 'animal = 0.64' },
-            { at: ch3At, word: 'MATRIX', note: 'rows sum to 1' },
-            { at: ch4At, word: 'VALUES', note: 'context blend' },
-        ], {
-            until: s.time + 1,
-            size: 28,
-            anchor: 'right',
-            noteFont: 'text-serif',
-        }).at(area.right, title.get('y')),
-    )
+    const endAt = s.time
+    s.at(0, () => {
+        stageTagHolder.add(
+            tagTrack([
+                { at: ch1At, word: 'COREFERENCE', note: '"it" -> ?' },
+                { at: ch2At, word: 'SOFTMAX', note: 'animal = 0.64' },
+                { at: ch3At, word: 'MATRIX', note: 'rows sum to 1' },
+                { at: ch4At, word: 'VALUES', note: 'context blend' },
+            ], {
+                until: endAt + 1,
+                size: 28,
+                anchor: 'right',
+                noteFont: 'text-serif',
+            }).at(area.right, title.get('y')),
+        )
+    })
 })

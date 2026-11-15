@@ -14,7 +14,7 @@ const ENTRIES = [
 
 const GROUPS: [RegExp, string][] = [
     [/\/stage\/stage\.ts$/, 'Film and stage'],
-    [/\/stage\/anim\.ts$/, 'Animations'],
+    [/\/stage\/(anim|camera)\.ts$/, 'Animations'],
     [/\/stage\/node\.ts$/, 'Nodes'],
     [/\/stage\/shapes\.ts$/, 'Shapes'],
     [/\/stage\/image\.ts$/, 'Images'],
