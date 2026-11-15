@@ -1,12 +1,10 @@
 /**
- * Greedy decoding (k = 1) versus beam search (k = 2) in cumulative log-probability space.
- *
- * At step 1, "the" (-0.4) scores slightly higher than "a" (-0.6). Greedy follows "the"
- * alone, leaving "a" unexpanded, and gets trapped in a weak continuation:
- *   "Give the best guess"  ->  -0.4 + (-1.3) + (-1.7) = -3.4
- * Beam search with width k = 2 keeps both "the" (-0.4) and "a" (-0.6), expands "a", prunes
- * dead branches at each depth, and discovers the globally stronger sequence:
- *   "Give a clear proof"   ->  -0.6 + (-0.5) + (-0.8) = -1.9
+ * Normalized toy model: P(the,a,some) = (0.5,0.4,0.1).
+ * P(best,old | the) = (0.6,0.4); P(clear,rough | a) = (0.9,0.1).
+ * P(guess | the best) = 0.6; P(proof | a clear) = 0.9.
+ * Each final expansion has one omitted alternative with the remaining mass.
+ * At a fixed three-token horizon, greedy scores log(0.18) and beam scores log(0.324).
+ * This example does not claim beam search is globally optimal in general.
  */
 import {
     Node, assertEqual, barChart, column, fadeIn, fadeOut, film, indicate, place,
@@ -22,36 +20,36 @@ const SEARCH_TREE: TreeSpec = {
         {
             id: 'the',
             label: 'the',
-            weight: -0.4,
+            weight: Math.log(0.5),
             children: [
                 {
                     id: 'best',
                     label: 'best',
-                    weight: -1.3,
+                    weight: Math.log(0.6),
                     children: [
-                        { id: 'guess', label: 'guess', weight: -1.7 },
+                        { id: 'guess', label: 'guess', weight: Math.log(0.6) },
                     ],
                 },
-                { id: 'old', label: 'old', weight: -1.8 },
+                { id: 'old', label: 'old', weight: Math.log(0.4) },
             ],
         },
         {
             id: 'a',
             label: 'a',
-            weight: -0.6,
+            weight: Math.log(0.4),
             children: [
                 {
                     id: 'clear',
                     label: 'clear',
-                    weight: -0.5,
+                    weight: Math.log(0.9),
                     children: [
-                        { id: 'proof', label: 'proof', weight: -0.8 },
+                        { id: 'proof', label: 'proof', weight: Math.log(0.9) },
                     ],
                 },
-                { id: 'rough', label: 'rough', weight: -1.9 },
+                { id: 'rough', label: 'rough', weight: Math.log(0.1) },
             ],
         },
-        { id: 'some', label: 'some', weight: -2.0 },
+        { id: 'some', label: 'some', weight: Math.log(0.1) },
     ],
 }
 
@@ -59,35 +57,32 @@ const fmtLogProb = (v: number): string => (Object.is(v, -0) || Math.abs(v) < 1e-
 
 function collectScores(node: TreeSpec, acc = 0, map = new Map<string, number>()): Map<string, number> {
     const next = acc + (node.weight ?? 0)
-    if (node.id) map.set(node.id, Math.round(next * 10) / 10)
+    if (node.id) map.set(node.id, next)
     for (const child of node.children ?? []) collectScores(child, next, map)
     return map
 }
 
 const SCORES = collectScores(SEARCH_TREE)
-assertEqual(
-    [
-        SCORES.get('the'),
-        SCORES.get('a'),
-        SCORES.get('best'),
-        SCORES.get('clear'),
-        SCORES.get('guess'),
-        SCORES.get('proof'),
-    ],
-    [-0.4, -0.6, -1.7, -1.1, -3.4, -1.9],
-    'cumulative log-probability scores across greedy and beam paths',
-)
-assertEqual(
-    SCORES.get('proof')! > SCORES.get('guess')!,
-    true,
-    'beam width k = 2 finds a higher-scoring sequence (-1.9) than greedy (-3.4)',
-)
+// The two leaf expansions omit one lower-probability alternative each.
+const omittedMass: Record<string, number> = { best: 0.4, clear: 0.1 }
+function checkDistribution(node: TreeSpec): void {
+    if (!node.children?.length) return
+    const mass = node.children.reduce((sum, child) => sum + Math.exp(child.weight!), 0) + (omittedMass[node.id!] ?? 0)
+    assertEqual(Math.abs(mass - 1) < 1e-12, true, 'conditional probabilities sum to one')
+    for (const child of node.children) checkDistribution(child)
+}
+checkDistribution(SEARCH_TREE)
+assertEqual(['the', 'a', 'some'].sort((a, b) => SCORES.get(b)! - SCORES.get(a)!).slice(0, 2), ['the', 'a'], 'first beam frontier')
+assertEqual(['best', 'old', 'clear', 'rough'].sort((a, b) => SCORES.get(b)! - SCORES.get(a)!).slice(0, 2), ['clear', 'best'], 'second beam frontier')
+assertEqual(Math.abs(Math.exp(SCORES.get('guess')!) - 0.18) < 1e-12, true, 'greedy sequence probability')
+assertEqual(Math.abs(Math.exp(SCORES.get('proof')!) - 0.324) < 1e-12, true, 'beam sequence probability')
+assertEqual(SCORES.get('proof')! > SCORES.get('guess')!, true, 'beam wins this fixed-length example')
 
 // ── Film ────────────────────────────────────────────────────────────────────
 
 export default film({
     title: 'A beam keeps more than one path',
-    description: 'Greedy decoding commits to the locally best token (-3.4), while beam search (k = 2) keeps two hypotheses and finds -1.9.',
+    description: 'A normalized toy model: greedy ends at log(0.18), while beam search (k = 2) finds log(0.324).',
     fps: 60,
     look: 'midnight',
     font: 'text-serif',
@@ -99,7 +94,7 @@ export default film({
     })
 
     const title = heading('A beam keeps more than one path')
-    const foot = source('Cumulative log-probabilities sum along edges · closer to 0 is higher probability')
+    const foot = source('Toy model · 3-token horizon · lower-ranked leaf alternatives omitted · natural log scores')
     const modeTagHolder = new Node()
 
     const [prefixBand, mainBand, captionBand] = area.rows([1.15, 6.0, 0.85], 'tight')
@@ -146,8 +141,8 @@ export default film({
         edgeLabelSize: 27,
         format: fmtLogProb,
     })
-    assertEqual(Math.round(searchTree.score('guess') * 10) / 10, -3.4, 'tree score at greedy leaf guess')
-    assertEqual(Math.round(searchTree.score('proof') * 10) / 10, -1.9, 'tree score at beam leaf proof')
+    assertEqual(Math.round(searchTree.score('guess') * 10) / 10, -1.7, 'tree score at greedy leaf guess')
+    assertEqual(Math.round(searchTree.score('proof') * 10) / 10, -1.1, 'tree score at beam leaf proof')
     place(searchTree, treeCol, 'center')
 
     // ── Side BarCharts: step-1 token log-probs & final sequence comparison ──
@@ -155,9 +150,9 @@ export default film({
     const step1Title = label('Step-1 token log-prob', { size: 29, color: 'dim' })
     const step1Bars = barChart(
         [
-            { label: 'the', value: Math.exp(-0.4), color: 'orange' },
-            { label: 'a', value: Math.exp(-0.6), color: 'teal' },
-            { label: 'some', value: Math.exp(-2.0), color: 'blue' },
+            { label: 'the', value: Math.exp(SCORES.get('the')!), color: 'orange' },
+            { label: 'a', value: Math.exp(SCORES.get('a')!), color: 'teal' },
+            { label: 'some', value: Math.exp(SCORES.get('some')!), color: 'blue' },
         ],
         {
             width: 490,
@@ -174,14 +169,13 @@ export default film({
     const finalTitle = label('Completed sequence log-prob', { size: 29, color: 'dim' })
     const finalBars = barChart(
         [
-            { label: 'a..proof', value: Math.exp(-1.9), color: 'teal' },
-            { label: 'the..old', value: Math.exp(-2.2), color: 'blue' },
-            { label: 'the..guess', value: Math.exp(-3.4), color: 'orange' },
+            { label: 'a..proof', value: Math.exp(SCORES.get('proof')!), color: 'teal' },
+            { label: 'the..guess', value: Math.exp(SCORES.get('guess')!), color: 'orange' },
         ],
         {
             width: 500,
             height: 290,
-            max: 0.22,
+            max: 0.4,
             labelSize: 28,
             showValues: true,
             states: true,
@@ -205,13 +199,13 @@ export default film({
         s.play(seq(fadeOut(prev, { duration: 0.2 }), fadeIn(next, { duration: 0.3 })))
     }
 
-    // ── Chapter 1: Greedy decoding (k = 1) gets trapped at -3.4 ─────────────
+    // ── Chapter 1: Greedy decoding (k = 1) gets trapped at -1.7 ─────────────
 
     s.add(title, foot, modeTagHolder)
     const ch1At = 0.2
-    setStageNote('Greedy search (k = 1) picks locally highest "the" (-0.4) and ignores runner-up "a" (-0.6).')
+    setStageNote(`Greedy search (k = 1) picks locally highest "the" (${fmtLogProb(SCORES.get('the')!)}) and ignores runner-up "a" (${fmtLogProb(SCORES.get('a')!)}).`)
     s.chapter('Greedy trap (k = 1)')
-    s.caption('Greedy decoding keeps only one token at a time, choosing the locally highest score minus zero point four.', 5.4)
+    s.caption(`Greedy keeps one token: "the", with log-probability ${fmtLogProb(SCORES.get('the')!)}.`, 5.4)
 
     s.play(
         greedyStrip.enter({ duration: 0.9 }),
@@ -229,8 +223,8 @@ export default film({
     )
     s.wait(1.6)
 
-    s.caption('Once locked into the, every continuation scores poorly, trapping greedy search at minus three point four.', 7.0)
-    setStageNote('Locked into "the", every continuation drops sharply: "Give the best guess" ends at -3.4.')
+    s.caption(`Greedy follows "the" and finishes with log-probability ${fmtLogProb(SCORES.get('guess')!)}.`, 7.0)
+    setStageNote(`Locked into "the", every continuation drops sharply: "Give the best guess" ends at ${fmtLogProb(SCORES.get('guess')!)}.`)
 
     s.play(searchTree.grow(['best', 'old'], { duration: 1.1 }))
     s.play(
@@ -246,11 +240,11 @@ export default film({
     s.play(greedyStrip.mark([1, 2, 3], 'trapped', { duration: 0.7 }))
     s.wait(2.6)
 
-    // ── Chapter 2: Beam search (k = 2) keeps "the" and "a", discovers -1.9 ──
+    // ── Chapter 2: Beam search (k = 2) keeps "the" and "a", discovers -1.1 ──
 
     const ch2At = s.time
     s.chapter('Beam width k = 2')
-    setStageNote('Beam search (k = 2) keeps both "the" (-0.4) and "a" (-0.6), pruning only "some" (-2.0).')
+    setStageNote(`Beam search (k = 2) keeps both "the" (${fmtLogProb(SCORES.get('the')!)}) and "a" (${fmtLogProb(SCORES.get('a')!)}), pruning only "some" (${fmtLogProb(SCORES.get('some')!)}).`)
     s.caption('Beam search with k equals two keeps both the and the runner-up token a, pruning only some.', 5.6)
 
     s.play(
@@ -265,8 +259,8 @@ export default film({
     s.play(searchTree.path(['the', 'a'], { color: 'teal', duration: 1.0 }))
     s.wait(1.6)
 
-    s.caption('Expanding a reveals clear at minus one point one, overtaking the best at minus one point seven.', 6.4)
-    setStageNote('Step 2: expanding "a" uncovers "a -> clear" (-1.1), overtaking "the -> best" (-1.7).')
+    s.caption(`Expanding "a" reveals "clear" at ${fmtLogProb(SCORES.get('clear')!)}, ahead of "the best" at ${fmtLogProb(SCORES.get('best')!)}.`, 6.4)
+    setStageNote(`Step 2: expanding "a" uncovers "a -> clear" (${fmtLogProb(SCORES.get('clear')!)}), overtaking "the -> best" (${fmtLogProb(SCORES.get('best')!)}).`)
 
     s.play(searchTree.grow(['clear', 'rough'], { duration: 1.2 }))
     s.play(
@@ -276,7 +270,7 @@ export default film({
     s.play(searchTree.path(['clear', 'best'], { color: 'teal', duration: 1.0 }))
     s.wait(1.6)
 
-    // Swap right chart to completed path scores as step 3 expands "clear" -> "proof" (-1.9).
+    // Swap right chart to completed path scores as step 3 expands "clear" -> "proof" (-1.1).
     s.play(fadeOut([step1Title, step1Bars], { duration: 0.55 }))
     s.play(
         fadeIn(finalTitle, { duration: 0.65 }),
@@ -285,9 +279,9 @@ export default film({
     )
 
     const ch3At = s.time
-    s.chapter('Winning path (-1.9)')
-    setStageNote('Winner: "Give a clear proof" reaches -1.9 total log-prob, beating greedy (-3.4) by +1.5.')
-    s.caption('At step three, keep selects Give a clear proof at minus one point nine and prunes the greedy trap.', 7.2)
+    s.chapter(`Winning path (${fmtLogProb(SCORES.get('proof')!)})`)
+    setStageNote(`Winner: "Give a clear proof" reaches ${fmtLogProb(SCORES.get('proof')!)} total log-prob, beating greedy (${fmtLogProb(SCORES.get('guess')!)}) by +${fmtLogProb(SCORES.get('proof')! - SCORES.get('guess')!)}.`)
+    s.caption(`Beam selects "Give a clear proof" at ${fmtLogProb(SCORES.get('proof')!)}, ahead of greedy at ${fmtLogProb(SCORES.get('guess')!)}.`, 7.2)
 
     // Frontier is now ['guess', 'proof']: keep('proof') prunes the entire 'the -> best -> guess' trap!
     s.play(
@@ -316,9 +310,9 @@ export default film({
     s.at(0, () => {
         modeTagHolder.add(
             tagTrack([
-                { at: ch1At, word: 'GREEDY k = 1', note: 'trapped at -3.4' },
+                { at: ch1At, word: 'GREEDY k = 1', note: `trapped at ${fmtLogProb(SCORES.get('guess')!)}` },
                 { at: ch2At, word: 'BEAM k = 2', note: 'keep top 2' },
-                { at: ch3At, word: 'OPTIMUM', note: 'proof = -1.9' },
+                { at: ch3At, word: 'WINNER', note: `proof = ${fmtLogProb(SCORES.get('proof')!)}` },
             ], {
                 until: endAt + 1,
                 size: 28,

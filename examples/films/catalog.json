@@ -21,8 +21,8 @@
   },
   {
     "id": "io-uring",
-    "title": "Zero syscalls: inside io_uring",
-    "summary": "Submission and completion rings in shared memory replace per-read kernel traps with batched tail updates and asynchronous NVMe DMA.",
+    "title": "io_uring: shared rings, fewer syscalls",
+    "summary": "Userspace and the kernel exchange requests through shared submission and completion rings. Batching reduces submission syscalls; an awake SQPOLL thread can avoid them until a wakeup is needed.",
     "topic": "Systems",
     "duration": 45,
     "posterTime": 22.8,
@@ -31,8 +31,8 @@
   },
   {
     "id": "svd-3d",
-    "title": "Every matrix is rotate, stretch, rotate",
-    "summary": "A 3D unit sphere rotates under V transpose, stretches along three orthogonal singular axes into a triaxial ellipsoid, and rotates under U.",
+    "title": "SVD: reorient, stretch, reorient",
+    "summary": "A unit sphere becomes an ellipsoid under a real 3D matrix, then collapses exactly to rank two. SVD separates orthogonal factors, which may rotate or reflect, from singular-value scaling.",
     "topic": "Mathematics",
     "duration": 41.6,
     "posterTime": 25,
@@ -61,8 +61,8 @@
   },
   {
     "id": "ring-allreduce",
-    "title": "Eight GPUs, one ring, zero bottleneck",
-    "summary": "Seven reduce-scatter hops and seven all-gather hops saturate every NVLink channel in lockstep so bandwidth stays flat as the cluster grows.",
+    "title": "Eight GPUs, one ring, bounded transfer",
+    "summary": "An ideal eight-GPU ring combines seven reduce-scatter hops with seven all-gather hops. Per-rank transfer volume stays bounded, while latency and utilization depend on topology and workload.",
     "topic": "Distributed systems",
     "duration": 39.4,
     "posterTime": 23,
@@ -72,7 +72,7 @@
   {
     "id": "cache-miss",
     "title": "One expired key can take down the database",
-    "summary": "At 12,000 requests per second, a single TTL expiry storms a 40-slot Postgres pool with 480 duplicate queries until single-flight coalescing stops it.",
+    "summary": "An illustrative one-process batch model turns 480 cache misses into duplicate database queries, then coalesces them with an in-memory key lock. A linear timeline compares the assumed latencies.",
     "topic": "Systems",
     "duration": 43.2,
     "posterTime": 18.5,
@@ -92,7 +92,7 @@
   {
     "id": "attention",
     "title": "Attention routes context where grammar alone cannot",
-    "summary": "Genuine 4D query, key, and value vectors resolve \"it\" to \"animal\" as softmax(QK^T / sqrt(d_k)) V lights up the pairwise attention matrix.",
+    "summary": "Hand-authored 4D query, key, and value vectors illustrate attention. Matrix and bars share the same ten-key softmax distribution, with omitted keys grouped explicitly.",
     "topic": "Machine learning",
     "duration": 37.6,
     "posterTime": 28.5,
@@ -162,7 +162,7 @@
   {
     "id": "beam-search",
     "title": "A beam keeps more than one path",
-    "summary": "Greedy decoding locks into a locally higher token and gets trapped at -3.4, while beam width k = 2 keeps two prefixes and discovers -1.9.",
+    "summary": "In a normalized three-token toy model, greedy decoding picks a sequence with probability 0.18. A beam of two keeps an alternative prefix and finds one with probability 0.324.",
     "topic": "Machine learning",
     "duration": 34.9,
     "posterTime": 30.5,
@@ -202,7 +202,7 @@
   {
     "id": "deck-example",
     "title": "Why we rebuilt the renderer",
-    "summary": "A five-slide engineering talk that steps slide by slide or plays straight through, comparing per-frame layout against pure track sampling.",
+    "summary": "A five-slide engineering talk about per-frame layout and timeline sampling. Historical measurements use different demos on one laptop, not a controlled speedup comparison.",
     "topic": "Presentation",
     "duration": 33.9,
     "posterTime": 24.5,

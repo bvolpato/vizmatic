@@ -1,5 +1,5 @@
 /**
- * Cache stampede and single-flight coalescing, driven by a discrete-event simulation.
+ * Cache stampede and single-flight coalescing, illustrated by an aggregate batch model.
  *
  * At 12,000 requests per second, a warm Redis cache answers in 2 ms and Postgres is idle.
  * The instant a hot key's TTL expires, every concurrent miss during the 40 ms database
@@ -14,8 +14,11 @@ import {
     tagTrack, zone, type QueueItem,
 } from 'vizmatic/stage'
 
-// ── Discrete-event simulation of the hot-key burst ──────────────────────────
+// ── Aggregate batch approximation of the hot-key burst ──────────────────────────
 
+// Collapse 40 ms of arrivals into a simultaneous batch in ONE API process.
+// Service times are illustrative assumptions, not measured Postgres behavior.
+// Timed-out callers do not cancel queued DB work. This is not a discrete-event model.
 const RATE_PER_SEC = 12_000
 const REDIS_MS = 1
 const EDGE_MS = 1
@@ -90,7 +93,7 @@ assertEqual(stampedeStats.timedOut, 280, 'callers exceeding the 2,000 ms timeout
 
 export default film({
     title: 'One expired key can take down the database',
-    description: 'How a single TTL expiry turns 12,000 req/s into a Postgres stampede, and how single-flight coalescing stops it.',
+    description: 'An illustrative one-process aggregate batch model of a cache stampede and in-memory single-flight coalescing.',
     fps: 60,
     look: 'blueprint',
     font: 'text-serif',
@@ -102,7 +105,7 @@ export default film({
     })
 
     const title = heading('One expired key can take down the database')
-    const foot = source('12,000 req/s on product:4821 · 40 Postgres slots · single-flight request coalescing')
+    const foot = source('One-process batch model · assumed DB service: 40 ms alone, 400 ms contended')
     const regimeHolder = new Node()
 
     const [topBand, bottomBand, captionBand] = area.rows([3.5, 4.1, 0.85], 'tight')
@@ -111,7 +114,7 @@ export default film({
 
     const edgeBox = infoBox({
         title: 'Edge API',
-        subtitle: '24 pods · 12k/s',
+        subtitle: '1 process · 12k/s',
         size: 31,
         width: 385,
         accent: 'blue',
@@ -218,7 +221,7 @@ export default film({
         itemWidth: 106,
         deadline: 2000,
         format: (ms) => `${Math.round(ms)}ms`,
-        names: { slots: '40 DB slots (x10)' },
+        names: { slots: '40 DB slots (schematic)' },
     })
     place(queue, queueSlot, 'center')
 
@@ -231,17 +234,17 @@ export default film({
             { name: 'Single-flight · 42 ms', color: 'teal' },
         ],
         [
-            { lane: 0, start: 0, end: 7, id: 'hit', label: 'Redis HIT (2 ms)', labelSide: 'right', color: 'green' },
-            { lane: 1, start: 0, end: 96, id: 'herd', label: '480 duplicate SELECTs saturate 40 slots (4,800 ms)', labelSide: 'over', color: 'red', outcome: 'failed' },
-            { lane: 2, start: 0, end: 18, id: 'sf', label: '1 leader SELECT + 479 shared (42 ms)', labelSide: 'right', color: 'teal' },
+            { lane: 0, start: 0, end: hitStats.p99Ms, id: 'hit', label: 'Redis HIT (2 ms)', labelSide: 'right', color: 'green' },
+            { lane: 1, start: 0, end: stampedeStats.p99Ms, id: 'herd', label: '480 queries · 12 waves of 400 ms', labelSide: 'over', color: 'red', outcome: 'failed' },
+            { lane: 2, start: 0, end: coalescedStats.p99Ms, id: 'sf', label: '1 leader SELECT + 479 shared (42 ms)', labelSide: 'right', color: 'teal' },
         ],
         {
             width: 1220,
             size: 28,
             barHeight: 42,
             pitch: 102,
-            domain: [0, 100],
-            deadline: { at: 62, label: '2,000 ms SLA budget', color: 'red' },
+            domain: [0, 5000],
+            deadline: { at: 2000, label: '2,000 ms deadline', color: 'red' },
             cursor: true,
         },
     )
@@ -268,7 +271,7 @@ export default film({
     const ch1At = 0.2
     setStageNote('Warm cache: Redis serves 12,000 req/s in 2 ms while all 40 Postgres slots stay idle.')
     s.chapter('Warm cache: 2 ms')
-    s.caption('At twelve thousand requests per second, Redis answers from memory in two milliseconds and Postgres stays idle.', 4.4)
+    s.caption('Redis answers in two milliseconds. Postgres stays idle.', 4.4)
 
     s.play(
         edgeBox.enter({ duration: 1.0 }),
@@ -371,7 +374,7 @@ export default film({
         pgBox.setValue(1, `1 of ${PG_SLOTS}`, { duration: 0.5, tone: 'green' }),
     )
 
-    s.caption('Postgres answers in forty milliseconds, Redis caches the value, and all four hundred eighty callers finish in forty-two milliseconds.', 4.8)
+    s.caption('One query fills Redis; all 480 callers finish in 42 milliseconds.', 4.8)
 
     s.play(
         pgToRedis.send(pkt('ROW', 'teal'), { duration: 0.65, reverse: true }),
@@ -390,7 +393,7 @@ export default film({
 
     const ch4At = s.time
     s.chapter('Tail latency compared')
-    setStageNote('480 duplicate queries become 1: tail latency drops from 4,800 ms back inside the 42 ms budget.')
+    setStageNote('Linear scale: 0–5,000 ms. Tiny bars are 2 ms and 42 ms; the deadline is 2,000 ms.')
     s.caption('Coalescing turns four hundred eighty duplicate queries into one, cutting tail latency over one hundred fold.', 7.2)
 
     s.play(fadeOut([queue, lockGate], { duration: 0.6 }))
@@ -400,14 +403,14 @@ export default film({
     s.play(comparison.advance('sf', { duration: 1.2 }))
     s.wait(1.0)
     // Stampede keeps grinding past the 2,000 ms SLA budget all the way to 4,800 ms.
-    s.play(comparison.advance(100, { duration: 2.5 }))
+    s.play(comparison.advance(5000, { duration: 2.5 }))
     s.wait(3.2)
 
     const endAt = s.time
     s.at(0, () => {
         regimeHolder.add(
             tagTrack([
-                { at: ch1At, word: 'WARM CACHE', note: '99.98% hit rate' },
+                { at: ch1At, word: 'WARM CACHE', note: 'all requests hit' },
                 { at: ch2At, word: 'STAMPEDE', note: 'TTL = 0 · 480 misses' },
                 { at: ch3At, word: 'SINGLE-FLIGHT', note: 'coalesce per key' },
                 { at: ch4At, word: 'COMPARISON', note: 'tail latency' },

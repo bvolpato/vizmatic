@@ -23,6 +23,11 @@ import {
     zone,
 } from 'vizmatic/stage'
 
+// Algorithm 1, linear auxiliary storage, and Theorem 2 HBM traffic bound:
+// https://arxiv.org/html/2205.14135v2 (Sections 2.1 and 3).
+// A100 capacities/bandwidth below are illustrative hardware figures.
+// The 192 KB pool combines L1/shared; at most 164 KB is configurable as shared:
+// https://docs.nvidia.com/cuda/ampere-tuning-guide/index.html#unified-shared-memory-l1-texture-cache
 // Deterministic 8 x 4 query, key, and value matrices so both full-row softmax
 // and 2-tile online softmax execute on real floating-point vectors at build time.
 const Q_MAT: readonly (readonly number[])[] = [
@@ -136,7 +141,7 @@ assertEqual(TILED.row0Steps.length, 2, 'two tiles across N = 8 with block width 
 export default film(
     {
         title: 'FlashAttention: tiling beats memory bandwidth',
-        description: 'Naive attention stalls on HBM reads and writes of the N x N matrix. Tiling inside SRAM with online softmax computes the exact output in one pass.',
+        description: 'Naive attention stalls on HBM reads and writes of the N x N matrix. Tiling inside SRAM with online softmax computes exact attention without storing the full score matrix.',
         look: 'blueprint',
         font: 'text-serif',
         fps: 60,
@@ -169,7 +174,7 @@ export default film(
             },
         )
         const hbmZone = zone([hbmBar], {
-            title: 'GPU HBM: 80 GB, 1.5 TB/s (slow)',
+            title: 'A100 HBM: 40 GB, 1.5 TB/s',
             color: 'orange',
             titleSize: 27,
             padding: 18,
@@ -186,7 +191,7 @@ export default film(
             },
         )
         const sramZone = zone([sramBar], {
-            title: 'On-chip SRAM: 20 MB, 19 TB/s (fast)',
+            title: 'L1/shared per SM: 192 KB',
             color: 'teal',
             titleSize: 27,
             padding: 18,
@@ -242,7 +247,7 @@ export default film(
         const tileCard = infoBox({
             title: 'Fused on-chip SRAM loop',
             rows: [
-                { label: 'streamed', value: 'K_j, V_j tiles (19 TB/s)', tone: 'teal' },
+                { label: 'streamed', value: 'K_j, V_j from HBM', tone: 'teal' },
                 { label: 'HBM writes', value: '0 intermediate scores', tone: 'green' },
             ],
             accent: 'teal',
@@ -448,9 +453,9 @@ export default film(
         s.play(stateTable.light('out', null, { duration: 0.45 }))
         s.wait(2.8)
 
-        // ── Chapter 4: Same exact numbers, one HBM pass ─────────────────────
-        s.chapter('Same exact numbers, one HBM pass')
-        s.caption('One fused SRAM pass computes the exact same attention output 6.4 times faster with O of N memory.', 11.2)
+        // ── Chapter 4: Exact output, less intermediate storage ─────────────────────
+        s.chapter('Exact output, less intermediate storage')
+        s.caption('Fusing tile operations avoids quadratic intermediate storage. HBM traffic still depends on sequence length, head dimension, and SRAM capacity.', 11.2)
 
         const [topCompare, botVerify] = kit.area.inset(10, 8).rows([1.15, 1], 28)
 
@@ -463,7 +468,7 @@ export default film(
                     { lane: 'Standard HBM', start: 7.4, end: 8.7, label: 'softmax', color: 'teal' },
                     { lane: 'Standard HBM', start: 8.7, end: 14.5, label: 'HBM write + read P', color: 'orange' },
                     { lane: 'Standard HBM', start: 14.5, end: 16.0, label: 'P V', color: 'blue' },
-                    { id: 'fused', lane: 'FlashAttention', start: 0, end: 2.5, label: '1 fused SRAM pass (2.5 ms)', color: 'teal' },
+                    { id: 'fused', lane: 'FlashAttention', start: 0, end: 2.5, label: 'fused tile loop', color: 'teal' },
                 ],
                 {
                     domain: [0, 16],
@@ -471,6 +476,7 @@ export default film(
                     barHeight: 46,
                     pitch: 98,
                     size: 26,
+                    axisLabel: 'Illustrative schedule; widths are not measured timings',
                 },
             ),
         )
@@ -494,7 +500,7 @@ export default film(
                     id: 'err',
                     metric: 'Max abs difference',
                     std: 'baseline',
-                    flash: { value: '< 1e-12', state: 'pass' },
+                    flash: { value: maxDiff.toExponential(1), state: 'pass' },
                 },
                 {
                     id: 'mem',
@@ -508,10 +514,11 @@ export default film(
         place(verifyTable, verifyLeft!, 'center')
 
         const payoffCard = infoBox({
-            title: '6.4x faster  |  exact attention',
+            title: 'Exact attention, fewer HBM accesses',
             rows: [
-                { label: 'HBM traffic', value: 'single O(N) pass', tone: 'teal', meter: 0.16 },
-                { label: 'precision', value: 'zero approximations', tone: 'green', meter: 1 },
+                { label: 'HBM traffic', value: 'Theta(N^2 d^2 / M)', tone: 'teal' },
+                { label: 'SRAM M', value: 'd <= M <= N d', tone: 'blue' },
+                { label: 'units', value: 'scalar elements', tone: 'dim' },
             ],
             accent: 'teal',
             size: 27,

@@ -2,10 +2,10 @@
  * Scaled dot-product attention on the classic coreference sentence:
  *   "The animal didn't cross the street because it was tired"
  *
- * Every attention weight in this film comes from genuine 4D query, key, and value vectors:
+ * Resolved attention weights come from hand-authored illustrative 4D vectors; initial priors are illustrative:
  *   alpha_ij = softmax_j( (q_i . k_j) / sqrt(d_k) ),   output_i = sum_j alpha_ij v_j
  * Because "tired" requires an animate subject, query "it" aligns strongly with key "animal"
- * (0.64) rather than "street" (0.09), routing "animal"'s features into "it".
+ * (0.64) rather than "street" (0.05), routing "animal"'s features into "it".
  */
 import {
     Node, assertEqual, attentionMatrix, barChart, column, draw,
@@ -13,7 +13,7 @@ import {
     spotlight, tagTrack, tex, tokens,
 } from 'vizmatic/stage'
 
-// ── Real 4D embeddings and scaled dot-product attention ─────────────────────
+// ── Illustrative 4D embeddings and scaled dot-product attention ─────────────────────
 
 const SENTENCE = ['The', 'animal', "didn't", 'cross', 'the', 'street', 'because', 'it', 'was', 'tired'] as const
 const FOCUS_IDX = [1, 3, 5, 6, 7, 9] as const
@@ -79,10 +79,14 @@ const rawItScores = SENTENCE.map((word) => dot4(Q_VEC.it!, K_VEC[word]!))
 const scaledItScores = rawItScores.map((score) => score / SCALE)
 const fullItWeights = softmax(scaledItScores)
 
-// 6x6 focus attention matrix over content words ['animal', 'cross', 'street', 'because', 'it', 'tired'].
-const focusWeights = FOCUS_WORDS.map((qWord) =>
-    softmax(FOCUS_WORDS.map((kWord) => dot4(Q_VEC[qWord]!, K_VEC[kWord]!) / SCALE)),
-)
+// Focus rows retain the full ten-key distribution, aggregating omitted keys as other.
+// Content words ['animal', 'cross', 'street', 'because', 'it', 'tired'].
+const focusWeights = FOCUS_WORDS.map((qWord) => {
+    const full = softmax(SENTENCE.map((kWord) => dot4(Q_VEC[qWord]!, K_VEC[kWord]!) / SCALE))
+    const selected = FOCUS_IDX.map((i) => full[i]!)
+    return [...selected, 1 - selected.reduce((sum, weight) => sum + weight, 0)]
+})
+assertEqual(focusWeights[FOCUS_WORDS.indexOf('it')]![0], fullItWeights[1], 'matrix and bars share the same animal weight')
 
 const blendedItValue: [number, number] = [
     SENTENCE.reduce((sum, w, j) => sum + fullItWeights[j]! * V_VEC[w]![0], 0),
@@ -100,6 +104,7 @@ assertEqual(blendedItValue[0] > 0.75 && blendedItValue[0] > blendedItValue[1] * 
 
 // Candidate bars for query "it": animal, tired, street, cross, other.
 const BAR_KEYS = ['animal', 'tired', 'street', 'cross', 'other'] as const
+// Hand-authored illustrative priors, not outputs of the Q/K calculation.
 const priorBars = [0.20, 0.20, 0.20, 0.20, 0.20]
 const ambiguousBars = [0.34, 0.16, 0.31, 0.11, 0.08]
 const animalShare = fullItWeights[1]!
@@ -114,7 +119,7 @@ assertEqual(Math.round(resolvedBars.reduce((a, b) => a + b, 0) * 1e6) / 1e6, 1, 
 
 export default film({
     title: 'Attention routes context where grammar alone cannot',
-    description: 'Scaled dot-product attention resolving "it" to "animal" on a real 4D query-key-value calculation.',
+    description: 'Scaled dot-product attention resolving "it" to "animal" on a hand-authored 4D query-key-value calculation.',
     fps: 60,
     look: 'midnight',
     font: 'text-serif',
@@ -126,7 +131,7 @@ export default film({
     })
 
     const title = heading('Attention routes context where grammar alone cannot')
-    const foot = source(`Scaled dot-product attention (d_k = ${D_K}) · weights sum to 1.00`)
+    const foot = source(`Illustrative hand-authored vectors and priors · d_k = ${D_K} · full ten-key weights`)
     const stageTagHolder = new Node()
 
     const [mainBand, captionBand] = area.rows([7.1, 0.9], 'tight')
@@ -193,9 +198,9 @@ export default film({
     const barsPanel = column([barsTitle, bars], { gap: 14, align: 'center' })
     place(barsPanel, rightBottom, 'center')
 
-    // ── Act 2 layout: 6x6 Focus Attention Matrix on the left ────────────────
+    // ── Act 2 layout: 6x7 Focus Attention Matrix on the left ────────────────
 
-    const matrix = attentionMatrix(FOCUS_WORDS, FOCUS_WORDS, focusWeights, {
+    const matrix = attentionMatrix(FOCUS_WORDS, [...FOCUS_WORDS, 'other'], focusWeights, {
         size: 27,
         values: true,
         format: (v) => v.toFixed(2),
@@ -223,7 +228,7 @@ export default film({
     const ch1At = 0.2
     setStageNote('Coreference puzzle: in "because it was tired", does "it" refer to "animal" or "street"?')
     s.chapter('What does "it" refer to?')
-    s.caption('When a model reads The animal did not cross the street because it was tired, what does it refer to?', 4.8)
+    s.caption('In "because it was tired", does "it" refer to the animal or the street?', 4.8)
 
     s.play(
         queryStrip.enter({ duration: 1.3 }),
@@ -240,7 +245,7 @@ export default film({
         bars.enter({ duration: 1.0 }),
         fadeIn(eq1, { duration: 0.75 }),
     )
-    s.caption('Grammar allows both nouns, so before contextual scoring the candidates start nearly tied.', 4.2)
+    s.caption('These hand-authored illustrative priors start the two candidates nearly tied.', 4.2)
     s.play(bars.update(ambiguousBars, { duration: 1.0 }))
     s.wait(2.1)
 
@@ -249,7 +254,7 @@ export default film({
     const ch2At = s.time
     s.chapter('Scaled dot-product scores')
     setStageNote('Scaling QK^T by sqrt(d_k) keeps softmax gradients sharp; "animal" wins 0.64 of the weight.')
-    s.caption('Dot products compare query it against every key, and dividing by root d k keeps softmax from saturating.', 5.0)
+    s.caption('Dot products compare queries and keys; scaling helps prevent softmax saturation.', 5.0)
 
     s.play(morphMatching(eq1, eq2, { duration: 1.1 }))
     s.wait(1.8)
@@ -267,8 +272,8 @@ export default film({
 
     const ch3At = s.time
     s.chapter('The attention matrix')
-    setStageNote('Every row of the attention matrix is a probability distribution over keys summing to 1.00.')
-    s.caption('Across all content tokens, those weights form the attention matrix, where every row sums to one.', 5.4)
+    setStageNote('Same ten-key softmax: matrix "other" groups 4 keys; bar "other" groups 6. Rows sum to 1.')
+    s.caption('The matrix uses the same ten-key distributions. Other aggregates four omitted keys, so each row still sums to one.', 5.4)
 
     s.play(
         fadeOut([queryStrip, keyStrip, attentionLinks], { duration: 0.65 }),
@@ -292,8 +297,8 @@ export default film({
 
     const ch4At = s.time
     s.chapter('Routing value vectors')
-    setStageNote('Multiplying by V blends 64% of "animal" into "it", binding pronoun to its animate subject.')
-    s.caption('Finally, multiplying by V blends sixty-four percent of animal into it, resolving the pronoun in one step.', 6.8)
+    setStageNote('This toy value blend gives "animal" weight 0.64; attention alone does not prove coreference.')
+    s.caption('Finally, multiplying by V blends sixty-four percent of animal into it, illustrating context routing with hand-authored vectors.', 6.8)
 
     s.play(
         matrix.light({ row: itFocusIdx, col: 0 }, { color: 'teal', duration: 0.8 }),

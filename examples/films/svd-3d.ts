@@ -119,6 +119,8 @@ function fmtEntry(x: number): string {
   return clean.toFixed(2)
 }
 
+// Real SVD has orthogonal factors, which can include reflections:
+// https://netlib.org/lapack/lug/node53.html
 // Smooth orthogonal rotations parameterized by share in [0, 1].
 function makeVt(share: number): Mat3 {
   return mulMat3(rotX(0.46 * share), rotZ(0.68 * share))
@@ -131,6 +133,14 @@ function makeU(share: number): Mat3 {
 const SIGMA_1 = 2.1
 const SIGMA_2 = 1.2
 const SIGMA_3 = 0.55
+
+// The mesh, arrows, and endpoint checks all use this exact transformation.
+function animatedMatrix(vtShare: number, sigmaShare: number, uShare: number, collapse: number): Mat3 {
+  const d1 = 1 + (SIGMA_1 - 1) * sigmaShare
+  const d2 = 1 + (SIGMA_2 - 1) * sigmaShare
+  const d3 = (1 + (SIGMA_3 - 1) * sigmaShare) * (1 - collapse)
+  return mulMat3(makeU(uShare), mulMat3(diagMat3(d1, d2, d3), makeVt(vtShare)))
+}
 
 const IDENTITY_3 = diagMat3(1, 1, 1)
 const VT_FULL = makeVt(1)
@@ -179,11 +189,16 @@ assertEqual(
   'rank-collapsed matrix has zero 3D volume determinant',
 )
 
+const renderedEndpoint = animatedMatrix(1, 1, 1, 1)
+assertEqual(maxDiffMat3(renderedEndpoint, A_RANK2) < 1e-12, true, 'rendered endpoint equals the displayed rank-2 operator')
+assertEqual(Math.hypot(...mulMatVec3(renderedEndpoint, VEC_3)) < 1e-12, true, 'rendered endpoint annihilates the third singular direction')
+assertEqual(Math.abs(det3(renderedEndpoint)) < 1e-12, true, 'rendered endpoint has zero volume')
+
 export default film(
   {
-    title: 'Every matrix is rotate, stretch, rotate',
+    title: 'SVD: reorient, stretch, reorient',
     description:
-      'Singular Value Decomposition factors any 3x3 linear map A = U Sigma V^T into an input rotation, axis-aligned scaling, and an output rotation, revealing rank collapse when sigma_3 drops to zero.',
+      'SVD factors a real matrix as A = U Sigma V^T. Orthogonal factors may rotate or reflect; this 3D example uses rotations and collapses to rank 2 when sigma_3 reaches zero.',
     look: 'chalk',
     font: 'text-serif',
     fps: 60,
@@ -191,8 +206,9 @@ export default film(
   },
   (s) => {
     const kit = sceneKit({ size: 38 })
-    const title = kit.heading('Every matrix is rotate, stretch, rotate')
-    s.add(title)
+    const title = kit.heading('SVD: reorient, stretch, reorient')
+    const qualification = kit.source('U and V are orthogonal: rotations or reflections. This example uses rotations.')
+    s.add(title, qualification)
 
     const stageArea = new Box(
       kit.area.left + 8,
@@ -236,15 +252,8 @@ export default film(
     const tU = s.value(0)
     const tCollapse = s.value(0)
 
-    const currentMatrix = (): Mat3 => {
-      const vt = makeVt(tVt.value)
-      const d1 = 1 + (SIGMA_1 - 1) * tSigma.value
-      const d2 = 1 + (SIGMA_2 - 1) * tSigma.value
-      // Keep an ultra-thin 0.035 wafer at full collapse so two-sided surface shading stays luminous on the 2D disc.
-      const d3 = (1 + (SIGMA_3 - 1) * tSigma.value) * (1 - 0.935 * tCollapse.value)
-      const u = makeU(tU.value)
-      return mulMat3(u, mulMat3(diagMat3(d1, d2, d3), vt))
-    }
+    const currentMatrix = (): Mat3 =>
+      animatedMatrix(tVt.value, tSigma.value, tU.value, tCollapse.value)
 
     const mapPoint = (p: Vec3): Vec3 => mulMatVec3(currentMatrix(), p)
 
@@ -295,6 +304,26 @@ export default film(
       },
     )
 
+    // A single cover of the exact rank-2 image avoids coincident sphere faces.
+    const flatDisc = parametricSurface(
+      (angle, radius) => mulMatVec3(U_FULL, [
+        SIGMA_1 * radius * Math.cos(angle),
+        SIGMA_2 * radius * Math.sin(angle),
+        0,
+      ]),
+      [0, Math.PI * 2],
+      [0, 1],
+      {
+        resolution: [40, 16],
+        colors: ['blue', 'teal', 'yellow'],
+        opacity: 0.6,
+        mesh: 'ink',
+        meshOpacity: 0.2,
+        meshWidth: 0.9,
+        shaded: false,
+      },
+    )
+
     const arrow1 = vector3d([0, 0, 0], () => mapPoint(VEC_1), {
       color: 'blue',
       width: 5,
@@ -332,6 +361,7 @@ export default film(
       floorGrid.hide(),
       axes.hide(),
       shell.hide(),
+      flatDisc.hide(),
       arrow1.hide(),
       arrow2.hide(),
       arrow3.hide(),
@@ -359,19 +389,19 @@ export default film(
       place(eq, eqBox, 'center')
     }
 
-    const matCaptionI = text('Active operator: Identity I', {
+    const matCaptionI = text('Initial operator: Identity I', {
       size: 27,
       color: 'dim',
     })
-    const matCaptionVt = text('Orthogonal input rotation V^T', {
+    const matCaptionVt = text('Target factor: rotation V^T', {
       size: 27,
       color: 'teal',
     })
-    const matCaptionSigma = text('Axis scaling Sigma = diag(2.10, 1.20, 0.55)', {
+    const matCaptionSigma = text('Target factor: Sigma = diag(2.10, 1.20, 0.55)', {
       size: 27,
       color: 'yellow',
     })
-    const matCaptionA = text('Composite map A = U Sigma V^T', {
+    const matCaptionA = text('Target composite: A = U Sigma V^T', {
       size: 27,
       color: 'orange',
     })
@@ -392,7 +422,7 @@ export default film(
     place(opMatrix, matBodySlot, 'center')
 
     const svdCard = infoBox({
-      title: 'Principal axes & singular values',
+      title: 'Target singular values',
       rows: [
         { label: 'sigma_1 (blue)', value: '2.10  major stretch', tone: 'blue' },
         { label: 'sigma_2 (teal)', value: '1.20  mid stretch', tone: 'teal' },
@@ -406,7 +436,7 @@ export default film(
     const rankCard = infoBox({
       title: 'Rank collapse: sigma_3 -> 0.00',
       rows: [
-        { label: 'active axes', value: '2 of 3  (rank 2)', tone: 'orange' },
+        { label: 'final axes', value: '2 of 3  (rank 2)', tone: 'orange' },
         { label: 'image of sphere', value: '2D ellipse disc', tone: 'yellow' },
         { label: '3D volume det(A)', value: '1.39 -> 0.00', tone: 'red' },
       ],
@@ -558,11 +588,15 @@ export default film(
     )
 
     s.play(
-      spotlight([eqStep4, rankCard], {
-        keep: [title, ch4Tag, view, opMatrix, matCaptionA],
+      par(
+        fadeOut(shell, { duration: 0.15 }),
+        fadeIn(flatDisc, { duration: 0.15 }),
+        spotlight([eqStep4, rankCard], {
+        keep: [title, qualification, ch4Tag, view, opMatrix, matCaptionA],
         dim: 0.25,
         duration: 0.85,
-      }),
+        }),
+      ),
     )
     s.wait(2.2)
     s.play(spotlight(null, { duration: 0.7 }))

@@ -5,10 +5,11 @@
  * and continuous 60 fps playback with zero blank transitions.
  * Benchmarks come from real repository measurements:
  *   - Legacy TSX per-frame layout (720p): 3.6 fps (277 ms/frame)
- *   - Stage keyed-track sampler (1080p): 72.4 fps (13.8 ms/frame) -> 20.1x fps, 45x pixels/s
+ *   - Stage keyed-track sampler (1080p): 72.4 fps (13.8 ms/frame)
+ * Different demos on an 18-core laptop, not a controlled comparison.
  */
 import {
-    Node, assertEqual, barChart, codeBlock, column, draw, fadeIn, fadeOut, film,
+    Node, barChart, codeBlock, column, draw, fadeIn, fadeOut, film,
     lagged, line, morphCode, pipeline, place, row, sceneKit, tagTrack, write,
 } from 'vizmatic/stage'
 
@@ -16,13 +17,6 @@ import {
 
 const OLD_FPS = 3.6
 const NEW_FPS = 72.4
-const OLD_PIXELS = 1280 * 720
-const NEW_PIXELS = 1920 * 1080
-
-const FPS_SPEEDUP = Math.round((NEW_FPS / OLD_FPS) * 10) / 10
-const PIXEL_SPEEDUP = Math.round((NEW_FPS * NEW_PIXELS) / (OLD_FPS * OLD_PIXELS))
-
-assertEqual([FPS_SPEEDUP, PIXEL_SPEEDUP], [20.1, 45], 'measured frame-rate and pixel-rate speedups')
 
 // ── Presentation Deck ───────────────────────────────────────────────────────
 
@@ -176,11 +170,11 @@ export default film({
 
     const s4At = s.time
     s.chapter('4. Benchmark')
-    s.caption('End-to-end rendering jumped from three point six frames per second to seventy-two point four.', 6.8)
+    s.caption('Different demos on an eighteen-core laptop rendered at three point six and seventy-two point four frames per second. This is not a controlled speedup measurement.', 6.8)
 
     s.play(fadeOut([h3, codeAfter, note3], { shift: [0, -20], duration: 0.5 }))
 
-    const h4 = heading('20.1x faster frames, 45x more pixels per second.')
+    const h4 = heading('Two demo measurements, not a controlled speedup.')
     const speedBars = barChart(
         [
             { label: '720p flex layout', value: OLD_FPS, color: 'orange' },
@@ -200,7 +194,7 @@ export default film({
     place(speedBars, bodyBand, 'center')
 
     const note4 = place(
-        label('Measured on this repo: 277 ms/frame at 720p down to 13.8 ms/frame at 1080p.', { size: 32, color: 'dim' }),
+        label('Different demos · 18-core laptop · 234 frames at 720p; 955 frames at 1080p.', { size: 32, color: 'dim' }),
         noteBand,
         'left',
     )
@@ -240,7 +234,7 @@ export default film({
         captionSize: 28,
         captionLines: 2,
         color: 'teal',
-        figure: chip('72.4 fps @ 1080p', { fill: 'teal', stroke: 'teal', color: 'bg' }),
+        figure: chip('Seek any frame', { fill: 'teal', stroke: 'teal', color: 'bg' }),
         caption: 'Instant browser scrubbing and crisp 60 fps MP4s.',
     })
     const payCard = card({

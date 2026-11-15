@@ -23,6 +23,11 @@ import {
   write,
 } from 'vizmatic/stage'
 
+// ReduceScatter + AllGather semantics:
+// https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/collectives.html
+// Ideal ring volume: each GPU sends (N-1) shards of size Phi/N in each phase.
+// The 2(N-1)/N factor and latency/bandwidth distinction are also documented at:
+// https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md
 const NUM_GPUS = 8
 
 // Deterministic local gradient shards G[gpu][shard] across 8 GPUs and 8 shards.
@@ -99,9 +104,9 @@ assertEqual(
 
 export default film(
   {
-    title: 'Eight GPUs, one ring, zero bottleneck',
+    title: 'Eight GPUs, one ring, bounded transfer',
     description:
-      'A central parameter server chokes on N-way fan-in. Ring AllReduce pipelines 7 Reduce-Scatter hops and 7 All-Gather hops around an NVLink loop so per-GPU bandwidth stays bounded below 2 Phi at any cluster scale.',
+      'An ideal 8-GPU ring performs 7 reduce-scatter and 7 all-gather hops. Each GPU sends and receives 1.75 tensor volumes; bounded volume does not guarantee constant latency or link utilization.',
     look: 'neon',
     font: 'text-serif',
     fps: 60,
@@ -109,8 +114,9 @@ export default film(
   },
   (s) => {
     const kit = sceneKit({ size: 38 })
-    const title = kit.heading('Eight GPUs, one ring, zero bottleneck')
-    s.add(title)
+    const title = kit.heading('Eight GPUs, one ring, bounded transfer')
+    const modelNote = kit.source('Ideal ring, equal shards. Phi = tensor size. Latency and topology still matter.')
+    s.add(title, modelNote)
 
     const stageArea = new Box(
       kit.area.left + 8,
@@ -136,7 +142,7 @@ export default film(
       weight: 600,
       color: 'teal',
     })
-    const ch4Tag = text('Chapter 4: All-Gather and constant scaling', {
+    const ch4Tag = text('Chapter 4: All-Gather and bounded volume', {
       size: 28,
       weight: 600,
       color: 'green',
@@ -191,9 +197,9 @@ export default film(
     const [ch1ChartBox, ch1CardBox] = rightMetricsPane.rows([0.62, 0.38], 18)
     const hubLoadChart = barChart(
       [
-        { label: 'GPU 0..7 NIC', value: 1, color: 'blue' },
-        { label: 'Ring peer', value: 1.75, color: 'teal' },
-        { label: 'Param Hub', value: 8, color: 'red' },
+        { label: 'Star GPU sent', value: 1, color: 'blue' },
+        { label: 'Ring GPU sent', value: 1.75, color: 'teal' },
+        { label: 'Hub received', value: 8, color: 'red' },
       ],
       {
         width: Math.min(620, Math.round(ch1ChartBox.width - 100)),
@@ -208,10 +214,10 @@ export default film(
     place(hubLoadChart, ch1ChartBox, 'center')
 
     const bottleneckCard = infoBox({
-      title: 'Hub NIC chokes on O(N) fan-in',
+      title: 'One hub receives N tensor volumes',
       rows: [
         { label: 'inbound at hub', value: '8 x Phi gradients', tone: 'red', meter: 0.96 },
-        { label: 'per-GPU wait', value: 'scales linearly with N', tone: 'orange', meter: 0.85 },
+        { label: 'assumption', value: 'one shared hub NIC', tone: 'orange' },
       ],
       accent: 'red',
       size: 27,
@@ -222,7 +228,7 @@ export default film(
 
     s.chapter('The parameter-server bottleneck')
     s.caption(
-      'In a star topology, all eight GPUs blast full gradients into one parameter server, creating an 8x bottleneck.',
+      'In this star model, eight GPUs send one tensor each. The shared hub receives eight tensor volumes before distributing the result.',
       9.4,
     )
 
@@ -235,20 +241,20 @@ export default film(
       ),
     )
 
-    // Simultaneous 8-GPU fan-in saturates the central hub.
+    // Eight incoming tensor volumes share the modeled hub NIC.
     s.play(
       par(
         ...Array.from({ length: NUM_GPUS }, (_, i) =>
           starGraph.send(`P${i}`, 'PS', {
             color: 'red',
             duration: 0.95,
-            ...(i === 0 ? { value: '8x Jam!' } : {}),
+            ...(i === 0 ? { value: '8 Phi in' } : {}),
           }),
         ),
       ),
     )
-    s.play(starGraph.setState('PS', 'failed', { duration: 0.6 }))
-    assertEqual(starGraph.stateOf('PS'), 'failed', 'hub marked saturated')
+    s.play(starGraph.setState('PS', 'active', { duration: 0.6 }))
+    assertEqual(starGraph.stateOf('PS'), 'active', 'hub receives gradients')
     s.wait(4.2)
 
     s.play(
@@ -293,7 +299,7 @@ export default film(
       16,
     )
 
-    const linkBarTitle = text('8 NVLink channels: simultaneous shard flight', {
+    const linkBarTitle = text('8 ring links: concurrent shard transfers', {
       size: 27,
       weight: 600,
       color: 'teal',
@@ -338,7 +344,7 @@ export default film(
       title: 'Tensor sliced into 8 equal shards (Phi / 8)',
       rows: [
         { label: 'each hop', value: '1 shard sent + 1 received', tone: 'blue' },
-        { label: 'NVLink load', value: '100% across all 8 links', tone: 'teal', meter: 1 },
+        { label: 'ideal ring', value: '8 concurrent sends', tone: 'teal' },
         { label: 'hub server', value: 'none (peer-to-peer)', tone: 'green' },
       ],
       accent: 'blue',
@@ -349,8 +355,8 @@ export default film(
     const scatterDoneCard = infoBox({
       title: 'After 7 hops: each GPU holds 1 global sum',
       rows: [
-        { label: 'GPU i owns', value: 'exact sum of shard (i+1)', tone: 'teal' },
-        { label: 'data moved', value: '7/8 Phi per GPU', tone: 'blue', meter: 0.875 },
+        { label: 'GPU i owns', value: 'sum of shard (i+1) mod 8', tone: 'teal' },
+        { label: 'sent per GPU', value: '7/8 Phi', tone: 'blue', meter: 0.875 },
       ],
       accent: 'teal',
       size: 27,
@@ -435,12 +441,12 @@ export default film(
     s.wait(3.2)
 
     // =========================================================================
-    // Chapter 4: All-Gather & constant scaling
+    // Chapter 4: All-Gather & bounded volume
     // =========================================================================
     const [ch4EqSlot, ch4ChartSlot] = rightMetricsPane.rows([0.28, 0.72], 14)
 
     const scalingEq = tex(
-      'V_{\\text{ring}} = 2\\,\\frac{N - 1}{N}\\,\\Phi \\;<\\; 2\\Phi',
+      'V_{\\text{sent}} = 2\\,\\frac{N - 1}{N}\\,\\Phi \\;<\\; 2\\Phi',
       { size: 38, color: 'green' },
     )
     place(scalingEq, ch4EqSlot, 'center')
@@ -458,16 +464,16 @@ export default film(
         labelSize: 27,
         domain: [0, 9],
         ticks: [0, 2, 4, 6, 8],
-        xLabel: 'Transfer volume per bottleneck link (multiples of Phi)',
+        xLabel: 'Ring sent / hub received (Phi)',
       },
     )
     place(scalingChart, ch4ChartSlot, 'center')
 
     s.add(scalingEq.hide(), scalingChart.hide())
 
-    s.chapter('All-Gather and constant scaling')
+    s.chapter('All-Gather and bounded volume')
     s.caption(
-      'Seven All-Gather hops broadcast every completed shard; per-GPU transfer stays under 2 Phi for any N.',
+      'Seven all-gather hops distribute every completed shard. Each GPU sends less than two tensor volumes and receives the same amount; the number of hops still grows with N.',
       12.4,
     )
 
@@ -513,7 +519,7 @@ export default film(
 
     s.play(
       spotlight([ringGraph, scalingEq, scalingChart], {
-        keep: [title, ch4Tag],
+        keep: [title, modelNote, ch4Tag],
         dim: 0.25,
         duration: 0.85,
       }),

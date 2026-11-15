@@ -30,11 +30,15 @@ import {
   text,
 } from 'vizmatic/stage'
 
+// Ring ownership and acquire/release ordering: https://man7.org/linux/man-pages/man7/io_uring.7.html
+// SQPOLL may sleep and require a wakeup syscall: IORING_SETUP_SQPOLL in
+// https://man7.org/linux/man-pages/man2/io_uring_setup.2.html
+// Timelines are illustrative. Final counts exclude setup, waits, and wakeups.
 export default film(
   {
-    title: 'Zero syscalls: inside io_uring',
+    title: 'io_uring: shared rings, fewer syscalls',
     description:
-      'Blocking I/O crosses the privilege wall twice per read. io_uring maps Submission and Completion rings into shared memory so batches run without per-op traps.',
+      'Blocking reads enter and leave the kernel individually. io_uring shares submission and completion rings with the kernel: batch requests into one enter call, or submit without one while an SQPOLL thread stays awake.',
     look: 'midnight',
     font: 'text-serif',
     fps: 60,
@@ -42,7 +46,7 @@ export default film(
   },
   (s) => {
     const kit = sceneKit({ size: 38 })
-    const title = kit.heading('Zero syscalls: inside io_uring')
+    const title = kit.heading('io_uring: shared rings, fewer syscalls')
     s.add(title)
 
     // Leave comfortable bottom clearance for captions across all 4 chapters.
@@ -69,7 +73,7 @@ export default film(
       weight: 600,
       color: 'teal',
     })
-    const ch4Tag = text('Chapter 4: Throughput unlocked', {
+    const ch4Tag = text('Chapter 4: Fewer submission syscalls', {
       size: 28,
       weight: 600,
       color: 'green',
@@ -92,7 +96,7 @@ export default film(
       weight: 700,
       color: 'orange',
     })
-    const readNote = text('8 blocking pread(4 KB) calls (2 ring traps each)', {
+    const readNote = text('8 blocking pread calls (2 mode switches each)', {
       size: 27,
       color: 'dim',
     })
@@ -148,7 +152,7 @@ export default film(
         barHeight: 42,
         size: 27,
         domain: [0, 96],
-        axisLabel: 'serialized blocking I/O (us, CPU stalled)',
+        axisLabel: 'Illustrative blocking schedule; not measured time',
       }),
     )
     place(ch1Lanes, ch1LanesBox, 'center')
@@ -163,7 +167,7 @@ export default film(
 
     s.chapter('Every read crosses the wall')
     s.caption(
-      'Each blocking read() traps into ring 0 and back: 8 reads burn 16 privilege transitions.',
+      'Each blocking read enters the kernel and returns to user space: 8 calls make 16 privilege transitions.',
       10.4,
     )
 
@@ -212,7 +216,7 @@ export default film(
     // =========================================================================
     // Chapter 2: Two rings in shared memory
     // =========================================================================
-    const [appColBox, ringsCenterBox, nvmeColBox] = stageBox.columns(
+    const [appColBox, ringsCenterBox, kernelColBox] = stageBox.columns(
       [0.175, 0.65, 0.175],
       20,
     )
@@ -267,7 +271,7 @@ export default film(
     })
 
     const ringInvariantNote = text(
-      'Producer writes tail (release)  |  Consumer reads head (acquire)',
+      'Producer release-stores tail; consumer acquire-loads tail',
       { size: 27, color: 'dim' },
     )
     place(ringInvariantNote, ringStatusBox, 'center')
@@ -284,9 +288,9 @@ export default film(
     })
     place(column([appIcon, appCard], { gap: 14, align: 'center' }), appColBox, 'center')
 
-    const nvmeIcon = pictogram('drive', { size: 64, color: 'teal', accent: 'yellow' })
-    const nvmeCard = infoBox({
-      title: 'NVMe DMA',
+    const kernelIcon = pictogram('process', { size: 64, color: 'teal', accent: 'yellow' })
+    const kernelCard = infoBox({
+      title: 'Kernel',
       rows: [
         { label: 'SQ', value: 'poll', tone: 'purple' },
         { label: 'CQ', value: 'post', tone: 'green' },
@@ -294,7 +298,7 @@ export default film(
       accent: 'teal',
       size: 27,
     })
-    place(column([nvmeIcon, nvmeCard], { gap: 14, align: 'center' }), nvmeColBox, 'center')
+    place(column([kernelIcon, kernelCard], { gap: 14, align: 'center' }), kernelColBox, 'center')
 
     const appToSq = connector(appCard, sharedFrame, {
       from: 'right',
@@ -314,7 +318,7 @@ export default film(
       width: 2.5,
       curvature: 0.25,
     })
-    const sqToNvme = connector(sharedFrame, nvmeCard, {
+    const sqToKernel = connector(sharedFrame, kernelCard, {
       from: 'right',
       to: 'left',
       fromOffset: -0.22,
@@ -325,7 +329,7 @@ export default film(
       flow: 46,
       curvature: 0.25,
     })
-    const nvmeToCq = connector(nvmeCard, sharedFrame, {
+    const kernelToCq = connector(kernelCard, sharedFrame, {
       from: 'left',
       to: 'right',
       fromOffset: 0.28,
@@ -337,8 +341,8 @@ export default film(
       curvature: 0.25,
     })
 
-    const sqDmaDots = Array.from({ length: 4 }, () => dot(9, 'yellow').hide())
-    const cqDmaDots = Array.from({ length: 4 }, () => dot(9, 'green').hide())
+    const sqDots = Array.from({ length: 4 }, () => dot(9, 'yellow').hide())
+    const cqDots = Array.from({ length: 4 }, () => dot(9, 'green').hide())
 
     s.add(
       sharedFrame.hide(),
@@ -348,19 +352,19 @@ export default film(
       ringInvariantNote.hide(),
       appIcon.hide(),
       appCard.hide(),
-      nvmeIcon.hide(),
-      nvmeCard.hide(),
+      kernelIcon.hide(),
+      kernelCard.hide(),
       appToSq.hide(),
-      sqToNvme.hide(),
-      nvmeToCq.hide(),
+      sqToKernel.hide(),
+      kernelToCq.hide(),
       cqToApp.hide(),
-      ...sqDmaDots,
-      ...cqDmaDots,
+      ...sqDots,
+      ...cqDots,
     )
 
     s.chapter('Two rings in shared memory')
     s.caption(
-      'io_uring maps Submission and Completion rings into shared memory between user app and NVMe.',
+      'io_uring shares submission and completion rings between user space and the kernel. Here, an awake SQPOLL thread consumes submissions.',
       9.4,
     )
 
@@ -375,11 +379,11 @@ export default film(
     )
     s.play(
       par(
-        fadeIn([appIcon, appCard, nvmeIcon, nvmeCard], { duration: 0.85 }),
+        fadeIn([appIcon, appCard, kernelIcon, kernelCard], { duration: 0.85 }),
         fadeIn(ringInvariantNote, { duration: 0.85 }),
         draw(appToSq, { duration: 0.9 }),
-        draw(sqToNvme, { duration: 0.9 }),
-        draw(nvmeToCq, { duration: 0.9 }),
+        draw(sqToKernel, { duration: 0.9 }),
+        draw(kernelToCq, { duration: 0.9 }),
         draw(cqToApp, { duration: 0.9 }),
       ),
     )
@@ -389,7 +393,7 @@ export default film(
     // Chapter 3: Submit in batches, reap without trapping
     // =========================================================================
     const trapFreeNote = text(
-      'Batch of 4 NVMe reads submitted + completed with 0 per-op syscalls',
+      'Awake SQPOLL: publish tail; kernel consumes SQ and posts CQ',
       { size: 27, weight: 600, color: 'teal' },
     )
     place(trapFreeNote, ringStatusBox, 'center')
@@ -397,7 +401,7 @@ export default film(
 
     s.chapter('Submit in batches, reap without trapping')
     s.caption(
-      'Stage four SQEs, publish tail once, DMA completions into CQ, and reap in user space.',
+      'Publish four SQEs with a release-store. The kernel acquire-loads tail, advances head, runs the I/O, and posts completions. User space drains CQ.',
       12.8,
     )
 
@@ -444,26 +448,26 @@ export default film(
         ),
         lagged(
           [
-            sqToNvme.send(sqDmaDots[0]!, { duration: 0.68 }),
-            sqToNvme.send(sqDmaDots[1]!, { duration: 0.68 }),
-            sqToNvme.send(sqDmaDots[2]!, { duration: 0.68 }),
-            sqToNvme.send(sqDmaDots[3]!, { duration: 0.68 }),
+            sqToKernel.send(sqDots[0]!, { duration: 0.68 }),
+            sqToKernel.send(sqDots[1]!, { duration: 0.68 }),
+            sqToKernel.send(sqDots[2]!, { duration: 0.68 }),
+            sqToKernel.send(sqDots[3]!, { duration: 0.68 }),
           ],
           { lag: 0.42 },
         ),
       ),
     )
     assertEqual(sq.head, 4, 'SQ head matches tail after kernel fetch')
-    assertEqual(sq.length, 0, 'SQ empty after DMA fetch')
+    assertEqual(sq.length, 0, 'SQ empty after kernel consumes submissions')
 
     s.play(
       par(
         lagged(
           [
-            nvmeToCq.send(cqDmaDots[0]!, { duration: 0.65 }),
-            nvmeToCq.send(cqDmaDots[1]!, { duration: 0.65 }),
-            nvmeToCq.send(cqDmaDots[2]!, { duration: 0.65 }),
-            nvmeToCq.send(cqDmaDots[3]!, { duration: 0.65 }),
+            kernelToCq.send(cqDots[0]!, { duration: 0.65 }),
+            kernelToCq.send(cqDots[1]!, { duration: 0.65 }),
+            kernelToCq.send(cqDots[2]!, { duration: 0.65 }),
+            kernelToCq.send(cqDots[3]!, { duration: 0.65 }),
           ],
           { lag: 0.4 },
         ),
@@ -511,11 +515,11 @@ export default film(
           trapFreeNote,
           appIcon,
           appCard,
-          nvmeIcon,
-          nvmeCard,
+          kernelIcon,
+          kernelCard,
           appToSq,
-          sqToNvme,
-          nvmeToCq,
+          sqToKernel,
+          kernelToCq,
           cqToApp,
         ],
         { duration: 0.65 },
@@ -523,64 +527,65 @@ export default film(
     )
 
     // =========================================================================
-    // Chapter 4: Throughput unlocked
+    // Chapter 4: Fewer submission syscalls
     // =========================================================================
     const [chartColBox, pipelineColBox] = stageBox.columns([0.48, 0.52], 32)
     const [chartHeaderBox, chartBodyBox] = chartColBox.rows([0.13, 0.87], 12)
     const [pipeLanesBox, payoffBox] = pipelineColBox.rows([0.64, 0.36], 18)
 
-    const chartHeading = text('4 KB random-read IOPS (single core)', {
+    const chartHeading = text('Submission syscalls for 32 reads', {
       size: 30,
       weight: 600,
       color: 'ink',
     })
     place(chartHeading, chartHeaderBox, 'center')
 
-    const iopsChart = barChart(
+    const submitChart = barChart(
       [
-        { label: 'Blocking', value: 190, color: 'orange' },
-        { label: 'Batched', value: 1120, color: 'blue' },
-        { label: 'SQPOLL', value: 1640, color: 'teal' },
+        { label: 'Blocking', value: 32, color: 'orange' },
+        { label: 'Batched', value: 1, color: 'blue' },
+        { label: 'SQPOLL', value: 0, color: 'teal' },
       ],
       {
         width: Math.min(600, Math.round(chartBodyBox.width - 100)),
         height: Math.min(370, Math.round(chartBodyBox.height - 90)),
         labelSize: 28,
-        max: 1800,
-        ticks: [0, 600, 1200, 1800],
+        max: 32,
+        ticks: [0, 8, 16, 24, 32],
         showValues: true,
         states: true,
-        format: (v) => `${Math.round(v)}k`,
+        format: (v) => `${Math.round(v)}`,
       },
     )
-    place(iopsChart, chartBodyBox, 'center')
+    place(submitChart, chartBodyBox, 'center')
 
     const asyncEvents = [
       { lane: 'App thread', start: 0, end: 18, color: 'blue' as const, label: 'SQE x32' },
       { lane: 'App thread', start: 19, end: 46, color: 'teal' as const, label: 'compute' },
       { lane: 'App thread', start: 47, end: 64, color: 'blue' as const, label: 'SQE x32' },
       { lane: 'App thread', start: 65, end: 96, color: 'teal' as const, label: 'compute' },
-      { lane: 'SQ / CQ DMA', start: 4, end: 48, color: 'purple' as const },
-      { lane: 'SQ / CQ DMA', start: 50, end: 94, color: 'purple' as const },
+      { lane: 'Kernel work', start: 4, end: 48, color: 'purple' as const },
+      { lane: 'Kernel work', start: 50, end: 94, color: 'purple' as const },
       { lane: 'NVMe SSD', start: 6, end: 52, color: 'green' as const, label: 'depth 32' },
       { lane: 'NVMe SSD', start: 52, end: 96, color: 'green' as const, label: 'depth 32' },
     ]
     const ch4Lanes = fitted(pipeLanesBox, (width) =>
-      lanes(['App thread', 'SQ / CQ DMA', 'NVMe SSD'], asyncEvents, {
+      lanes(['App thread', 'Kernel work', 'NVMe SSD'], asyncEvents, {
         width,
         barHeight: 44,
         size: 27,
         domain: [0, 96],
-        axisLabel: 'overlapped io_uring + SQPOLL timeline (zero syscall stalls)',
+        axisLabel: 'Illustrative overlap; SQPOLL thread stays awake',
       }),
     )
     place(ch4Lanes, pipeLanesBox, 'center')
 
     const payoffCard = infoBox({
-      title: '8.6x throughput  |  0 syscalls in steady state',
+      title: 'Submission counts, not a speed benchmark',
       rows: [
-        { label: 'blocking read()', value: '190k IOPS  (2 traps / op)', tone: 'orange', meter: 0.12 },
-        { label: 'io_uring SQPOLL', value: '1,640k IOPS  (shared rings)', tone: 'teal', meter: 0.91 },
+        { label: 'batch', value: '32 SQEs, 1 enter call', tone: 'blue' },
+        { label: 'SQPOLL', value: '0 while poller is awake', tone: 'teal' },
+        { label: 'excluded', value: 'setup, waits, wakeups', tone: 'dim' },
       ],
       accent: 'green',
       size: 27,
@@ -590,14 +595,14 @@ export default film(
 
     s.add(
       chartHeading.hide(),
-      iopsChart.hide(),
+      submitChart.hide(),
       ch4Lanes.hide(),
       payoffCard.hide(),
     )
 
-    s.chapter('Throughput unlocked')
+    s.chapter('Fewer submission syscalls')
     s.caption(
-      'Shared-memory rings eliminate per-op traps and unlock 8.6x higher single-core IOPS.',
+      'A batch submits 32 reads with one enter call. Awake SQPOLL needs none; setup, blocking waits, and waking a sleeping poller still need syscalls.',
       9.4,
     )
 
@@ -605,7 +610,7 @@ export default film(
       par(
         morphMatching(ch3Tag, ch4Tag, { duration: 0.7 }),
         fadeIn(chartHeading, { duration: 0.75 }),
-        iopsChart.enter({ duration: 1.1 }),
+        submitChart.enter({ duration: 1.1 }),
         ch4Lanes.enter({ duration: 0.95 }),
         fadeIn(payoffCard, { duration: 0.95 }),
       ),
@@ -613,11 +618,11 @@ export default film(
     s.play(
       par(
         ch4Lanes.showAll({ duration: 2.6 }),
-        iopsChart.mark('SQPOLL', 'chosen', { duration: 0.75 }),
+        submitChart.mark('SQPOLL', 'chosen', { duration: 0.75 }),
       ),
     )
     s.play(
-      spotlight([iopsChart, payoffCard], {
+      spotlight([submitChart, payoffCard], {
         keep: [title, ch4Tag, chartHeading, ch4Lanes],
         dim: 0.25,
         duration: 0.9,
