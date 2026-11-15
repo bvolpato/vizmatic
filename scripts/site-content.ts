@@ -77,12 +77,12 @@ export async function renderFilmWall(films: readonly FilmEntry[], root: string, 
     const items = await Promise.all(shown.map(async (film, index) => {
         const hasPoster = await exists(`docs/assets/site/posters/${film.id}_dark.webp`)
         const meta = [film.topic, formatDuration(film.duration), film.stepped ? 'Interactive deck' : ''].filter(Boolean).join(' \u00b7 ')
-        // Posters come from the site's themes. Films follow the same theme unless they have their own look.
-        const fixedLook = film.look && film.look !== 'midnight' ? ` data-look="${escapeHtml(film.look)}"` : ''
+        const lookLabel = film.look && film.look !== 'midnight' ? film.look[0]!.toUpperCase() + film.look.slice(1) : ''
+        const lookBadge = lookLabel ? `<span class="wall-look" data-palette="${escapeHtml(film.look!)}" title="Original film look: ${escapeHtml(lookLabel)}"><i aria-hidden="true"></i>${escapeHtml(lookLabel)} look</span>` : ''
         const poster = hasPoster ? `<img data-theme-image src="${root}assets/site/posters/${film.id}_dark.webp" alt="" width="960" height="540" loading="lazy" decoding="async">` : ''
         const side = wide.get(index)
         const topicAttr = ` data-topic="${escapeHtml(film.topic ?? '')}"`
-        return `<a class="wall-item${side ? ` is-wide is-${side}` : ''}"${topicAttr} href="${root}film/${film.id}.html"><span class="wall-frame" data-live-src="assets/stage/films/${film.id}.js"${film.posterTime !== undefined ? ` data-poster-time="${film.posterTime}"` : ''}${fixedLook} data-label="${escapeHtml(film.summary || film.title)}">${poster}</span><h3>${escapeHtml(film.title)}</h3><p>${escapeHtml(film.summary)}</p>${meta ? `<span class="meta">${escapeHtml(meta)}</span>` : ''}</a>`
+        return `<a class="wall-item${side ? ` is-wide is-${side}` : ''}"${topicAttr} href="${root}film/${film.id}.html"><span class="wall-frame" data-live-src="assets/stage/films/${film.id}.js"${film.posterTime !== undefined ? ` data-poster-time="${film.posterTime}"` : ''} data-label="${escapeHtml(film.summary || film.title)}">${poster}</span><h3>${escapeHtml(film.title)}</h3><p>${escapeHtml(film.summary)}</p><span class="wall-meta">${meta ? `<span class="meta">${escapeHtml(meta)}</span>` : ''}${lookBadge}</span></a>`
     }))
     return `<div class="wall">${items.join('')}</div>`
 }

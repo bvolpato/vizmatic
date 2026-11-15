@@ -10,6 +10,36 @@
     "look": "midnight"
   },
   {
+    "id": "gradient-descent",
+    "title": "Downhill, one step at a time",
+    "summary": "Real gradient descent on a two-basin loss surface: two starts 0.12 apart travel together, then finish in different minima.",
+    "topic": "Machine learning",
+    "duration": 38.5,
+    "posterTime": 28,
+    "featured": true,
+    "look": "midnight"
+  },
+  {
+    "id": "lorenz",
+    "title": "The rules are exact, the future is not",
+    "summary": "The Lorenz system integrated with real numbers: two starts a hair apart part ways, then 72 fill the butterfly.",
+    "topic": "Physics",
+    "duration": 40.2,
+    "posterTime": 39,
+    "featured": true,
+    "look": "midnight"
+  },
+  {
+    "id": "central-limit",
+    "title": "Twelve coin flips, nine hundred times",
+    "summary": "A Galton board settles into a histogram that meets the Gaussian curve, with mean and deviation measured from the balls.",
+    "topic": "Statistics",
+    "duration": 36.6,
+    "posterTime": 35,
+    "featured": true,
+    "look": "midnight"
+  },
+  {
     "id": "flash-attention",
     "title": "FlashAttention: tiling beats memory bandwidth",
     "summary": "Online running-max softmax streams K and V blocks through fast on-chip SRAM without materializing the N by N attention matrix in HBM.",
@@ -100,26 +130,6 @@
     "look": "midnight"
   },
   {
-    "id": "gradient-descent",
-    "title": "Downhill, one step at a time",
-    "summary": "Real gradient descent on a two-basin loss surface: two starts 0.12 apart travel together, then finish in different minima.",
-    "topic": "Machine learning",
-    "duration": 38.5,
-    "posterTime": 28,
-    "featured": true,
-    "look": "midnight"
-  },
-  {
-    "id": "lorenz",
-    "title": "The rules are exact, the future is not",
-    "summary": "The Lorenz system integrated with real numbers: two starts a hair apart part ways, then 72 fill the butterfly.",
-    "topic": "Physics",
-    "duration": 40.2,
-    "posterTime": 39,
-    "featured": true,
-    "look": "midnight"
-  },
-  {
     "id": "forecast",
     "title": "A forecast is a range",
     "summary": "A small forecaster reads a seeded metric and draws its own past errors again as 1,000 possible futures. Two bands hold half of them and 9 of 10, the truth lands inside the wide one 43 times of 48, and 1,000 runs show how often that band is right.",
@@ -166,16 +176,6 @@
     "topic": "Machine learning",
     "duration": 34.9,
     "posterTime": 30.5,
-    "featured": false,
-    "look": "midnight"
-  },
-  {
-    "id": "central-limit",
-    "title": "Twelve coin flips, nine hundred times",
-    "summary": "A Galton board settles into a histogram that meets the Gaussian curve, with mean and deviation measured from the balls.",
-    "topic": "Statistics",
-    "duration": 36.6,
-    "posterTime": 35,
     "featured": false,
     "look": "midnight"
   },
