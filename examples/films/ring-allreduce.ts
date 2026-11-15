@@ -113,7 +113,7 @@ export default film(
     poster: 26.5,
   },
   (s) => {
-    const kit = sceneKit({ size: 38 })
+    const kit = sceneKit({ size: 38, source: { y: -420 } })
     const title = kit.heading('Eight GPUs, one ring, bounded transfer')
     const modelNote = kit.source('Ideal ring, equal shards. Phi = tensor size. Latency and topology still matter.')
     s.add(title, modelNote)

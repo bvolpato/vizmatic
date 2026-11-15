@@ -205,7 +205,7 @@ export default film(
     poster: 26.0,
   },
   (s) => {
-    const kit = sceneKit({ size: 38 })
+    const kit = sceneKit({ size: 38, source: { y: -420 } })
     const title = kit.heading('SVD: reorient, stretch, reorient')
     const qualification = kit.source('U and V are orthogonal: rotations or reflections. This example uses rotations.')
     s.add(title, qualification)

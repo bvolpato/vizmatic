@@ -148,7 +148,7 @@ export default film(
         poster: 21.5,
     },
     (s) => {
-        const kit = sceneKit({ size: 38 })
+        const kit = sceneKit({ size: 38, source: { y: -420 } })
         const title = kit.heading('FlashAttention: tiling beats memory bandwidth')
         const source = kit.source('Dao et al., "FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness," NeurIPS 2022')
         s.add(title, source)

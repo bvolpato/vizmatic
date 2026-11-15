@@ -40,7 +40,7 @@ npm install vizmatic
    npx vizmatic film intro.ts --frame 2,5.5,9,12 --width 1280 --out stills
    npx vizmatic film intro.ts --every 4 --sheet --out stills
    ```
-   `--sheet` joins sampled frames into timestamped contact sheets (`--columns <n>` sets grid width). Use full-size stills for layout review and sheets for pacing.
+   `--sheet` joins sampled frames into timestamped contact sheets (`--columns <n>` sets grid width). Use full-size stills for layout review and sheets for pacing. Also inspect browser playback and paused frames at the intended display size: controls and captions must not cover source notes, assumptions, or other essential text.
 5. Export when layout and pacing pass inspection:
    ```bash
    npx vizmatic film intro.ts --out dist/films --look midnight,paper --quality high --poster

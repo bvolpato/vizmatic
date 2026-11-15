@@ -265,8 +265,6 @@ export class Inspector {
             beat ? `beat:${beat.id}:${beat.kind}:${beat.ease}` : '',
             object ? `object:${object.id}:${object.kind}` : '',
             selection.length,
-            this.app.built?.objectErrors.size ?? 0,
-            this.app.built?.beatErrors.size ?? 0,
             object ? project.beats.filter((entry) => entry.target === object.id).map((entry) => `${entry.id}${entry.kind}`).join() : '',
             !object && !beat && selection.length === 0 ? project.variables.map((variable) => variable.name).join() : '',
             project.objects.length,
@@ -276,6 +274,13 @@ export class Inspector {
             this.rebuild(beat, object)
         } else {
             for (const control of this.controls) control.sync()
+        }
+        for (const message of this.body.querySelectorAll<HTMLElement>('[data-object-error], [data-beat-error]')) {
+            const error = message.dataset.objectError
+                ? this.app.built?.objectErrors.get(message.dataset.objectError)
+                : this.app.built?.beatErrors.get(message.dataset.beatError!)
+            message.textContent = error ?? ''
+            message.hidden = !error
         }
     }
 
@@ -332,7 +337,7 @@ export class Inspector {
         })
         wrap.appendChild(h('header', { class: 'inspector-head' }, nameInput, h('span', { class: 'kind-tag' }, def?.label ?? object.kind)))
         const error = this.app.built?.objectErrors.get(object.id)
-        if (error) wrap.appendChild(h('p', { class: 'inspector-error', role: 'alert' }, error))
+        wrap.appendChild(h('p', { class: 'inspector-error', role: 'alert', 'data-object-error': object.id, hidden: !error }, error ?? ''))
         const transform = h('div', { class: 'field-grid' })
         for (const field of TRANSFORM_FIELDS) {
             this.addField(transform, field, {
@@ -433,7 +438,7 @@ export class Inspector {
                 h('span', { class: 'head-actions' },
                     iconButton('play', { title: 'Preview this beat', testId: 'preview-beat', onClick: () => this.app.previewBeat(beat.id) }),
                     iconButton('trash', { title: 'Delete this beat (Delete)', testId: 'delete-beat', onClick: () => this.app.deleteBeat(beat.id) }))),
-            error ? h('p', { class: 'inspector-error', role: 'alert' }, error) : null,
+            h('p', { class: 'inspector-error', role: 'alert', 'data-beat-error': beat.id, hidden: !error }, error ?? ''),
             this.section('Timing', grid, easeButton ? h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Easing'), h('div', { class: 'field-control' }, easeButton)) : null),
             def?.fields.length ? this.section('Settings', stack) : null)
     }
