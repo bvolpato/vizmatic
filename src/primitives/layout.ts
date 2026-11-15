@@ -227,6 +227,7 @@ export function Scene({
 
 interface FlexBoxProps {
     children: React.ReactNode
+    c?: ThemeColors
     gap?: number
     align?: FlexAlign
     justify?: FlexJustify
@@ -238,6 +239,7 @@ interface FlexBoxProps {
 
 function flexBox(direction: 'row' | 'column', {
     children,
+    c,
     gap: gapProp,
     align = 'center',
     // Rows start at the left edge, under the left-aligned title.
@@ -247,7 +249,7 @@ function flexBox(direction: 'row' | 'column', {
     height,
     style,
 }: FlexBoxProps): React.ReactElement {
-    const gap = gapProp ?? densityOf().s(12)
+    const gap = gapProp ?? densityOf(c).s(12)
     return React.createElement('div', {
         style: {
             display: 'flex',
@@ -898,6 +900,7 @@ interface SvgMathTextProps {
     x: number
     y: number
     fill: string
+    c?: ThemeColors
     fontSize?: number
     fontFamily?: string
     fontWeight?: number
@@ -931,6 +934,7 @@ export function SvgMathText({
     x,
     y,
     fill,
+    c,
     fontSize: fontSizeProp,
     fontFamily = 'JetBrains Mono',
     fontWeight = 800,
@@ -938,7 +942,7 @@ export function SvgMathText({
     dominantBaseline = 'middle',
     opacity = 1,
 }: SvgMathTextProps): React.ReactElement {
-    const fontSize = fontSizeProp ?? densityOf().f(13)
+    const fontSize = fontSizeProp ?? densityOf(c).f(13)
     const anchorOffset = textAnchor === 'start' ? '0' : textAnchor === 'end' ? '-100%' : '-50%'
     const baselineOffset = svgMathTextBaselineOffset(dominantBaseline)
 

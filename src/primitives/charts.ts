@@ -109,7 +109,39 @@ export function niceChartScale(
     count = 4,
 ): { domain: { min: number; max: number; range: number }; ticks: number[] } {
     const domain = chartDomain([...values], min, max)
-    if (min !== undefined && max !== undefined) return { domain, ticks: chartTicks(domain.min, domain.max, count) }
+    if (count <= 1 || domain.max === domain.min) return { domain, ticks: [domain.min] }
+    if (min !== undefined && max !== undefined) {
+        const span = domain.max - domain.min
+        if (span <= 0) return { domain, ticks: chartTicks(domain.min, domain.max, count) }
+        const targetIntervals = Math.max(2, count - 1)
+        const rough = span / targetIntervals
+        const power = Math.pow(10, Math.floor(Math.log10(rough || 1)))
+        let bestStep: number | undefined
+        let bestScore = Number.POSITIVE_INFINITY
+        for (const mult of [0.2, 0.25, 0.5, 1, 2, 2.5, 5, 10, 20, 25, 50]) {
+            const candidate = mult * power
+            if (candidate <= 0) continue
+            const intervals = span / candidate
+            const rounded = Math.round(intervals)
+            if (Math.abs(intervals - rounded) > 1e-6 || rounded < 2 || rounded > 6) continue
+            const penalty = (rounded === 2 && targetIntervals >= 3 ? 1.5 : 0)
+                - (Number.isInteger(candidate) && Number.isInteger(domain.min) ? 1.1 : 0)
+            const score = Math.abs(rounded - targetIntervals) + penalty
+            if (score < bestScore) {
+                bestScore = score
+                bestStep = candidate
+            }
+        }
+        if (bestStep !== undefined) {
+            const step = bestStep
+            const intervals = Math.round(span / step)
+            const ticks = Array.from({ length: intervals + 1 }, (_, index) =>
+                Number((domain.min + step * index).toPrecision(12)),
+            )
+            return { domain, ticks }
+        }
+        return { domain, ticks: chartTicks(domain.min, domain.max, count) }
+    }
     const span = domain.max - domain.min
     const rough = span / Math.max(1, count - 1)
     const power = Math.pow(10, Math.floor(Math.log10(rough || 1)))
@@ -118,7 +150,9 @@ export function niceChartScale(
     const low = min ?? Math.floor(domain.min / step + 1e-9) * step
     const high = max ?? Math.ceil(domain.max / step - 1e-9) * step
     const ticks: number[] = []
-    for (let tick = low; tick <= high + step * 1e-6; tick += step) ticks.push(Math.round(tick / step) * step)
+    for (let tick = low; tick <= high + step * 1e-6; tick += step) {
+        ticks.push(Number(tick.toPrecision(12)))
+    }
     return { domain: { min: low, max: high, range: high - low || 1 }, ticks: ticks.length > 1 ? ticks : chartTicks(low, high, count) }
 }
 

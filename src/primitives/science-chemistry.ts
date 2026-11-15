@@ -562,14 +562,57 @@ function energyPath(x0: number, y0: number, xPeak: number, yPeak: number, x1: nu
     return `M ${x0} ${y0} C ${leftStartControl} ${y0}, ${leftControl} ${yPeak}, ${xPeak} ${yPeak} C ${rightControl} ${yPeak}, ${rightEndControl} ${y1}, ${x1} ${y1}`
 }
 
-function measurement(x: number, y1: number, y2: number, color: string, key: string, label: string): React.ReactElement {
+function niceEnergyTicks(scaleMin: number, scaleMax: number): number[] {
+    const span = scaleMax - scaleMin
+    if (!Number.isFinite(span) || span <= 0) return [scaleMin]
+    const rough = span / 3.5
+    const power = Math.pow(10, Math.floor(Math.log10(rough || 1)))
+    let best: number[] | undefined
+    let bestScore = Number.POSITIVE_INFINITY
+    for (const mult of [0.1, 0.2, 0.25, 0.5, 1, 2, 2.5, 5, 10, 20, 50]) {
+        const step = mult * power
+        if (step <= 0) continue
+        const first = Math.ceil((scaleMin - 1e-9) / step) * step
+        const last = Math.floor((scaleMax + 1e-9) / step) * step
+        if (last < first) continue
+        const count = Math.round((last - first) / step) + 1
+        if (count < 3 || count > 5) continue
+        const ticks = Array.from({ length: count }, (_, index) => {
+            const raw = Number((first + step * index).toPrecision(10))
+            return Object.is(raw, -0) ? 0 : raw
+        })
+        const score = Math.abs(count - 4) + (mult === 2.5 || mult === 0.25 ? 0.4 : 0)
+        if (score < bestScore) {
+            bestScore = score
+            best = ticks
+        }
+    }
+    return best ?? [scaleMin, (scaleMin + scaleMax) / 2, scaleMax]
+}
+
+function measurement(
+    x: number,
+    y1: number,
+    y2: number,
+    color: string,
+    key: string,
+    label: string,
+    c: ThemeColors,
+    clipId?: string,
+): React.ReactElement {
     const top = Math.min(y1, y2)
     const bottom = Math.max(y1, y2)
     const cap = 5
-    return React.createElement('g', { key, 'data-measurement': label, 'aria-hidden': true },
-        React.createElement('line', { x1: x, y1: top, x2: x, y2: bottom, stroke: color, strokeWidth: densityOf().w(1.5), strokeDasharray: '3 3' }),
-        React.createElement('line', { x1: x - cap, y1: top, x2: x + cap, y2: top, stroke: color, strokeWidth: densityOf().w(1.5) }),
-        React.createElement('line', { x1: x - cap, y1: bottom, x2: x + cap, y2: bottom, stroke: color, strokeWidth: densityOf().w(1.5) }),
+    const strokeWidth = densityOf(c).w(1.5)
+    return React.createElement('g', {
+        key,
+        'data-measurement': label,
+        'aria-hidden': true,
+        ...(clipId ? { clipPath: `url(#${clipId})` } : {}),
+    },
+        React.createElement('line', { x1: x, y1: top, x2: x, y2: bottom, stroke: color, strokeWidth, strokeDasharray: '3 3' }),
+        React.createElement('line', { x1: x - cap, y1: top, x2: x + cap, y2: top, stroke: color, strokeWidth }),
+        React.createElement('line', { x1: x - cap, y1: bottom, x2: x + cap, y2: bottom, stroke: color, strokeWidth }),
     )
 }
 
@@ -649,17 +692,18 @@ export function ReactionEnergyDiagram({
     const chartTitle = 'Reaction energy diagram'
     const desc = `${reactantLabel} energy ${energyText(reactants)} ${unit}; product energy ${energyText(products)} ${unit}; uncatalyzed activation energy ${energyText(activation)} ${unit}; reaction energy change ΔE ${signedEnergyText(delta)} ${unit}.${catalyzedBarrier === undefined ? '' : ` Catalyzed activation energy ${energyText(catalyzedActivation!)} ${unit}; endpoints are unchanged.`}`
     const readableInk = getReadableTextColor(c.bgCard, c)
-    const activationX = plotLeft + 24
-    const catalyzedActivationX = plotLeft + 38
+    const activationX = xPeak - (yCatalyzed !== undefined ? 10 : 0)
+    const catalyzedActivationX = xPeak + 14
     const deltaX = plotRight + 16
+    const leaderEndX = yCatalyzed !== undefined ? catalyzedActivationX : activationX
     const revealClipId = `reaction-energy-reveal-${svgWidth}-${svgHeight}-${String(progress).replace('.', '-')}`
     const revealWidth = progress === 0 ? 0 : (x1 - x0) * progress + 8
-    const gridValues = [scaleMin, (scaleMin + scaleMax) / 2, scaleMax]
+    const gridValues = niceEnergyTicks(scaleMin, scaleMax)
     const svgNodes: React.ReactNode[] = [
         React.createElement('rect', { key: 'background', x: 0, y: 0, width: svgWidth, height: svgHeight, rx: 14, fill: c.bgCard, stroke: c.borderSubtle }),
         React.createElement('defs', { key: 'reveal-defs' },
             React.createElement('clipPath', { id: revealClipId, clipPathUnits: 'userSpaceOnUse' },
-                React.createElement('rect', { x: x0 - 4, y: plotTop, width: revealWidth, height: plotBottom - plotTop }),
+                React.createElement('rect', { x: x0 - 4, y: plotTop - 4, width: revealWidth, height: plotBottom - plotTop + 8 }),
             ),
         ),
         React.createElement('line', { key: 'y-axis', x1: plotLeft, y1: plotTop, x2: plotLeft, y2: plotBottom, stroke: c.borderLight, strokeWidth: densityOf(c).w(1.4) }),
@@ -674,6 +718,18 @@ export function ReactionEnergyDiagram({
             strokeWidth: densityOf(c).w(1),
             strokeDasharray: '3 5',
         })),
+        React.createElement('line', {
+            key: 'reactant-reference-leader',
+            x1: x0,
+            y1: yReactants,
+            x2: leaderEndX,
+            y2: yReactants,
+            stroke: c.borderLight,
+            strokeWidth: densityOf(c).w(1),
+            strokeDasharray: '4 4',
+            opacity: 0.75,
+            clipPath: `url(#${revealClipId})`,
+        }),
         React.createElement('path', {
             key: 'uncatalyzed-path',
             d: path,
@@ -698,9 +754,9 @@ export function ReactionEnergyDiagram({
             'data-energy-path': 'catalyzed',
             'data-progress': progress,
         }),
-        measurement(activationX, yReactants, yBarrier, c.critical, 'activation-uncatalyzed', 'activation-uncatalyzed'),
-        yCatalyzed === undefined ? null : measurement(catalyzedActivationX, yReactants, yCatalyzed, c.positive, 'activation-catalyzed', 'activation-catalyzed'),
-        measurement(deltaX, yReactants, yProducts, c.secondary, 'reaction-energy-change', 'reaction-energy-change'),
+        measurement(activationX, yReactants, yBarrier, c.critical, 'activation-uncatalyzed', 'activation-uncatalyzed', c, revealClipId),
+        yCatalyzed === undefined ? null : measurement(catalyzedActivationX, yReactants, yCatalyzed, c.positive, 'activation-catalyzed', 'activation-catalyzed', c, revealClipId),
+        measurement(deltaX, yReactants, yProducts, c.secondary, 'reaction-energy-change', 'reaction-energy-change', c),
     ]
     const overlayNodes = [
         overlayText('title', { text: `${chartTitle} · ${unit}`, x: svgWidth / 2, y: 24, fill: c.textPrimary, fontSize: densityOf(c).f(16), fontFamily: c.fontSans, fontWeight: 700 }),

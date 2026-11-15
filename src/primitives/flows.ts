@@ -186,7 +186,13 @@ interface TimelineProps {
     math?: boolean
 }
 
-function renderTimelineCard(event: TimelineEventSpec, c: ThemeColors, math: boolean, width?: number | string): React.ReactElement {
+function renderTimelineCard(
+    event: TimelineEventSpec,
+    c: ThemeColors,
+    math: boolean,
+    width?: number | string,
+    paddingRight = 0,
+): React.ReactElement {
     const resolvedTone = event.tone ?? statusTones[event.status ?? 'dot']
     const accentText = getReadableToneColor(resolvedTone, c)
     const resolvedWidth = event.width ?? width
@@ -198,7 +204,7 @@ function renderTimelineCard(event: TimelineEventSpec, c: ThemeColors, math: bool
             gap: densityOf(c).s(5),
             ...(resolvedWidth != null ? { width: resolvedWidth } : {}),
             ...(typeof resolvedWidth === 'string' ? { minWidth: 0 } : {}),
-            padding: `${densityOf(c).s(4)}px 0`,
+            padding: `${densityOf(c).s(4)}px ${paddingRight}px ${densityOf(c).s(4)}px 0`,
             boxSizing: 'border-box' as const,
         }
     },
@@ -328,20 +334,10 @@ export function Timeline({
                         React.createElement('div', {
                             style: {
                                 display: 'flex',
-                                flex: 1,
-                                height: 1,
-                                backgroundColor: c.border,
-                                opacity: index === 0 ? 0 : 1,
-                            }
-                        }),
-                        React.createElement('div', {
-                            style: {
-                                display: 'flex',
                                 width: markerSize,
                                 height: markerSize,
                                 borderRadius: 999,
                                 backgroundColor: accent,
-                                
                                 flexShrink: 0,
                             }
                         }),
@@ -355,7 +351,7 @@ export function Timeline({
                             }
                         }),
                     ),
-                    renderTimelineCard(event, c, math, eventWidth),
+                    renderTimelineCard(event, c, math, eventWidth, index < events.length - 1 ? densityOf(c).s(12) : 0),
                 )
             })),
             ])

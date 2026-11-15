@@ -756,15 +756,24 @@ export function AxisPlot({
     children,
     ...accessibility
 }: AxisPlotProps): React.ReactElement {
-    const padding = paddingProp ?? densityOf(c).s(18)
-    const innerWidth = Math.max(1, width - padding * 2)
-    const innerHeight = Math.max(1, height - padding * 2)
+    const d = densityOf(c)
+    const padding = paddingProp ?? d.s(18)
+    const leftGutter = yAxisLabel ? d.f(18) : 0
+    const bottomGutter = xAxisLabel ? d.f(18) : 0
+    const frameX = leftGutter + padding / 2
+    const frameY = padding / 2
+    const frameWidth = Math.max(1, width - leftGutter - padding)
+    const frameHeight = Math.max(1, height - bottomGutter - padding)
+    const plotLeft = leftGutter + padding
+    const plotTop = padding
+    const innerWidth = Math.max(1, width - leftGutter - padding * 2)
+    const innerHeight = Math.max(1, height - bottomGutter - padding * 2)
     const xRange = xMax === xMin ? 1 : xMax - xMin
     const yRange = yMax === yMin ? 1 : yMax - yMin
-    const sx = (x: number) => padding + ((x - xMin) / xRange) * innerWidth
-    const sy = (y: number) => padding + innerHeight - ((y - yMin) / yRange) * innerHeight
-    const xAxisY = yMin <= 0 && yMax >= 0 ? sy(0) : padding + innerHeight / 2
-    const yAxisX = xMin <= 0 && xMax >= 0 ? sx(0) : padding + innerWidth / 2
+    const sx = (x: number) => plotLeft + ((x - xMin) / xRange) * innerWidth
+    const sy = (y: number) => plotTop + innerHeight - ((y - yMin) / yRange) * innerHeight
+    const xAxisY = yMin <= 0 && yMax >= 0 ? sy(0) : plotTop + innerHeight / 2
+    const yAxisX = xMin <= 0 && xMax >= 0 ? sx(0) : plotLeft + innerWidth / 2
     const axisStroke = axisColor ?? c.borderLight
     const gridIndexes = Array.from({ length: Math.max(0, gridCount) }, (_, index) => index + 1)
 
@@ -773,10 +782,10 @@ export function AxisPlot({
     if (showFrame) {
         elements.push(SvgFrame({
             key: 'axis-frame',
-            x: padding / 2,
-            y: padding / 2,
-            width: width - padding,
-            height: height - padding,
+            x: frameX,
+            y: frameY,
+            width: frameWidth,
+            height: frameHeight,
             rx: frameRx,
             c,
             fill: frameFill,
@@ -786,24 +795,24 @@ export function AxisPlot({
 
     if (showGrid && gridCount > 0) {
         elements.push(...gridIndexes.flatMap((index) => {
-            const x = padding + innerWidth * index / (gridCount + 1)
-            const y = padding + innerHeight * index / (gridCount + 1)
+            const x = plotLeft + innerWidth * index / (gridCount + 1)
+            const y = plotTop + innerHeight * index / (gridCount + 1)
             return [
                 React.createElement('line', {
                     key: `axis-grid-x-${index}`,
                     x1: x,
-                    y1: padding,
+                    y1: plotTop,
                     x2: x,
-                    y2: padding + innerHeight,
+                    y2: plotTop + innerHeight,
                     stroke: c.borderSubtle,
                     strokeWidth: 1,
                     opacity: 0.75,
                 }),
                 React.createElement('line', {
                     key: `axis-grid-y-${index}`,
-                    x1: padding,
+                    x1: plotLeft,
                     y1: y,
-                    x2: padding + innerWidth,
+                    x2: plotLeft + innerWidth,
                     y2: y,
                     stroke: c.borderSubtle,
                     strokeWidth: 1,
@@ -817,9 +826,9 @@ export function AxisPlot({
         elements.push(
             React.createElement('line', {
                 key: 'axis-x',
-                x1: padding,
+                x1: plotLeft,
                 y1: xAxisY,
-                x2: padding + innerWidth,
+                x2: plotLeft + innerWidth,
                 y2: xAxisY,
                 stroke: axisStroke,
                 strokeWidth: 1.6,
@@ -828,9 +837,9 @@ export function AxisPlot({
             React.createElement('line', {
                 key: 'axis-y',
                 x1: yAxisX,
-                y1: padding,
+                y1: plotTop,
                 x2: yAxisX,
-                y2: padding + innerHeight,
+                y2: plotTop + innerHeight,
                 stroke: axisStroke,
                 strokeWidth: 1.6,
                 opacity: 0.85,
@@ -941,30 +950,38 @@ export function AxisPlot({
             key: 'axis-x-label',
             style: {
                 position: 'absolute' as const,
-                left: width / 2,
-                bottom: 0,
-                width: width - padding * 2,
-                transform: 'translateX(-50%)',
+                left: frameX + frameWidth / 2,
+                top: height - Math.round(bottomGutter * 0.5),
+                width: frameWidth,
+                display: 'flex',
+                justifyContent: 'center',
+                transform: 'translate(-50%, -50%)',
                 textAlign: 'center' as const,
                 color: c.textMuted,
-                fontFamily: 'Inter',
-                fontSize: densityOf(c).f(11),
-                fontWeight: 750,
+                fontFamily: c.fontSans,
+                fontSize: d.f(11),
+                fontWeight: 600,
+                lineHeight: 1,
+                pointerEvents: 'none' as const,
             }
         }, xAxisLabel),
         yAxisLabel && React.createElement('div', {
             key: 'axis-y-label',
             style: {
                 position: 'absolute' as const,
-                left: 0,
-                top: height / 2,
-                width: height - padding * 2,
+                left: Math.round(leftGutter * 0.55),
+                top: frameY + frameHeight / 2,
+                width: frameHeight,
+                display: 'flex',
+                justifyContent: 'center',
                 transform: 'translate(-50%, -50%) rotate(-90deg)',
                 textAlign: 'center' as const,
                 color: c.textMuted,
-                fontFamily: 'Inter',
-                fontSize: densityOf(c).f(11),
-                fontWeight: 750,
+                fontFamily: c.fontSans,
+                fontSize: d.f(11),
+                fontWeight: 600,
+                lineHeight: 1,
+                pointerEvents: 'none' as const,
             }
         }, yAxisLabel),
     )
