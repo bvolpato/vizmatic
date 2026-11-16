@@ -107,7 +107,18 @@ class BloomRenderer {
 
     init(): void {
         const gl = this.gl
+        // Some Chromium versions accept failIfMajorPerformanceCaveat even for
+        // SwiftShader. Software WebGL adds a costly extra rasterization process.
+        const debug = gl.getExtension('WEBGL_debug_renderer_info')
+        const renderer = String(gl.getParameter(debug ? debug.UNMASKED_RENDERER_WEBGL : gl.RENDERER))
+        if (/SwiftShader|llvmpipe|softpipe|software rasterizer|Microsoft Basic Render/i.test(renderer)) {
+            throw new Error('Use CPU bloom for software WebGL')
+        }
         if (!gl.getExtension('EXT_color_buffer_float')) throw new Error('Float bloom targets unavailable')
+    }
+
+    private initPrograms(): void {
+        const gl = this.gl
         gl.disable(gl.DITHER)
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true)
         gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE)
@@ -228,6 +239,7 @@ class BloomRenderer {
         if (gl.isContextLost()) return false
         const size = this.size(width, height)
         if (!size) return false
+        if (!this.programs.length) this.initPrograms()
         if (this.canvas.width !== width) this.canvas.width = width
         if (this.canvas.height !== height) this.canvas.height = height
         if (gl.drawingBufferWidth !== width || gl.drawingBufferHeight !== height) return false
@@ -291,21 +303,32 @@ class BloomRenderer {
 
 let renderer: BloomRenderer | null | undefined
 
-/** Private fast path. False leaves the target intact for paintCanvasBloom's CPU fallback. */
-export function paintWebGLBloom(target: HTMLCanvasElement, main: CanvasRenderingContext2D, amount: number, background: readonly number[]): boolean {
-    if (!Number.isFinite(amount) || amount < 0 || !background.slice(0, 3).every(Number.isFinite)) return false
+/** Select the canvas backing before its first paint; repeated CPU readbacks can otherwise change rasterization. */
+export function supportsWebGLBloom(target: HTMLCanvasElement): boolean {
     try {
         if (renderer === undefined) {
             renderer = null
             const canvas = target.ownerDocument.createElement('canvas')
-            const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: true, antialias: false, depth: false, stencil: false, preserveDrawingBuffer: false })
+            const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: true, antialias: false, depth: false, stencil: false, preserveDrawingBuffer: false, failIfMajorPerformanceCaveat: true })
             if (gl) {
                 renderer = new BloomRenderer(canvas, gl)
                 renderer.init()
                 canvas.addEventListener('webglcontextlost', () => { renderer?.dispose(); renderer = null }, { once: true })
             }
         }
-        return renderer?.paint(target, main, amount, background) ?? false
+        return renderer !== null
+    } catch {
+        renderer?.dispose()
+        renderer = null
+        return false
+    }
+}
+
+/** Private fast path. False leaves the target intact for paintCanvasBloom's CPU fallback. */
+export function paintWebGLBloom(target: HTMLCanvasElement, main: CanvasRenderingContext2D, amount: number, background: readonly number[]): boolean {
+    if (!Number.isFinite(amount) || amount < 0 || !background.slice(0, 3).every(Number.isFinite) || !supportsWebGLBloom(target)) return false
+    try {
+        return renderer!.paint(target, main, amount, background)
     } catch {
         renderer?.dispose()
         renderer = null

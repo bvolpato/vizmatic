@@ -30,7 +30,7 @@ const bundled = values.profile ? join(out, 'bundle') : await mkdtemp(join(tmpdir
 let browser, server
 try {
     await mkdir(out, { recursive: true })
-    await build({ stdin: { contents: "export * from './src/stage/browser'; export {paintCanvasBloom} from './src/stage/bloom-canvas'", resolveDir: root },
+    await build({ stdin: { contents: "export * from './src/stage/browser'; export {paintCanvasBloom} from './src/stage/bloom-canvas'; export {supportsWebGLBloom} from './src/stage/bloom-webgl'", resolveDir: root },
         bundle: true, minify: !values.profile, format: 'esm', platform: 'browser', target: 'es2022', outfile: join(bundled, 'engine.js'), sourcemap: !!values.profile })
     for (const [i, file] of files.entries()) await build({ entryPoints: [file], bundle: true, minify: !values.profile,
         format: 'esm', platform: 'browser', target: 'es2022', outfile: join(bundled, `${i}.js`), sourcemap: !!values.profile,
@@ -90,7 +90,7 @@ try {
             canvas.height = Math.round(canvas.width * film.height / film.width)
             canvas.style.width = width + 'px'
             canvas.style.height = width * film.height / film.width + 'px'
-            const ctx = canvas.getContext('2d', { alpha: film.background === null })
+            const ctx = canvas.getContext('2d', { alpha: film.background === null, willReadFrequently: !engine.supportsWebGLBloom(canvas) })
             const rows = [], scale = canvas.width / film.width
             let bloom = null, previous, firstPaintMs = 0, readMs = 0, writeMs = 0
             const get = ctx.getImageData, put = ctx.putImageData

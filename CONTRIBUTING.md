@@ -109,7 +109,7 @@ pnpm benchmark:browser --channel chrome --out /tmp/vizmatic-profile
 pnpm benchmark:browser --film examples/films/lorenz.ts --from 37 --dpr 1,2 --profile --out /tmp/lorenz-profile
 ```
 
-The first command uses installed Google Chrome. Omit `--channel chrome` to use Playwright's Chromium. The benchmark requests GPU acceleration and records the actual GPU, browser, CPU, source commit, and dirty state. Check `environment.json` before comparing runs: a software renderer does not measure hardware performance.
+The first command uses installed Google Chrome. Omit `--channel chrome` to use Playwright's Chromium. The benchmark requests GPU acceleration and records the actual GPU, browser, CPU, source commit, and dirty state. Playback uses CPU bloom when WebGL reports a software renderer. Check `environment.json` before comparing runs: a software renderer does not measure hardware performance.
 
 `results.json` separates frame construction, Canvas command submission, bloom, pixel readback, and animation-frame intervals, with median and p95 timings. The default suite covers planetary geometry, Saturn's raster portrait, Lorenz, Downhill, Fourier, and Euler at 1280 CSS pixels and device ratios 1 and 2. `--width`, `--frames`, and `--look` select other conditions. `--profile` uses unminified code, retains its bundles and source maps, and saves `.cpuprofile` files for Chrome DevTools. Normal runs use minified code.
 

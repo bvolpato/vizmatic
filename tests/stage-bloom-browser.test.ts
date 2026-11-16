@@ -94,6 +94,7 @@ const GPU_PROBE = `(() => {
     const getContext = HTMLCanvasElement.prototype.getContext;
     const read = CanvasRenderingContext2D.prototype.getImageData;
     const extension = WebGL2RenderingContext.prototype.getExtension;
+    const parameter = WebGL2RenderingContext.prototype.getParameter;
     let gl = null, contexts = 0, reads = 0, gpuReads = 0, allocations = 0, liveTextures = 0, errorChecks = 0;
     const getError = WebGL2RenderingContext.prototype.getError;
     WebGL2RenderingContext.prototype.getError = function() { errorChecks++; return getError.call(this); };
@@ -112,6 +113,9 @@ const GPU_PROBE = `(() => {
         if (kind === 'webgl2') {
             contexts++;
             if (globalThis.failure === 'unavailable') return null;
+            // Exercise shader parity even on GPU-less CI. The software case
+            // separately verifies that production selects the CPU fallback.
+            options = { ...options, failIfMajorPerformanceCaveat: false };
         }
         const context = getContext.call(this, kind, options);
         if (kind === 'webgl2') gl = context;
@@ -120,6 +124,13 @@ const GPU_PROBE = `(() => {
     WebGL2RenderingContext.prototype.getExtension = function(name) {
         if (name === 'EXT_color_buffer_float' && globalThis.failure === 'no-float') return null;
         return extension.call(this, name);
+    };
+    WebGL2RenderingContext.prototype.getParameter = function(name) {
+        const debug = extension.call(this, 'WEBGL_debug_renderer_info');
+        if (debug && name === debug.UNMASKED_RENDERER_WEBGL) {
+            return globalThis.failure === 'software' ? 'ANGLE (Google, SwiftShader driver)' : 'Parity test GPU';
+        }
+        return parameter.call(this, name);
     };
     CanvasRenderingContext2D.prototype.getImageData = function(...args) {
         reads++;
@@ -217,7 +228,7 @@ const GPU_PROBE = `(() => {
             lightRatio: expectedLight ? actualLight / expectedLight : 1,
             reads: firstReads, repeatReads: reads - beforeReads - firstReads, gpuReads, contexts,
             newTextures: warmAllocations - beforeAllocations, repeatTextures: allocations - warmAllocations, liveTextures,
-            renderer: debug ? gl.getParameter(debug.UNMASKED_RENDERER_WEBGL) : null,
+            renderer: debug ? parameter.call(gl, debug.UNMASKED_RENDERER_WEBGL) : null,
             sourceChanges: secondSource.reduce((sum, value, i) => sum + (value !== thirdSource[i]), 0),
             repeatErrorChecks: errorChecks - warmErrorChecks,
         };
@@ -263,7 +274,7 @@ it.runIf(process.env.VIZMATIC_BROWSER_TESTS === '1')('matches the CPU kernel on 
     const browser = await step('GPU launch', launchBrowser)
     let failed = false
     try {
-        for (const failure of ['none', 'unavailable', 'no-float']) {
+        for (const failure of ['none', 'unavailable', 'no-float', 'software']) {
             const page = await step(`${failure}: page`, () => browser.newPage())
             try {
                 await page.route('http://bloom.test/**', route => route.request().url().endsWith('/engine.js')

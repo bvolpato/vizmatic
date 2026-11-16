@@ -1,4 +1,5 @@
 import { paintCanvasBloom, type CanvasBloom } from './bloom-canvas'
+import { supportsWebGLBloom } from './bloom-webgl'
 import { paintFrame, type Frame } from './display'
 import { isSuspend, type CompiledFilm } from './stage'
 import type { StageImage } from './node'
@@ -42,7 +43,7 @@ export class FilmPlayer {
         this.film = film
         this.options = options
         this.speed = options.speed ?? 1
-        const ctx = canvas.getContext('2d', { alpha: film.background === null })
+        const ctx = canvas.getContext('2d', { alpha: film.background === null, willReadFrequently: !supportsWebGLBloom(canvas) })
         if (!ctx) throw new Error('This browser could not create a 2D canvas.')
         this.ctx = ctx
         this.resizeCanvas()

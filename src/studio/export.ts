@@ -5,6 +5,7 @@
  */
 import * as gifenc from 'gifenc'
 import { paintCanvasBloom, type CanvasBloom } from '../stage/bloom-canvas'
+import { supportsWebGLBloom } from '../stage/bloom-webgl'
 import { FilmPlayer } from '../stage/player'
 import { isSuspend, type CompiledFilm, type Frame } from '../stage/index'
 import { muxMp4, muxWebm, vp9Config, type Mp4Sample, type VideoCodec } from './mp4'
@@ -89,7 +90,7 @@ export class FramePainter {
             this.accumulate = document.createElement('canvas')
             this.accumulate.width = width
             this.accumulate.height = height
-            this.accumulateCtx = this.accumulate.getContext('2d', { alpha: film.background === null })!
+            this.accumulateCtx = this.accumulate.getContext('2d', { alpha: film.background === null, willReadFrequently: !supportsWebGLBloom(this.accumulate) })!
         } else {
             this.accumulate = null
             this.accumulateCtx = null
