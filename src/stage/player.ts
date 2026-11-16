@@ -29,6 +29,9 @@ export class FilmPlayer {
     private last = 0
     private currentTime = 0
     private playing = false
+    private playbackSeq = 0
+    private destroyed = false
+    private pendingPaint: { promise: Promise<unknown> } | null = null
     private scale = 1
     private bloomState: CanvasBloom | null = null
     private observer: ResizeObserver | null = null
@@ -42,7 +45,7 @@ export class FilmPlayer {
         const ctx = canvas.getContext('2d', { alpha: film.background === null })
         if (!ctx) throw new Error('This browser could not create a 2D canvas.')
         this.ctx = ctx
-        this.resize()
+        this.resizeCanvas()
         if (typeof ResizeObserver !== 'undefined') {
             this.observer = new ResizeObserver(() => this.resize())
             this.observer.observe(canvas)
@@ -61,59 +64,70 @@ export class FilmPlayer {
 
     /** Replace the film with one of the same size, such as after an edit. The time stays. */
     swap(film: CompiledFilm): void {
+        if (this.destroyed) return
         const sizeChanged = film.width !== this.film.width || film.height !== this.film.height
+        this.pendingPaint = null
         this.film = film
         if (sizeChanged) {
             this.bloomState = null
-            this.resize()
+            this.resizeCanvas()
         }
         this.paint()
     }
 
     /** Replace the compiled film while preserving playhead (clamped to [0, duration]) and play state. */
     setFilm(film: CompiledFilm): void {
+        if (this.destroyed) return
         const sizeChanged = film.width !== this.film.width || film.height !== this.film.height
+        this.pendingPaint = null
         this.film = film
         this.currentTime = Math.max(0, Math.min(film.duration, this.currentTime))
         this.bloomState = null
-        if (sizeChanged) {
-            this.resize()
-            if (this.playing) this.paint()
-        } else {
-            this.paint()
-        }
+        if (sizeChanged) this.resizeCanvas()
+        this.paint()
         this.options.onTime?.(this.currentTime)
     }
 
     /** Match the canvas buffer to its displayed size. */
     resize(): void {
+        if (this.destroyed) return
+        if (this.resizeCanvas()) this.paint()
+    }
+
+    private resizeCanvas(): boolean {
         const rect = this.canvas.getBoundingClientRect()
         const ratio = this.options.pixelRatio ?? Math.min(2, globalThis.devicePixelRatio || 1)
         const cssWidth = rect.width || this.film.width
         const width = Math.max(2, Math.round(cssWidth * ratio))
         const height = Math.max(2, Math.round(width * this.film.height / this.film.width))
-        if (this.canvas.width !== width || this.canvas.height !== height) {
+        const bufferChanged = this.canvas.width !== width || this.canvas.height !== height
+        if (bufferChanged) {
             this.canvas.width = width
             this.canvas.height = height
             this.bloomState = null
         }
-        this.scale = width / this.film.width
-        if (!this.playing) this.paint()
+        const scale = width / this.film.width
+        const scaleChanged = this.scale !== scale
+        this.scale = scale
+        return bufferChanged || scaleChanged
     }
 
     play(): void {
-        if (this.playing) return
+        if (this.destroyed || this.playing) return
         if (this.currentTime >= this.film.duration - 1e-6) this.currentTime = 0
         this.playing = true
+        const seq = ++this.playbackSeq
         this.last = performance.now()
         this.options.onState?.({ playing: true })
-        this.raf = requestAnimationFrame(this.tick)
+        if (this.playing && seq === this.playbackSeq) this.raf = requestAnimationFrame(this.tick)
     }
 
     pause(): void {
         if (!this.playing) return
         this.playing = false
+        this.playbackSeq++
         cancelAnimationFrame(this.raf)
+        this.raf = 0
         this.options.onState?.({ playing: false })
     }
 
@@ -123,6 +137,7 @@ export class FilmPlayer {
     }
 
     seek(time: number): void {
+        if (this.destroyed) return
         this.currentTime = Math.max(0, Math.min(this.film.duration, time))
         this.paint()
         this.options.onSeek?.(this.currentTime)
@@ -141,12 +156,17 @@ export class FilmPlayer {
     }
 
     destroy(): void {
+        if (this.destroyed) return
+        this.destroyed = true
+        this.pendingPaint = null
         this.pause()
         this.observer?.disconnect()
+        this.observer = null
     }
 
     private readonly tick = (now: number): void => {
         if (!this.playing) return
+        const seq = this.playbackSeq
         // The first animation timestamp can be slightly older than the play() call.
         // A negative step would rewind past a chapter at time 0 and stop stepped playback there.
         const delta = Math.max(0, Math.min(0.1, (now - this.last) / 1000))
@@ -159,7 +179,7 @@ export class FilmPlayer {
                 this.currentTime = boundary.time
                 this.paint()
                 this.options.onTime?.(this.currentTime)
-                this.pause()
+                if (seq === this.playbackSeq) this.pause()
                 return
             }
         }
@@ -169,14 +189,14 @@ export class FilmPlayer {
                 this.currentTime = this.film.duration
                 this.paint()
                 this.options.onTime?.(this.currentTime)
-                this.pause()
+                if (seq === this.playbackSeq) this.pause()
                 return
             }
         }
         this.currentTime = next
         this.paint()
         this.options.onTime?.(this.currentTime)
-        this.raf = requestAnimationFrame(this.tick)
+        if (this.playing && seq === this.playbackSeq) this.raf = requestAnimationFrame(this.tick)
     }
 
     private lookupImage = (image: StageImage): CanvasImageSource | null => {
@@ -186,16 +206,28 @@ export class FilmPlayer {
     }
 
     private paint(): void {
+        if (this.destroyed) return
         let frame: Frame
         try {
             frame = this.film.frame(this.currentTime)
         } catch (error) {
             if (isSuspend(error)) {
-                void error.promise.then(() => this.paint())
+                if (this.pendingPaint?.promise !== error.promise) {
+                    const retry = { promise: error.promise }
+                    this.pendingPaint = retry
+                    void retry.promise.then(() => {
+                        if (this.destroyed || this.pendingPaint !== retry) return
+                        this.pendingPaint = null
+                        this.paint()
+                    }, () => {
+                        if (this.pendingPaint === retry) this.pendingPaint = null
+                    })
+                }
                 return
             }
             throw error
         }
+        this.pendingPaint = null
         paintFrame(this.ctx, frame, this.scale, this.lookupImage)
         if (this.options.bloom !== false && frame.bloom > 0 && frame.dark) {
             this.bloomState = paintCanvasBloom(this.canvas, this.ctx, frame.bloom, frame.background, this.bloomState)
@@ -269,10 +301,12 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
         private captionsEnabled = true
         private reconfigureQueued = false
         private configSeq = 0
+        private connectionSeq = 0
         private intersection: IntersectionObserver | null = null
         private keys: AbortController | null = null
 
         connectedCallback(): void {
+            const connection = ++this.connectionSeq
             // Moving an element in the DOM disconnects it first, so a reconnect rebuilds from scratch.
             const root = this.shadowRoot ?? this.attachShadow({ mode: 'open' })
             const rawLabel = this.getAttribute('label') ?? 'Animation'
@@ -280,6 +314,7 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
             root.querySelector('canvas')!.setAttribute('aria-label', rawLabel)
             this.setAttribute('data-paused', '')
             this.intersection = new IntersectionObserver((entries) => {
+                if (connection !== this.connectionSeq) return
                 this.visible = entries.some((entry) => entry.isIntersecting)
                 if (this.visible && !this.started) {
                     this.startPromise = this.start()
@@ -298,6 +333,7 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
         }
 
         disconnectedCallback(): void {
+            this.connectionSeq++
             this.intersection?.disconnect()
             this.keys?.abort()
             this.player?.destroy()
@@ -308,6 +344,8 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
                 this.audio = null
             }
             this.started = false
+            this.visible = false
+            this.wantsPlay = false
             this.startPromise = null
             this.reconfigureQueued = false
             this.configSeq++
@@ -316,7 +354,9 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
         attributeChangedCallback(_attr: string, oldValue: string | null, newValue: string | null): void {
             if (!this.started || oldValue === newValue || this.reconfigureQueued) return
             this.reconfigureQueued = true
+            const connection = this.connectionSeq
             queueMicrotask(() => {
+                if (connection !== this.connectionSeq) return
                 this.reconfigureQueued = false
                 if (this.started) void this.reconfigure()
             })
@@ -330,8 +370,10 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
         /** Recompile with updated look or background while preserving playhead and play state. */
         async reconfigure(options?: FilmLoadOptions): Promise<void> {
             if (!this.started) return
+            const connection = this.connectionSeq
             const seq = ++this.configSeq
             if (!this.player && this.startPromise) await this.startPromise
+            if (connection !== this.connectionSeq) return
             const src = this.getAttribute('src')
             if (!src || !this.player || seq !== this.configSeq) return
             const resolved: FilmLoadOptions = {
@@ -340,10 +382,11 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
             }
             try {
                 const nextFilm = await load(src, resolved)
-                if (seq !== this.configSeq || !this.player) return
+                if (connection !== this.connectionSeq || seq !== this.configSeq || !this.player) return
                 this.syncFilmMeta(nextFilm)
                 this.player.setFilm(nextFilm)
             } catch (error) {
+                if (connection !== this.connectionSeq || seq !== this.configSeq) return
                 console.error(`vz-film: could not reconfigure ${src}:`, error)
             }
         }
@@ -373,6 +416,7 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
 
         private async start(): Promise<void> {
             this.started = true
+            const connection = this.connectionSeq
             const src = this.getAttribute('src')
             if (!src) return
             const root = this.shadowRoot!
@@ -384,6 +428,7 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
                     background: this.getAttribute('background') ?? undefined,
                 })
             } catch (error) {
+                if (connection !== this.connectionSeq) return
                 // A silent failure leaves a blank box, so say what went wrong.
                 const message = error instanceof Error ? error.message : String(error)
                 console.error(`vz-film: could not load ${src}:`, error)
@@ -395,7 +440,7 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
                 this.dispatchEvent(new CustomEvent('error', { detail: { error } }))
                 return
             }
-            if (!this.started) return
+            if (connection !== this.connectionSeq) return
             if (startSeq !== this.configSeq) {
                 try {
                     film = await load(src, {
@@ -405,7 +450,7 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
                 } catch {
                     // Keep the initial film if the updated attributes failed.
                 }
-                if (!this.started) return
+                if (connection !== this.connectionSeq) return
             }
             this.syncFilmMeta(film)
             const canvas = root.querySelector('canvas')!
@@ -533,6 +578,7 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
             else if (startAt) player.seek(Number(startAt))
             else if (firstStep) player.seek(firstStep.time)
             else onTime(0)
+            if (connection !== this.connectionSeq) return
             toggle.addEventListener('click', () => player.toggle())
             canvas.addEventListener('click', () => player.toggle())
             ccBtn.addEventListener('click', () => {

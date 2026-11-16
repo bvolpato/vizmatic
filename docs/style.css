@@ -210,7 +210,8 @@ input[type="range"] { accent-color: var(--mark); }
 .wall:not(.is-filtered) .wall-item.is-wide { grid-column: 1 / span 8; grid-row: span 2; }
 .wall:not(.is-filtered) .wall-item.is-wide.is-right { grid-column: 5 / span 8; }
 .wall-frame { position: relative; display: block; aspect-ratio: 16 / 9; overflow: hidden; background: var(--bg); }
-.wall-frame img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: opacity .25s; }
+.wall-frame img { position: absolute; z-index: 1; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 1; pointer-events: none; }
+.wall-frame.is-preview-ready img { opacity: 0; transition: opacity .25s; }
 .wall-frame vz-film { position: absolute; inset: 0; pointer-events: none; }
 :root:not([data-site-theme="light"]) .wall-frame {
   mask-image: linear-gradient(90deg, transparent, #000 2%, #000 98%, transparent), linear-gradient(transparent, #000 3.6%, #000 96.4%, transparent);

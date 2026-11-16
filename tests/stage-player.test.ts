@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineFilmElement, FilmPlayer, type FilmLoadOptions, type VzFilmElement } from '../src/stage/player'
-import { compileFilm, film } from '../src/stage/stage'
+import { compileFilm, film, Suspend, type CompiledFilm } from '../src/stage/stage'
 
 function createCanvasMock() {
     const fills: string[] = []
@@ -22,6 +22,225 @@ function createCanvasMock() {
     } as unknown as HTMLCanvasElement
     return { canvas, ctx, fills }
 }
+
+function animationClock() {
+    const pending = new Map<number, FrameRequestCallback>()
+    let id = 0
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+        pending.set(++id, callback)
+        return id
+    })
+    vi.stubGlobal('cancelAnimationFrame', (handle: number) => pending.delete(handle))
+    vi.spyOn(performance, 'now').mockReturnValue(0)
+    return {
+        pending,
+        frame(now: number) {
+            for (const [handle, callback] of [...pending]) {
+                pending.delete(handle)
+                callback(now)
+            }
+        },
+    }
+}
+
+function deferred<T>() {
+    let resolve!: (value: T) => void
+    let reject!: (reason: unknown) => void
+    const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no })
+    return { promise, resolve, reject }
+}
+
+describe('FilmPlayer lifecycle', () => {
+    afterEach(() => {
+        vi.restoreAllMocks()
+        vi.unstubAllGlobals()
+    })
+
+    it('paints once on construction and skips unchanged paused resizes', async () => {
+        const compiled = await compileFilm(film({ bloom: 0 }, s => { s.wait(2) }))
+        const { canvas, fills } = createCanvasMock()
+        const player = new FilmPlayer(canvas, compiled, { pixelRatio: 2 })
+        try {
+            expect(fills).toHaveLength(1)
+            player.resize()
+            expect(fills).toHaveLength(1)
+        } finally {
+            player.destroy()
+        }
+    })
+
+    it('repaints a changed buffer immediately during playback and while paused', async () => {
+        const compiled = await compileFilm(film({ bloom: 0 }, s => { s.wait(2) }))
+        const { canvas, fills } = createCanvasMock()
+        const clock = animationClock()
+        const player = new FilmPlayer(canvas, compiled, { pixelRatio: 2 })
+        try {
+            fills.length = 0
+            player.play()
+            vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({ width: 200 } as DOMRect)
+            player.resize()
+            expect(canvas.width).toBe(400)
+            expect(fills).toHaveLength(1)
+            expect(clock.pending.size).toBe(1)
+            player.pause()
+            player.resize()
+            expect(fills).toHaveLength(1)
+            canvas.width = 2
+            player.resize()
+            expect(fills).toHaveLength(2)
+        } finally {
+            player.destroy()
+        }
+    })
+
+    it.each(['swap', 'setFilm'] as const)('%s paints a resized film once while paused or playing', async (method) => {
+        const compiled = await compileFilm(film({ bloom: 0 }, s => { s.wait(2) }))
+        const paper = await compileFilm(film({ bloom: 0, look: 'paper', width: 640, height: 360 }, s => { s.wait(2) }))
+        const { canvas, fills } = createCanvasMock()
+        animationClock()
+        const player = new FilmPlayer(canvas, compiled)
+        try {
+            fills.length = 0
+            player[method](paper)
+            expect(fills).toEqual(['#f7f3ea'])
+            player.play()
+            fills.length = 0
+            player[method](compiled)
+            expect(fills).toEqual(['#0b0c10'])
+        } finally {
+            player.destroy()
+        }
+    })
+
+    it.each(['pause', 'restart', 'destroy'] as const)('keeps one RAF owner when onTime requests %s', async (action) => {
+        const compiled = await compileFilm(film({ bloom: 0 }, s => { s.wait(2) }))
+        const clock = animationClock()
+        const { canvas } = createCanvasMock()
+        const player = new FilmPlayer(canvas, compiled, {
+            onTime: () => {
+                if (action === 'destroy') player.destroy()
+                else {
+                    player.pause()
+                    if (action === 'restart') player.play()
+                }
+            },
+        })
+        try {
+            player.play()
+            clock.frame(16)
+            expect(clock.pending.size).toBe(action === 'restart' ? 1 : 0)
+            clock.frame(32)
+            expect(clock.pending.size).toBe(action === 'restart' ? 1 : 0)
+        } finally {
+            player.destroy()
+        }
+        expect(clock.pending.size).toBe(0)
+    })
+
+    it('does not schedule a second RAF when onState restarts playback or revives a destroyed player', async () => {
+        const compiled = await compileFilm(film({ bloom: 0 }, s => { s.wait(2) }))
+        const clock = animationClock()
+        const { canvas } = createCanvasMock()
+        let restart = true
+        const player = new FilmPlayer(canvas, compiled, {
+            onState: ({ playing }) => {
+                if (playing && restart) {
+                    restart = false
+                    player.pause()
+                    player.play()
+                } else if (!playing && !restart) player.play()
+            },
+        })
+        try {
+            player.play()
+            expect(clock.pending.size).toBe(1)
+        } finally {
+            player.destroy()
+        }
+        expect(player.isPlaying).toBe(false)
+        expect(clock.pending.size).toBe(0)
+    })
+
+    it('retries a suspended frame once after multiple ticks, at the latest playhead', async () => {
+        const compiled = await compileFilm(film({ bloom: 0 }, s => { s.wait(2) }))
+        const asset = deferred<void>()
+        let loaded = false
+        const render = compiled.frame.bind(compiled)
+        const frame = vi.spyOn(compiled, 'frame').mockImplementation((time: number) => {
+            if (!loaded) throw new Suspend(asset.promise)
+            return render(time)
+        })
+        const { canvas, fills } = createCanvasMock()
+        const clock = animationClock()
+        const player = new FilmPlayer(canvas, compiled)
+        try {
+            player.play()
+            clock.frame(16)
+            clock.frame(32)
+            player.pause()
+            frame.mockClear()
+            loaded = true
+            asset.resolve()
+            await asset.promise
+            expect(frame).toHaveBeenCalledExactlyOnceWith(player.time)
+            expect(fills).toHaveLength(1)
+        } finally {
+            player.destroy()
+        }
+    })
+
+    it.each(['destroy', 'setFilm', 'swap', 'seek'] as const)('ignores a suspended render made obsolete by %s', async (action) => {
+        const compiled = await compileFilm(film({ bloom: 0 }, s => { s.wait(2) }))
+        const asset = deferred<void>()
+        let loaded = false
+        const render = compiled.frame.bind(compiled)
+        const frame = vi.spyOn(compiled, 'frame').mockImplementation((time: number) => {
+            if (!loaded && time === 0) throw new Suspend(asset.promise)
+            return render(time)
+        })
+        const { canvas, fills } = createCanvasMock()
+        const player = new FilmPlayer(canvas, compiled)
+        try {
+            if (action === 'destroy') player.destroy()
+            else if (action === 'seek') player.seek(1)
+            else player[action](await compileFilm(film({ bloom: 0 }, s => { s.wait(2) })))
+            fills.length = 0
+            frame.mockClear()
+            loaded = true
+            asset.resolve()
+            await asset.promise
+            expect(frame).not.toHaveBeenCalled()
+            expect(fills).toHaveLength(0)
+        } finally {
+            player.destroy()
+        }
+    })
+
+    it('keeps only the new film retry when setFilm suspends on the same asset', async () => {
+        const compiled = await compileFilm(film({ bloom: 0 }, s => { s.wait(2) }))
+        const asset = deferred<void>()
+        let loaded = false
+        const render = compiled.frame.bind(compiled)
+        const frame = (time: number) => {
+            if (!loaded) throw new Suspend(asset.promise)
+            return render(time)
+        }
+        vi.spyOn(compiled, 'frame').mockImplementation(frame)
+        const replacement = await compileFilm(film({ bloom: 0 }, s => { s.wait(2) }))
+        vi.spyOn(replacement, 'frame').mockImplementation(frame)
+        const { canvas, fills } = createCanvasMock()
+        const player = new FilmPlayer(canvas, compiled)
+        try {
+            player.setFilm(replacement)
+            loaded = true
+            asset.resolve()
+            await asset.promise
+            expect(fills).toHaveLength(1)
+        } finally {
+            player.destroy()
+        }
+    })
+})
 
 it('holds the next chapter when a frame lands just before it', async () => {
     const deck = await compileFilm(film({ bloom: 0 }, s => {
@@ -117,194 +336,7 @@ describe('FilmPlayer.setFilm and onSeek', () => {
 
 describe('<vz-film> live reconfigure, captions overlay, and synced audio', () => {
     it('observes look/background, toggles captions, syncs audio seeks, and falls back to muted on autoplay block', async () => {
-        class MiniNode {
-            tagName: string
-            className = ''
-            hidden = false
-            textContent = ''
-            innerHTML = ''
-            tabIndex = -1
-            preload = ''
-            src = ''
-            loop = false
-            muted = false
-            paused = true
-            currentTime = 0
-            duration = 10
-            playbackRate = 1
-            playImpl: () => Promise<void> = async () => {
-                this.paused = false
-            }
-            readonly style = {
-                width: '',
-                left: '',
-                cssText: '',
-                props: new Map<string, string>(),
-                setProperty(k: string, v: string) {
-                    this.props.set(k, v)
-                },
-            }
-            readonly attrs = new Map<string, string>()
-            readonly listeners = new Map<string, Array<(event: unknown) => void>>()
-            readonly children: MiniNode[] = []
-
-            constructor(tagName = 'div') {
-                this.tagName = tagName.toUpperCase()
-            }
-            setAttribute(name: string, value: string): void {
-                const prev = this.attrs.get(name) ?? null
-                this.attrs.set(name, value)
-                const ctor = this.constructor as unknown as { observedAttributes?: string[] }
-                if (ctor.observedAttributes?.includes(name) && 'attributeChangedCallback' in this) {
-                    ;(this as unknown as { attributeChangedCallback: (n: string, o: string | null, v: string | null) => void })
-                        .attributeChangedCallback(name, prev, value)
-                }
-            }
-            getAttribute(name: string): string | null {
-                return this.attrs.get(name) ?? null
-            }
-            hasAttribute(name: string): boolean {
-                return this.attrs.has(name)
-            }
-            removeAttribute(name: string): void {
-                const prev = this.attrs.get(name) ?? null
-                if (!this.attrs.has(name)) return
-                this.attrs.delete(name)
-                const ctor = this.constructor as unknown as { observedAttributes?: string[] }
-                if (ctor.observedAttributes?.includes(name) && 'attributeChangedCallback' in this) {
-                    ;(this as unknown as { attributeChangedCallback: (n: string, o: string | null, v: string | null) => void })
-                        .attributeChangedCallback(name, prev, null)
-                }
-            }
-            append(...nodes: MiniNode[]): void {
-                this.children.push(...nodes)
-            }
-            remove(): void {}
-            addEventListener(type: string, fn: (event: unknown) => void): void {
-                const list = this.listeners.get(type) ?? []
-                list.push(fn)
-                this.listeners.set(type, list)
-            }
-            dispatchEvent(event: { type: string }): boolean {
-                for (const fn of this.listeners.get(event.type) ?? []) fn(event)
-                return true
-            }
-            click(): void {
-                this.dispatchEvent({ type: 'click' })
-            }
-            play(): Promise<void> {
-                return this.playImpl()
-            }
-            pause(): void {
-                this.paused = true
-            }
-            getBoundingClientRect() {
-                return { width: 200, left: 0 }
-            }
-            getContext() {
-                return { fillStyle: '', save() {}, restore() {}, setTransform() {}, clearRect() {}, fillRect() {} }
-            }
-        }
-
-        class MiniShadowRoot {
-            private nodes = new Map<string, MiniNode>()
-            readonly appended: MiniNode[] = []
-            private rawHtml = ''
-
-            set innerHTML(value: string) {
-                this.rawHtml = value
-                const canvas = new MiniNode('canvas')
-                const caption = new MiniNode('div')
-                caption.className = 'caption'
-                caption.hidden = true
-                const toggle = new MiniNode('button')
-                toggle.className = 'toggle'
-                const track = new MiniNode('div')
-                track.className = 'track'
-                const fill = new MiniNode('div')
-                fill.className = 'fill'
-                const time = new MiniNode('span')
-                time.className = 'time'
-                const cc = new MiniNode('button')
-                cc.className = 'cc'
-                cc.hidden = true
-                const mute = new MiniNode('button')
-                mute.className = 'mute'
-                mute.hidden = true
-                const full = new MiniNode('button')
-                full.className = 'full'
-                this.nodes = new Map([
-                    ['canvas', canvas],
-                    ['.caption', caption],
-                    ['.toggle', toggle],
-                    ['.track', track],
-                    ['.fill', fill],
-                    ['.time', time],
-                    ['.cc', cc],
-                    ['.mute', mute],
-                    ['.full', full],
-                ])
-            }
-            get innerHTML(): string {
-                return this.rawHtml
-            }
-            querySelector(selector: string): MiniNode | null {
-                return this.nodes.get(selector) ?? null
-            }
-            append(node: MiniNode): void {
-                this.appended.push(node)
-            }
-        }
-
-        ;(MiniNode.prototype as unknown as { querySelectorAll: () => MiniNode[] }).querySelectorAll = function (this: MiniNode) {
-            return this.children
-        }
-
-        class StubElement extends MiniNode {
-            shadowRoot: MiniShadowRoot | null = null
-            attachShadow(): MiniShadowRoot {
-                this.shadowRoot = new MiniShadowRoot()
-                return this.shadowRoot
-            }
-        }
-
-        let intersectCb: ((entries: Array<{ isIntersecting: boolean }>) => void) | null = null
-        const createdAudios: MiniNode[] = []
-        let rejectUnmutedPlay = true
-        const registry = new Map<string, CustomElementConstructor>()
-
-        vi.stubGlobal('HTMLElement', StubElement)
-        vi.stubGlobal('Element', MiniNode)
-        vi.stubGlobal('customElements', {
-            get: (name: string) => registry.get(name),
-            define: (name: string, ctor: CustomElementConstructor) => registry.set(name, ctor),
-        })
-        vi.stubGlobal('IntersectionObserver', class {
-            constructor(cb: (entries: Array<{ isIntersecting: boolean }>) => void) {
-                intersectCb = cb
-            }
-            observe(): void {}
-            disconnect(): void {}
-        })
-        vi.stubGlobal('document', {
-            fullscreenElement: null,
-            createElement: (tag: string) => {
-                const node = new MiniNode(tag)
-                if (tag === 'audio') {
-                    node.playImpl = async () => {
-                        if (rejectUnmutedPlay && !node.muted) {
-                            throw new DOMException('Autoplay blocked', 'NotAllowedError')
-                        }
-                        node.paused = false
-                    }
-                    createdAudios.push(node)
-                }
-                return node
-            },
-        })
-        vi.stubGlobal('requestAnimationFrame', vi.fn().mockReturnValue(1))
-        vi.stubGlobal('cancelAnimationFrame', vi.fn())
-        vi.spyOn(performance, 'now').mockReturnValue(0)
+        const { createElement, createdAudios, intersect, allowUnmutedPlay } = setupFilmElement()
 
         const loadCalls: Array<{ src: string; options?: FilmLoadOptions }> = []
         const load = vi.fn(async (src: string, options?: FilmLoadOptions) => {
@@ -324,14 +356,8 @@ describe('<vz-film> live reconfigure, captions overlay, and synced audio', () =>
         })
 
         try {
-            defineFilmElement(load, 'vz-film-test')
-            const Ctor = registry.get('vz-film-test') as unknown as {
-                new (): VzFilmElement & StubElement & { connectedCallback(): void; disconnectedCallback(): void }
-                observedAttributes: string[]
-            }
-            expect(Ctor.observedAttributes).toEqual(['look', 'background'])
-
-            const el = new Ctor()
+            const el = createElement(load)
+            expect((el.constructor as { observedAttributes?: string[] }).observedAttributes).toEqual(['look', 'background'])
             el.setAttribute('src', './demo.js')
             el.setAttribute('look', 'midnight')
             el.setAttribute('audio', './narration.m4a')
@@ -342,11 +368,11 @@ describe('<vz-film> live reconfigure, captions overlay, and synced audio', () =>
             el.addEventListener('ready', () => {
                 readyFired = true
             })
-            intersectCb!([{ isIntersecting: true }])
+            intersect()
             await vi.waitFor(() => expect(readyFired).toBe(true))
 
             const player = el.controller!
-            const root = el.shadowRoot as unknown as MiniShadowRoot
+            const root = el.shadowRoot!
             const caption = root.querySelector('.caption')!
             const ccBtn = root.querySelector('.cc')!
             const muteBtn = root.querySelector('.mute')!
@@ -396,7 +422,7 @@ describe('<vz-film> live reconfigure, captions overlay, and synced audio', () =>
             expect(player.time).toBe(2.5)
 
             // Pausing player pauses synced audio.
-            rejectUnmutedPlay = false
+            allowUnmutedPlay()
             player.pause()
             expect(audio.paused).toBe(true)
 
@@ -447,3 +473,300 @@ describe('<vz-film> live reconfigure, captions overlay, and synced audio', () =>
         }
     })
 })
+
+describe('<vz-film> connection lifecycle', () => {
+    afterEach(() => {
+        vi.restoreAllMocks()
+        vi.unstubAllGlobals()
+    })
+
+    it('applies theme changes during initial loading without invalidating the connection', async () => {
+        const { createElement, intersect } = setupFilmElement()
+        const compiled = await compileFilm(film({ bloom: 0 }, s => { s.wait(2) }))
+        const paper = await compileFilm(film({ bloom: 0, look: 'paper' }, s => { s.wait(2) }))
+        const pending = deferred<CompiledFilm>()
+        const load = vi.fn(() => Promise.resolve(paper)).mockImplementationOnce(() => pending.promise)
+        const el = createElement(load)
+        el.setAttribute('src', './demo.js')
+        el.connectedCallback()
+        intersect()
+        try {
+            el.setAttribute('look', 'paper')
+            await Promise.resolve()
+            pending.resolve(compiled)
+            await vi.waitFor(() => expect(el.controller?.film).toBe(paper))
+            expect(load).toHaveBeenLastCalledWith('./demo.js', { look: 'paper', background: undefined })
+        } finally {
+            el.disconnectedCallback()
+        }
+    })
+
+    it.each(['initial', 'theme reload', 'reconfigure', 'failure'] as const)('discards an obsolete %s after reconnecting', async (phase) => {
+        const { createElement, createdAudios, intersect, allowUnmutedPlay } = setupFilmElement()
+        allowUnmutedPlay()
+        const clock = animationClock()
+        const compiled = await compileFilm(film({ bloom: 0 }, s => { s.wait(2) }))
+        const pending = deferred<CompiledFilm>()
+        const reload = deferred<CompiledFilm>()
+        const load = vi.fn(() => Promise.resolve(compiled)).mockImplementationOnce(() => pending.promise)
+        const el = createElement(load)
+        const ready = vi.fn()
+        const error = vi.fn()
+        const logError = vi.spyOn(console, 'error').mockImplementation(() => {})
+        el.setAttribute('src', './demo.js')
+        el.setAttribute('autoplay', '')
+        el.setAttribute('audio', './narration.m4a')
+        el.addEventListener('ready', ready)
+        el.addEventListener('error', error)
+        el.connectedCallback()
+        intersect()
+        let reconfigured: Promise<void> | undefined
+        try {
+            if (phase === 'theme reload') {
+                load.mockImplementationOnce(() => reload.promise)
+                el.setAttribute('look', 'paper')
+                await Promise.resolve()
+                pending.resolve(compiled)
+                await pending.promise
+                expect(load).toHaveBeenCalledTimes(2)
+            } else if (phase === 'reconfigure') {
+                pending.resolve(compiled)
+                await pending.promise
+                load.mockImplementationOnce(() => reload.promise)
+                reconfigured = el.reconfigure({ look: 'paper' })
+            }
+            el.disconnectedCallback()
+            ready.mockClear()
+            el.connectedCallback()
+            intersect()
+            await vi.waitFor(() => expect(ready).toHaveBeenCalledOnce())
+            const current = el.controller!
+            const fills = vi.spyOn(current, 'setFilm')
+            const loadCount = load.mock.calls.length
+            if (phase === 'failure') pending.reject(new Error('Obsolete load failed'))
+            else pending.resolve(compiled)
+            reload.resolve(compiled)
+            await pending.promise.catch(() => {})
+            await reload.promise
+            await reconfigured
+            expect(el.controller).toBe(current)
+            expect(ready).toHaveBeenCalledOnce()
+            expect(error).not.toHaveBeenCalled()
+            expect(logError).not.toHaveBeenCalled()
+            expect(load).toHaveBeenCalledTimes(loadCount)
+            expect(fills).not.toHaveBeenCalled()
+            expect(clock.pending.size).toBe(1)
+            expect(createdAudios.filter(audio => !audio.paused)).toHaveLength(1)
+            el.disconnectedCallback()
+            expect(clock.pending.size).toBe(0)
+            expect(createdAudios.every(audio => audio.paused)).toBe(true)
+        } finally {
+            el.disconnectedCallback()
+        }
+    })
+})
+
+function setupFilmElement() {
+    class MiniNode {
+        tagName: string
+        className = ''
+        hidden = false
+        textContent = ''
+        innerHTML = ''
+        tabIndex = -1
+        preload = ''
+        src = ''
+        loop = false
+        muted = false
+        paused = true
+        currentTime = 0
+        duration = 10
+        playbackRate = 1
+        playImpl: () => Promise<void> = async () => {
+            this.paused = false
+        }
+        readonly style = {
+            width: '',
+            left: '',
+            cssText: '',
+            props: new Map<string, string>(),
+            setProperty(k: string, v: string) {
+                this.props.set(k, v)
+            },
+        }
+        readonly attrs = new Map<string, string>()
+        readonly listeners = new Map<string, Array<(event: unknown) => void>>()
+        readonly children: MiniNode[] = []
+
+        constructor(tagName = 'div') {
+            this.tagName = tagName.toUpperCase()
+        }
+        setAttribute(name: string, value: string): void {
+            const prev = this.attrs.get(name) ?? null
+            this.attrs.set(name, value)
+            const ctor = this.constructor as unknown as { observedAttributes?: string[] }
+            if (ctor.observedAttributes?.includes(name) && 'attributeChangedCallback' in this) {
+                ;(this as unknown as { attributeChangedCallback: (n: string, o: string | null, v: string | null) => void })
+                    .attributeChangedCallback(name, prev, value)
+            }
+        }
+        getAttribute(name: string): string | null {
+            return this.attrs.get(name) ?? null
+        }
+        hasAttribute(name: string): boolean {
+            return this.attrs.has(name)
+        }
+        removeAttribute(name: string): void {
+            const prev = this.attrs.get(name) ?? null
+            if (!this.attrs.has(name)) return
+            this.attrs.delete(name)
+            const ctor = this.constructor as unknown as { observedAttributes?: string[] }
+            if (ctor.observedAttributes?.includes(name) && 'attributeChangedCallback' in this) {
+                ;(this as unknown as { attributeChangedCallback: (n: string, o: string | null, v: string | null) => void })
+                    .attributeChangedCallback(name, prev, null)
+            }
+        }
+        append(...nodes: MiniNode[]): void {
+            this.children.push(...nodes)
+        }
+        remove(): void {}
+        addEventListener(type: string, fn: (event: unknown) => void): void {
+            const list = this.listeners.get(type) ?? []
+            list.push(fn)
+            this.listeners.set(type, list)
+        }
+        dispatchEvent(event: { type: string }): boolean {
+            for (const fn of this.listeners.get(event.type) ?? []) fn(event)
+            return true
+        }
+        click(): void {
+            this.dispatchEvent({ type: 'click' })
+        }
+        play(): Promise<void> {
+            return this.playImpl()
+        }
+        pause(): void {
+            this.paused = true
+        }
+        getBoundingClientRect() {
+            return { width: 200, left: 0 }
+        }
+        getContext() {
+            return { fillStyle: '', save() {}, restore() {}, setTransform() {}, clearRect() {}, fillRect() {} }
+        }
+    }
+
+    class MiniShadowRoot {
+        private nodes = new Map<string, MiniNode>()
+        readonly appended: MiniNode[] = []
+        private rawHtml = ''
+
+        set innerHTML(value: string) {
+            this.rawHtml = value
+            const canvas = new MiniNode('canvas')
+            const caption = new MiniNode('div')
+            caption.className = 'caption'
+            caption.hidden = true
+            const toggle = new MiniNode('button')
+            toggle.className = 'toggle'
+            const track = new MiniNode('div')
+            track.className = 'track'
+            const fill = new MiniNode('div')
+            fill.className = 'fill'
+            const time = new MiniNode('span')
+            time.className = 'time'
+            const cc = new MiniNode('button')
+            cc.className = 'cc'
+            cc.hidden = true
+            const mute = new MiniNode('button')
+            mute.className = 'mute'
+            mute.hidden = true
+            const full = new MiniNode('button')
+            full.className = 'full'
+            this.nodes = new Map([
+                ['canvas', canvas],
+                ['.caption', caption],
+                ['.toggle', toggle],
+                ['.track', track],
+                ['.fill', fill],
+                ['.time', time],
+                ['.cc', cc],
+                ['.mute', mute],
+                ['.full', full],
+            ])
+        }
+        get innerHTML(): string {
+            return this.rawHtml
+        }
+        querySelector(selector: string): MiniNode | null {
+            return this.nodes.get(selector) ?? null
+        }
+        append(node: MiniNode): void {
+            this.appended.push(node)
+        }
+    }
+
+    ;(MiniNode.prototype as unknown as { querySelectorAll: () => MiniNode[] }).querySelectorAll = function (this: MiniNode) {
+        return this.children
+    }
+
+    class StubElement extends MiniNode {
+        shadowRoot: MiniShadowRoot | null = null
+        attachShadow(): MiniShadowRoot {
+            this.shadowRoot = new MiniShadowRoot()
+            return this.shadowRoot
+        }
+    }
+
+    let intersectCb: ((entries: Array<{ isIntersecting: boolean }>) => void) | null = null
+    const createdAudios: MiniNode[] = []
+    let rejectUnmutedPlay = true
+    const registry = new Map<string, CustomElementConstructor>()
+
+    vi.stubGlobal('HTMLElement', StubElement)
+    vi.stubGlobal('Element', MiniNode)
+    vi.stubGlobal('customElements', {
+        get: (name: string) => registry.get(name),
+        define: (name: string, ctor: CustomElementConstructor) => registry.set(name, ctor),
+    })
+    vi.stubGlobal('IntersectionObserver', class {
+        constructor(cb: (entries: Array<{ isIntersecting: boolean }>) => void) {
+            intersectCb = cb
+        }
+        observe(): void {}
+        disconnect(): void {}
+    })
+    vi.stubGlobal('document', {
+        fullscreenElement: null,
+        createElement: (tag: string) => {
+            const node = new MiniNode(tag)
+            if (tag === 'audio') {
+                node.playImpl = async () => {
+                    if (rejectUnmutedPlay && !node.muted) {
+                        throw new DOMException('Autoplay blocked', 'NotAllowedError')
+                    }
+                    node.paused = false
+                }
+                createdAudios.push(node)
+            }
+            return node
+        },
+    })
+    vi.stubGlobal('requestAnimationFrame', vi.fn().mockReturnValue(1))
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+    vi.spyOn(performance, 'now').mockReturnValue(0)
+
+    const createElement = (load: (src: string, options?: FilmLoadOptions) => Promise<CompiledFilm>) => {
+        defineFilmElement(load, 'vz-film-test')
+        const Ctor = registry.get('vz-film-test') as unknown as {
+            new (): Omit<VzFilmElement, 'shadowRoot'> & StubElement & { connectedCallback(): void; disconnectedCallback(): void }
+        }
+        return new Ctor()
+    }
+    return {
+        createElement,
+        createdAudios,
+        intersect: () => intersectCb!([{ isIntersecting: true }]),
+        allowUnmutedPlay: () => { rejectUnmutedPlay = false },
+    }
+}

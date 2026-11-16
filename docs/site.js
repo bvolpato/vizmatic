@@ -8,6 +8,7 @@
   const copyTimers = new WeakMap()
   const sources = new Map()
   const catalogControllers = new WeakMap()
+  const filmPreviewStops = new WeakMap()
   let promptRequest
   let searchIndexRequest
   let revealGalleryCard
@@ -954,9 +955,20 @@
     frames.forEach((frame) => {
       const item = frame.closest('.wall-item') ?? frame
       const poster = $('img', frame)
+      let current = null
+      let hovered = false
+      let focused = false
+      const stop = () => {
+        // Restore the poster without a transition before disconnecting the canvas.
+        frame.classList.remove('is-preview-ready')
+        const film = current
+        current = null
+        film?.remove()
+      }
       const start = () => {
-        if (frame.querySelector('vz-film')) return
+        if (current || item.hidden) return
         const film = document.createElement('vz-film')
+        current = film
         film.setAttribute('src', fromRoot(frame.dataset.liveSrc).href)
         film.setAttribute('nocontrols', '')
         film.setAttribute('autoplay', '')
@@ -969,21 +981,39 @@
           film.setAttribute('look', frame.dataset.look)
         }
         applyFilmTheme(film)
-        loadStage().catch(() => {})
-        frame.append(film)
         film.addEventListener('ready', () => {
-          if (poster) poster.style.opacity = '0'
+          if (current !== film || !film.isConnected) return
+          frame.classList.add('is-preview-ready')
         }, { once: true })
+        film.addEventListener('error', () => {
+          if (current === film) stop()
+        }, { once: true })
+        frame.append(film)
+        loadStage().catch(() => {
+          if (current === film) stop()
+        })
       }
-      const stop = () => {
-        frame.querySelector('vz-film')?.remove()
-        if (poster) poster.style.opacity = ''
+      const sync = () => {
+        if (hovered || focused) start()
+        else stop()
       }
-      if (canHover && !reduced) {
-        item.addEventListener('pointerenter', start)
-        item.addEventListener('pointerleave', stop)
-        item.addEventListener('focusin', start)
-        item.addEventListener('focusout', stop)
+      if (poster && canHover && !reduced) {
+        filmPreviewStops.set(frame, () => {
+          hovered = focused = false
+          stop()
+        })
+        item.addEventListener('pointerenter', () => { hovered = true; sync() })
+        item.addEventListener('pointerleave', () => { hovered = false; sync() })
+        item.addEventListener('focusin', () => { focused = true; sync() })
+        item.addEventListener('focusout', (event) => {
+          if (item.contains(event.relatedTarget)) return
+          focused = false
+          sync()
+        })
+        document.addEventListener('vizmatic-site-theme', () => {
+          stop()
+          sync()
+        })
       }
       // A film without a poster shows its own frame, compiled when it scrolls near.
       if (!poster) {
@@ -1046,9 +1076,10 @@
         item.hidden = !match
         if (match) shown++
         else {
-          item.querySelector('vz-film')?.remove()
-          const poster = item.querySelector('img')
-          if (poster) poster.style.opacity = ''
+          const frame = $('[data-live-src]', item)
+          const stop = filmPreviewStops.get(frame)
+          if (stop) stop()
+          else item.querySelector('vz-film')?.remove()
         }
       })
       if (countEl) countEl.textContent = `${shown} ${shown === 1 ? 'film' : 'films'}`
