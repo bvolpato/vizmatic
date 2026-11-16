@@ -4,7 +4,7 @@
  * browser and the video exporter produce the same picture. Camera angles and
  * every object's opacity and reveal live on the timeline like anything else.
  */
-import { Node, ownLabels } from '../node'
+import { Node, ownLabels, rebindCloneParts } from '../node'
 import { oneNode } from '../layout'
 import { parseColor, sampleStops, toPaint, type ColorInput, type Paint, type Rgba } from '../color'
 import { Value, type Anim, type AnimOptions } from '../anim'
@@ -137,6 +137,25 @@ export class View3D {
         ]
     }
 
+    /** Light a unit, camera-facing surface normal using this scene's lighting. */
+    shaded(normal: Vec3, color: Rgba): Rgba {
+        const [nx, ny, nz] = normal
+        const { light, fillLight, half, ambient, shine, brightness, dx, dy, dz } = this
+        const wrap = 0.5 + 0.5 * (nx * light[0] + ny * light[1] + nz * light[2])
+        const key = (ambient + (1 - ambient) * wrap * wrap) * brightness
+        const fillDot = Math.max(0, nx * fillLight[0] + ny * fillLight[1] + nz * fillLight[2])
+        const fill = 0.18 * fillDot * fillDot * brightness
+        const rim = 1 - Math.abs(nx * dx + ny * dy + nz * dz)
+        const rimLift = 0.08 * rim * rim * fillDot * brightness
+        const spec = shine > 0 ? shine * Math.pow(Math.max(0, nx * half[0] + ny * half[1] + nz * half[2]), 42) * 255 : 0
+        return [
+            Math.min(255, color[0] * (key + fill * 0.78) + rimLift * 150 + spec),
+            Math.min(255, color[1] * (key + fill * 0.92) + rimLift * 195 + spec),
+            Math.min(255, color[2] * (key + fill * 1.12) + rimLift * 245 + spec),
+            color[3],
+        ]
+    }
+
     push(op: PathOp, depth: number): void {
         this.ops.push(op)
         this.depths.push(depth)
@@ -148,6 +167,100 @@ function strokeOp(path: Path, color: Paint, alpha: number, width: number, glow =
         kind: 'path', path, strokePath: path, fill: null, fillAlpha: 0, stroke: color, strokeAlpha: alpha, strokeWidth: width,
         cap, join: 'round', dash: null, dashOffset: 0, glow, glowColor: null, blend: 'normal',
     }
+}
+
+// Keep tessellation boundaries out of the rasterizer. Metadata is private to
+// these 3D strokes; filled mesh edges and unrelated paths must never join.
+const strokePieces = new WeakMap<PathOp, { owner: Object3D; part: number; halo: boolean }>()
+
+function strokePiece(owner: Object3D, part: number, halo: boolean, op: PathOp): PathOp {
+    strokePieces.set(op, { owner, part, halo })
+    return op
+}
+
+function sameStroke(a: PathOp, b: PathOp): boolean {
+    return a.strokeAlpha === b.strokeAlpha && Math.abs(a.strokeWidth - b.strokeWidth) < 1e-8
+        && a.glow === b.glow && a.cap === b.cap
+        && Array.isArray(a.stroke) && Array.isArray(b.stroke)
+        && a.stroke.every((v, i) => i === 3 ? v === (b.stroke as Rgba)[i] : Math.round(v) === Math.round((b.stroke as Rgba)[i]!))
+}
+
+function joinedStrokes(run: PathOp[]): PathOp[] {
+    // Depth order can reverse the parameter direction, or interleave both
+    // halves of a loop. Within an uninterrupted owner run, restore connectivity.
+    run.sort((a, b) => strokePieces.get(a)!.part - strokePieces.get(b)!.part)
+    const result: PathOp[] = []
+    let first = 0
+    while (first < run.length) {
+        const op = run[first]!
+        let end = first + 1
+        let length = op.path[0]!.p.length
+        while (end < run.length) {
+            const previous = run[end - 1]!, next = run[end]!
+            const a = previous.path[0]!.p, b = next.path[0]!.p
+            if (!sameStroke(op, next) || Math.abs(a[a.length - 2]! - b[0]!) > 1e-7 || Math.abs(a[a.length - 1]! - b[1]!) > 1e-7) break
+            length += b.length - 2
+            end++
+        }
+        if (end === first + 1) result.push(op)
+        else {
+            const p = new Float64Array(length)
+            p.set(op.path[0]!.p)
+            let offset = op.path[0]!.p.length
+            for (let i = first + 1; i < end; i++) {
+                const part = run[i]!.path[0]!.p.subarray(2)
+                p.set(part, offset)
+                offset += part.length
+            }
+            const closed = Math.abs(p[0]! - p[length - 2]!) < 1e-7 && Math.abs(p[1]! - p[length - 1]!) < 1e-7
+            const path: Path = [{ p, closed, straight: true }]
+            const joined = { ...op, path, strokePath: path }
+            strokePieces.set(joined, strokePieces.get(op)!)
+            result.push(joined)
+        }
+        first = end
+    }
+    return result
+}
+
+function joinUnobstructed(ordered: PathOp[]): PathOp[] {
+    const result: PathOp[] = []
+    const previous = new Map<Object3D, { core?: number; halo?: number }>()
+    const bounds = new Map<PathOp, Bounds | null>()
+    const ink = (op: PathOp): Bounds | null => {
+        if (bounds.has(op)) return bounds.get(op)!
+        const b = pathBounds(op.path)
+        const pad = op.strokeWidth / 2 + op.glow * 1.4
+        const box = b && { x: b.x - pad, y: b.y - pad, width: b.width + pad * 2, height: b.height + pad * 2 }
+        bounds.set(op, box)
+        return box
+    }
+    const overlaps = (a: Bounds | null, b: Bounds | null) => !a || !b
+        || (a.x <= b.x + b.width && b.x <= a.x + a.width && a.y <= b.y + b.height && b.y <= a.y + a.height)
+    for (const op of ordered) {
+        const piece = strokePieces.get(op)
+        if (!piece) { result.push(op); continue }
+        const entries = previous.get(piece.owner) ?? {}
+        const key = piece.halo ? 'halo' : 'core'
+        const index = entries[key]
+        if (index !== undefined && sameStroke(result[index]!, op)) {
+            const joined = joinedStrokes([result[index]!, op])
+            if (joined.length === 1) {
+                const box = ink(op)
+                // Moving this fragment back is safe only when it cannot paint
+                // over any intervening mark, including its stroke and glow.
+                let blocked = false
+                for (let i = index + 1; i < result.length; i++) {
+                    if (overlaps(box, ink(result[i]!))) { blocked = true; break }
+                }
+                if (!blocked) { result[index] = joined[0]!; continue }
+            }
+        }
+        entries[key] = result.length
+        previous.set(piece.owner, entries)
+        result.push(op)
+    }
+    return result
 }
 
 function fillOp(path: Path, color: Paint, alpha: number, stroke: Paint | null, strokeAlpha: number, strokeWidth: number): PathOp {
@@ -251,6 +364,10 @@ export class Scene3D extends Node {
         this.focusY = new Value(options.focus?.[1] ?? 0)
         this.focusZ = new Value(options.focus?.[2] ?? 0)
         this.orthographic = options.perspective === false
+        this.bindView()
+    }
+
+    private bindView(): void {
         this.rawOps = (matrix, alpha, ops) => this.render(matrix, alpha, ops)
         this.draw = (time) => {
             const view = this.view(this.worldless, 1, time)
@@ -262,15 +379,29 @@ export class Scene3D extends Node {
         }
     }
 
+    protected override [rebindCloneParts](copy: this, _parts: ReadonlyMap<Node, Node>): void | (() => void) {
+        Object.assign(copy, {
+            phi: new Value(this.phi.value), theta: new Value(this.thetaAt(clock.now)),
+            distance: new Value(this.distance.value), unit: new Value(this.unit.value),
+            focusX: new Value(this.focusX.value), focusY: new Value(this.focusY.value), focusZ: new Value(this.focusZ.value),
+            spins: [], openSpin: null,
+        })
+        copy.bindView()
+    }
+
     private readonly worldless: Mat = [1, 0, 0, 1, 0, 0]
 
-    private view(matrix: Mat, alpha: number, time: number): View3D {
-        const view = new View3D()
-        const phi = this.phi.value
+    private thetaAt(time: number): number {
         let theta = this.theta.value
         for (const spin of this.spins) {
             if (time > spin.from) theta += (Math.min(time, spin.to) - spin.from) * spin.rate
         }
+        return theta
+    }
+
+    private view(matrix: Mat, alpha: number, time: number): View3D {
+        const view = new View3D()
+        const phi = this.phi.value, theta = this.thetaAt(time)
         const sinP = Math.sin(phi), cosP = Math.cos(phi), sinT = Math.sin(theta), cosT = Math.cos(theta)
         view.rx = -sinT
         view.ry = cosT
@@ -315,7 +446,24 @@ export class Scene3D extends Node {
         for (let i = 0; i < count; i++) order[i] = i
         const depths = view.depths
         order.sort((a, b) => depths[a]! - depths[b]!)
-        for (let i = 0; i < count; i++) ops.push(view.ops[order[i]!]!)
+        const ordered: PathOp[] = []
+        for (let i = 0; i < count;) {
+            const op = view.ops[order[i]!]!
+            const piece = strokePieces.get(op)
+            if (!piece) { ordered.push(op); i++; continue }
+            const run = [op]
+            let end = i + 1
+            while (end < count) {
+                const next = view.ops[order[end]!]!
+                const other = strokePieces.get(next)
+                if (!other || other.owner !== piece.owner || other.halo !== piece.halo || !sameStroke(op, next)) break
+                run.push(next)
+                end++
+            }
+            ordered.push(...joinedStrokes(run))
+            i = end
+        }
+        ops.push(...joinUnobstructed(ordered))
     }
 
     protected override boundsFrom(parent: Mat): Bounds | null {
@@ -601,7 +749,7 @@ export class Surface3D extends Object3D {
         const opaque = alpha >= 0.995
         const reveal = view.measuring ? 1 : this.get('trimTo')
         const rows = Math.ceil(reveal * nu)
-        const { light, fillLight, half, ambient, shine, brightness, dx, dy, dz } = view
+        const { dx, dy, dz } = view
         const cull = options.cull ?? false
         const meshColor = this.meshColor
         const meshAlpha = (options.meshOpacity ?? 0.35) * alpha
@@ -627,16 +775,10 @@ export class Surface3D extends Object3D {
                     bl = faceColors[f + 2]!
                 }
                 if (shaded) {
-                    const wrap = 0.5 + 0.5 * (nx * light[0] + ny * light[1] + nz * light[2])
-                    const key = (ambient + (1 - ambient) * wrap * wrap) * brightness
-                    const fillDot = Math.max(0, nx * fillLight[0] + ny * fillLight[1] + nz * fillLight[2])
-                    const fill = 0.18 * fillDot * fillDot * brightness
-                    const rim = 1 - Math.abs(nx * dx + ny * dy + nz * dz)
-                    const rimLift = 0.08 * rim * rim * fillDot * brightness
-                    const spec = shine > 0 ? shine * Math.pow(Math.max(0, nx * half[0] + ny * half[1] + nz * half[2]), 42) * 255 : 0
-                    r = Math.min(255, r * (key + fill * 0.78) + rimLift * 150 + spec)
-                    g = Math.min(255, g * (key + fill * 0.92) + rimLift * 195 + spec)
-                    bl = Math.min(255, bl * (key + fill * 1.12) + rimLift * 245 + spec)
+                    const lit = view.shaded([nx, ny, nz], [r, g, bl, 1])
+                    r = lit[0]
+                    g = lit[1]
+                    bl = lit[2]
                 }
                 const depth = (screenZ[a]! + screenZ[b]! + screenZ[c]! + screenZ[d]!) / 4
                 const color = view.fogged(r, g, bl, depth)
@@ -761,12 +903,22 @@ export class Curve3D extends Object3D {
         const count = this.points.length / 3 - 1
         const last = Math.floor(trim * count)
         if (last < 1) return
-        const piece = Math.max(2, Math.ceil(count / 72))
+        const firstDepth = this.points[0]! * view.dx + this.points[1]! * view.dy + this.points[2]! * view.dz
+        let constantDepth = true
+        for (let i = 1; i <= last; i++) {
+            const depth = this.points[i * 3]! * view.dx + this.points[i * 3 + 1]! * view.dy + this.points[i * 3 + 2]! * view.dz
+            if (Math.abs(depth - firstDepth) > 1e-10) { constantDepth = false; break }
+        }
+        // A camera-plane curve has no internal depth ordering. Emit it once so
+        // coplanar marks and roundoff cannot split its stroke or glow into caps.
+        const piece = constantDepth && !this.stops ? last : Math.max(2, Math.ceil(count / 72))
         const base = this.get('stroke') ?? toPaint('yellow')
         const width = this.get('strokeWidth') * view.scale
         const pad = haloPad(this.style.halo, 0) * view.scale
         const bias = this.style.onTop ? ON_TOP : this.style.bias ?? 0.12
         const glow = (this.style.glow ?? 0) * view.scale
+        const glowPath: Ring[] = []
+        let glowDepth = Infinity, glowScale = 0, glowCount = 0, glowColorDepth = 0
         for (let start = 0; start < last; start += piece) {
             const end = Math.min(last, start + piece)
             const coords: Vec[] = []
@@ -786,10 +938,30 @@ export class Curve3D extends Object3D {
             const rgb = this.stops ? sampleStops(this.stops, (start + end) / 2 / count) : solidOf(base)
             const color = view.fogged(rgb[0], rgb[1], rgb[2], depth)
             const seg: Path = [chain(coords)]
-            if (!view.measuring && pad > 0) {
-                view.push(strokeOp(seg, view.fogColor, alpha, (width + pad) * scale, 0, 'round'), depth + bias - 0.002)
+            if (!view.measuring && glow > 0 && !this.stops) {
+                glowPath.push(seg[0]!)
+                glowDepth = Math.min(glowDepth, depth)
+                glowColorDepth += depth
+                glowScale += scale
+                glowCount++
             }
-            view.push(strokeOp(seg, color, alpha, width * scale, glow, 'round'), depth + bias)
+            if (!view.measuring && pad > 0) {
+                view.push(strokePiece(this, start, true, strokeOp(seg, view.fogColor, alpha, (width + pad) * scale, 0, 'round')), depth + bias - 0.002)
+            }
+            // Palette curves retain local glow colors. A single solid blur
+            // would flatten the ramp to its midpoint color.
+            view.push(strokePiece(this, start, false, strokeOp(seg, color, alpha, width * scale, this.stops ? glow : 0, 'round')), depth + bias)
+        }
+        if (glowCount > 0) {
+            // One blurred mask avoids bright caps at every tessellation joint.
+            // Keep this decorative understroke behind the deepest core fragment:
+            // occluders can suppress glow, but cannot expose a hidden curve.
+            const rgb = solidOf(base)
+            const color = view.fogged(rgb[0], rgb[1], rgb[2], glowColorDepth / glowCount)
+            const op = strokeOp(glowPath, color, 0, width * glowScale / glowCount, glow)
+            // The renderer takes glow strength from max(fillAlpha, strokeAlpha).
+            // There is no fill and the core stroke is transparent in this pass.
+            view.push({ ...op, fillAlpha: alpha }, glowDepth + bias - 0.004)
         }
     }
 }
@@ -831,7 +1003,8 @@ export class Line3D extends Object3D {
         const alpha = view.measuring ? 1 : this.objectAlpha(view) * (this.style.opacity ?? 1) * this.get('strokeOpacity')
         if (alpha <= 0.002) return
         const a = read3(this.a), b = read3(this.b)
-        const pieces = this.style.pieces ?? 14
+        const depthSpan = (b[0] - a[0]) * view.dx + (b[1] - a[1]) * view.dy + (b[2] - a[2]) * view.dz
+        const pieces = Math.abs(depthSpan) < 1e-10 ? 1 : this.style.pieces ?? 14
         const trim = view.measuring ? 1 : this.get('trimTo')
         const base = solidOf(this.get('stroke'))
         const width = this.get('strokeWidth') * view.scale
@@ -847,9 +1020,11 @@ export class Line3D extends Object3D {
             const color = view.fogged(base[0], base[1], base[2], depth)
             const seg: Path = [lineRing(x0, y0, view.px, view.py)]
             if (!view.measuring && pad > 0) {
-                view.push(strokeOp(seg, view.fogColor, alpha, (width + pad) * sMid, 0, 'round'), depth + bias - 0.002)
+                view.push(strokePiece(this, i, true, strokeOp(seg, view.fogColor, alpha, (width + pad) * sMid, 0, 'round')), depth + bias - 0.002)
             }
-            view.push(strokeOp(seg, color, alpha, width * sMid, 0, 'butt'), depth + bias)
+            // Opaque caps can overlap without changing intensity. This also
+            // closes raster cracks where fog or an occluder prevents joining.
+            view.push(strokePiece(this, i, false, strokeOp(seg, color, alpha, width * sMid, 0, alpha >= 1 ? 'round' : 'butt')), depth + bias)
         }
     }
 }

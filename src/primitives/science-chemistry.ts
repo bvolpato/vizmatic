@@ -1,3 +1,5 @@
+import { ELEMENT_SYMBOLS, type ElementSymbol } from '../chemistry-elements'
+export { ELEMENT_SYMBOLS, type ElementSymbol } from '../chemistry-elements'
 import React from 'react'
 import { getReadableColor, getReadableTextColor, type ThemeColors,
     densityOf,
@@ -10,30 +12,7 @@ function overlayText(key: React.Key, props: OverlayTextProps): React.ReactElemen
     return React.createElement(React.Fragment, { key }, SvgMathText(props))
 }
 
-/** IUPAC element symbols. Runtime validation uses this complete periodic table. */
-export type ElementSymbol =
-    | 'H' | 'He' | 'Li' | 'Be' | 'B' | 'C' | 'N' | 'O' | 'F' | 'Ne'
-    | 'Na' | 'Mg' | 'Al' | 'Si' | 'P' | 'S' | 'Cl' | 'Ar'
-    | 'K' | 'Ca' | 'Sc' | 'Ti' | 'V' | 'Cr' | 'Mn' | 'Fe' | 'Co' | 'Ni' | 'Cu' | 'Zn'
-    | 'Ga' | 'Ge' | 'As' | 'Se' | 'Br' | 'Kr'
-    | 'Rb' | 'Sr' | 'Y' | 'Zr' | 'Nb' | 'Mo' | 'Tc' | 'Ru' | 'Rh' | 'Pd' | 'Ag' | 'Cd'
-    | 'In' | 'Sn' | 'Sb' | 'Te' | 'I' | 'Xe'
-    | 'Cs' | 'Ba' | 'La' | 'Ce' | 'Pr' | 'Nd' | 'Pm' | 'Sm' | 'Eu' | 'Gd' | 'Tb' | 'Dy' | 'Ho' | 'Er' | 'Tm' | 'Yb' | 'Lu'
-    | 'Hf' | 'Ta' | 'W' | 'Re' | 'Os' | 'Ir' | 'Pt' | 'Au' | 'Hg'
-    | 'Tl' | 'Pb' | 'Bi' | 'Po' | 'At' | 'Rn'
-    | 'Fr' | 'Ra' | 'Ac' | 'Th' | 'Pa' | 'U' | 'Np' | 'Pu' | 'Am' | 'Cm' | 'Bk' | 'Cf' | 'Es' | 'Fm' | 'Md' | 'No' | 'Lr'
-    | 'Rf' | 'Db' | 'Sg' | 'Bh' | 'Hs' | 'Mt' | 'Ds' | 'Rg' | 'Cn' | 'Nh' | 'Fl' | 'Mc' | 'Lv' | 'Ts' | 'Og'
-
-const ELEMENTS = new Set<ElementSymbol>([
-    'H', 'He', 'Li', 'Be', 'B', 'C', 'N', 'O', 'F', 'Ne', 'Na', 'Mg', 'Al', 'Si', 'P', 'S', 'Cl', 'Ar',
-    'K', 'Ca', 'Sc', 'Ti', 'V', 'Cr', 'Mn', 'Fe', 'Co', 'Ni', 'Cu', 'Zn', 'Ga', 'Ge', 'As', 'Se', 'Br', 'Kr',
-    'Rb', 'Sr', 'Y', 'Zr', 'Nb', 'Mo', 'Tc', 'Ru', 'Rh', 'Pd', 'Ag', 'Cd', 'In', 'Sn', 'Sb', 'Te', 'I', 'Xe',
-    'Cs', 'Ba', 'La', 'Ce', 'Pr', 'Nd', 'Pm', 'Sm', 'Eu', 'Gd', 'Tb', 'Dy', 'Ho', 'Er', 'Tm', 'Yb', 'Lu',
-    'Hf', 'Ta', 'W', 'Re', 'Os', 'Ir', 'Pt', 'Au', 'Hg', 'Tl', 'Pb', 'Bi', 'Po', 'At', 'Rn', 'Fr', 'Ra', 'Ac',
-    'Th', 'Pa', 'U', 'Np', 'Pu', 'Am', 'Cm', 'Bk', 'Cf', 'Es', 'Fm', 'Md', 'No', 'Lr', 'Rf', 'Db', 'Sg', 'Bh',
-    'Hs', 'Mt', 'Ds', 'Rg', 'Cn', 'Nh', 'Fl', 'Mc', 'Lv', 'Ts', 'Og',
-])
-export const ELEMENT_SYMBOLS: readonly ElementSymbol[] = Object.freeze(Array.from(ELEMENTS))
+const ELEMENTS = new Set<ElementSymbol>(ELEMENT_SYMBOLS)
 
 export type MoleculeAtomId = string
 export type MoleculeBondOrder = 1 | 1.5 | 2 | 3
@@ -55,6 +34,9 @@ export interface MoleculeBond {
     from: MoleculeAtomId
     to: MoleculeAtomId
     order: MoleculeBondOrder
+    /** Single bond from the narrow end (`from`) to the wide end (`to`).
+     * Wedge points toward the viewer; hashed points away. Supplied, never inferred. */
+    stereo?: 'wedge' | 'hashed'
 }
 
 export interface MoleculeDiagramProps {
@@ -123,6 +105,10 @@ function validateMolecule(atoms: MoleculeAtom[], bonds: MoleculeBond[]): void {
         if (!ids.has(bond.to)) throw new TypeError(`MoleculeDiagram bond ${index} references unknown atom "${bond.to}".`)
         if (bond.from === bond.to) throw new TypeError(`MoleculeDiagram bond ${index} cannot connect an atom to itself.`)
         if (![1, 1.5, 2, 3].includes(bond.order)) throw new TypeError(`MoleculeDiagram bond ${index} order must be 1, 1.5, 2, or 3.`)
+        if (bond.stereo !== undefined) {
+            if (bond.stereo !== 'wedge' && bond.stereo !== 'hashed') throw new TypeError(`MoleculeDiagram bond ${index} stereo must be wedge or hashed.`)
+            if (bond.order !== 1) throw new TypeError(`MoleculeDiagram bond ${index} stereo requires a single bond.`)
+        }
         const pairKey = bond.from < bond.to ? `${bond.from}\u0000${bond.to}` : `${bond.to}\u0000${bond.from}`
         if (bondPairs.has(pairKey)) throw new TypeError(`MoleculeDiagram bond "${bond.from}"–"${bond.to}" is duplicated.`)
         bondPairs.add(pairKey)
@@ -167,7 +153,7 @@ function bondSegments(from: Point, to: Point, order: MoleculeBondOrder, atomRadi
     const dx = to.x - from.x
     const dy = to.y - from.y
     const length = Math.hypot(dx, dy)
-    if (!Number.isFinite(length) || length <= atomRadius * 2) {
+    if (!Number.isFinite(length) || length <= (atomRadius + 1) * 2) {
         throw new RangeError('MoleculeDiagram bond endpoints must be far enough apart to draw atom labels.')
     }
     const ux = dx / length
@@ -197,7 +183,7 @@ function atomColor(element: ElementSymbol, c: ThemeColors): string {
 /**
  * Draws only the atoms and bonds explicitly supplied by the caller. Coordinates
  * are uniformly scaled diagram units; this component makes no valence, 3D, or
- * stereochemistry claims.
+ * stereochemistry inference. Stereo bonds depict only the supplied direction.
  */
 export function MoleculeDiagram({
     c,
@@ -215,10 +201,35 @@ export function MoleculeDiagram({
     const svgHeight = boundedDimension(height, 'MoleculeDiagram height', ...MOLECULE_LIMITS.height)
     const points = moleculeLayout(atoms, svgWidth, svgHeight, title ? 60 : 48)
     const accessibleTitle = title ?? 'Molecule diagram'
-    const description = `${atoms.length} explicitly positioned atoms and ${bonds.length} explicit bonds. Bond order does not imply inferred valence, three-dimensional geometry, or stereochemistry.`
+    const description = `${atoms.length} explicitly positioned atoms and ${bonds.length} explicit bonds. Wedges point toward the viewer and hashed wedges away, from narrow to wide. Valence, three-dimensional geometry, and stereochemistry are never inferred.`
     const bondNodes = bonds.flatMap((bond, bondIndex) => {
         const from = points.get(bond.from)!
         const to = points.get(bond.to)!
+        if (bond.stereo) {
+            const segment = bondSegments(from, to, 1)[0]
+            const dx = segment.x2 - segment.x1, dy = segment.y2 - segment.y1
+            const length = Math.hypot(dx, dy), nx = -dy / length, ny = dx / length
+            const halfWidth = Math.min(7, length * 0.15)
+            const props = {
+                'data-bond-from': bond.from, 'data-bond-to': bond.to,
+                'data-bond-order': bond.order, 'data-bond-stereo': bond.stereo,
+                'aria-hidden': true as const,
+            }
+            if (bond.stereo === 'wedge') return [React.createElement('polygon', {
+                ...props, key: `bond-${bondIndex}`, fill: c.textSecondary,
+                points: `${segment.x1},${segment.y1} ${segment.x2 + nx * halfWidth},${segment.y2 + ny * halfWidth} ${segment.x2 - nx * halfWidth},${segment.y2 - ny * halfWidth}`,
+            })]
+            const count = Math.max(3, Math.min(12, Math.floor(length / 7)))
+            return Array.from({ length: count }, (_, index) => {
+                const t = (index + 1) / count, x = segment.x1 + dx * t, y = segment.y1 + dy * t
+                return React.createElement('line', {
+                    ...props, key: `bond-${bondIndex}-${index}`,
+                    x1: x - nx * halfWidth * t, y1: y - ny * halfWidth * t,
+                    x2: x + nx * halfWidth * t, y2: y + ny * halfWidth * t,
+                    stroke: c.textSecondary, strokeWidth: 2, strokeLinecap: 'round',
+                })
+            })
+        }
         return bondSegments(from, to, bond.order).map((segment, segmentIndex) => React.createElement('line', {
             key: `bond-${bondIndex}-${segmentIndex}`,
             x1: segment.x1,
@@ -288,7 +299,8 @@ export interface ReactionTerm {
     formula: string
     coefficient?: number
     state?: ReactionState
-    /** A complete explicit element-count map for this term, when available. */
+    /** Complete explicit element counts. Use {} for an electron, with charge: -1.
+     * Omission means unknown composition; an empty map means no atoms. */
     composition?: ElementComposition
     /** Charge for this complete explicit term; omission means neutral. */
     charge?: number
@@ -322,7 +334,6 @@ function validateComposition(composition: unknown, description: string): asserts
         throw new TypeError(`${description} must be an element-count object.`)
     }
     const entries = Object.entries(composition)
-    if (entries.length === 0) throw new TypeError(`${description} must contain at least one explicit element count.`)
     for (const [element, count] of entries) {
         if (!isElementSymbol(element)) throw new TypeError(`${description} contains invalid element symbol "${element}".`)
         if (typeof count !== 'number' || !Number.isSafeInteger(count) || count <= 0 || count > 1_000_000) {

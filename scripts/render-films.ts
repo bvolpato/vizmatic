@@ -60,10 +60,11 @@ export async function computeFilmEngineHash(rootDir = process.cwd()): Promise<st
     }
     hash.update(`resvg:${pkg.dependencies?.['@resvg/resvg-js'] ?? ''}\n`)
     hash.update(`mathjax:${pkg.dependencies?.['mathjax-full'] ?? ''}\n`)
+    hash.update(`fast-png:${pkg.dependencies?.['fast-png'] ?? ''}\n`)
 
     const stageFiles = (await listFilesSorted(join(rootDir, 'src', 'stage'), (name) => name === 'preview'))
         .filter((file) => !BROWSER_ONLY_STAGE_FILES.has(relative(join(rootDir, 'src', 'stage'), file)))
-    const extraEngineFiles = [join(rootDir, 'src', 'video.ts'), join(rootDir, 'src', 'math.ts')]
+    const extraEngineFiles = ['video.ts', 'math.ts', 'chemistry-elements.ts'].map((file) => join(rootDir, 'src', file))
     const fontFiles = await listFilesSorted(join(rootDir, 'assets', 'fonts'))
 
     for (const file of [...stageFiles, ...extraEngineFiles, ...fontFiles]) {

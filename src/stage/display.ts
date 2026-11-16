@@ -7,6 +7,7 @@ import { clock } from './track'
 import type { BlendMode, Node, StageImage } from './node'
 import { browserImageSource, imageHasVisiblePixels, ImageAssetError } from './image'
 import { drawnDim } from './light'
+import { pixelCanvas, pixelDataUri } from './pixels'
 
 const clockNow = () => clock.now
 
@@ -368,7 +369,7 @@ export function frameToSvg(frame: Frame, options: { scale?: number; transparent?
             const m = op.matrix
             const { image } = op, crop = image.crop
             if (crop && !image.asset) throw new ImageAssetError('Cropped image SVG needs a prepared image asset.')
-            const picture = `<image href="${escapeAttr(image.src)}" width="${crop ? image.asset!.width : image.width}" height="${crop ? image.asset!.height : image.height}" preserveAspectRatio="none"/>`
+            const picture = `<image href="${escapeAttr(image.pixels ? pixelDataUri(image.pixels) : image.src)}" width="${crop ? image.asset!.width : image.width}" height="${crop ? image.asset!.height : image.height}" preserveAspectRatio="none"/>`
             const content = crop
                 ? `<svg width="${fmt(image.width)}" height="${fmt(image.height)}" viewBox="${[crop.x, crop.y, crop.width, crop.height].map(fmt).join(' ')}" preserveAspectRatio="none" overflow="hidden">${picture}</svg>`
                 : picture
@@ -498,7 +499,7 @@ export function paintFrame(ctx: Canvas2D, frame: Frame, scale = 1, images?: Imag
         }
         try {
             if (op.kind === 'image') {
-                const source = images?.(op.image) ?? browserImageSource(op.image.asset)
+                const source = op.image.pixels ? pixelCanvas(op.image.pixels) : images?.(op.image) ?? browserImageSource(op.image.asset)
                 if (!source) throw new ImageAssetError('Image pixels are unavailable. Await image preparation and provide an ImageLookup outside the browser.')
                 const m = op.matrix
                 ctx.save()

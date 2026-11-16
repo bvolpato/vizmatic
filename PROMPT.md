@@ -96,6 +96,36 @@ When a film must teach a topic, [lessons.md](https://bvolpato.github.io/vizmatic
 
 Read a finished film before you write a similar one. `examples/films/` in the package holds them with full source, and the [Films](https://bvolpato.github.io/vizmatic/films.html) page plays them.
 
+### Scientific films
+
+Use the same model values for the picture, equation, labels, and captions.
+`tex.part()` and `.parts()` match formula structure, including scripts and local
+macros; fragments without visible glyphs return no targets. `morphMatching`
+preserves reordered symbols, pairing repeated symbols in reading order. `row`
+aligns text and TeX baselines. Chemical notation uses bundled `mhchem`:
+
+```ts
+tex(String.raw`\ce{2 H2 + O2 -> 2 H2O}`)
+```
+
+Use `axes` with `xScale` / `yScale` for linear, log, or symlog coordinates.
+Opt into `plot(f, { adaptive: true, discontinuities: [[0, 0]] })` when uniform sampling
+misses detail or bridges a known singularity. Use `scalarField` for concentrations
+and probability slices, `contourPaths` for level curves, and `colorBar` with the
+same fixed `domain`, `colors`, and `scale`. Label units and sampling limits.
+`parametric` accepts the same adaptive options and parameter exclusions, with
+tolerance measured in local pixels before later transforms.
+
+`integrateTrajectory((t, state) => derivative, { initial, to, step })` precomputes
+seekable RK4 trajectories. Check convergence; it is not a stiff solver.
+`isosurface` renders an explicit scalar level inside `scene3d`. `molecule3d`
+renders supplied coordinates or one supported V2000 MOL/SDF record, without
+inferring bonds or conformations. Keep subject-specific physics in the film;
+extract a public component only when it serves more than one model.
+
+See `SCIENCE.md` and the Maxwell, hydrogen, reaction–diffusion, and catalysis films
+for worked examples. Inspect full-size stills and browser playback in both looks.
+
 ## Figures
 
 Create `frame.tsx`. `Scene` title and subtitle are optional.

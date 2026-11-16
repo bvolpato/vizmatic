@@ -457,7 +457,7 @@ export class CompiledFilm {
                 x: camera.get('x'), y: camera.get('y'), zoom: camera.get('sx'), rotation: camera.get('rotation'),
             }, stage.width, stage.height, stage.backdrop, stage.lights.length > 0 ? stage.marks : null)
             const preparedOps = ops.map(op => {
-                if (op.kind !== 'image') return op
+                if (op.kind !== 'image' || op.image.pixels) return op
                 const asset = op.image.asset ?? this.imageAssets.get(op.image.src)
                 if (!asset) throw new Suspend(this.prepareImage(op.image))
                 if (!isImageAsset(asset)) throw new ImageAssetError('Image asset was not prepared by resolveImageAsset.')

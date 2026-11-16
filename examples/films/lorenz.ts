@@ -4,7 +4,7 @@
  * nearby runs part are measured from the same integration that gets drawn.
  */
 import {
-    Node, dot, dynamic, fadeIn, fadeOut, film, line, linear, polyPath, ramp, rect, smoother, text, tex, write,
+    Node, axes, dot, dynamic, fadeIn, fadeOut, film, integrateTrajectory, line, linear, polyPath, ramp, rect, smoother, text, tex, write,
     type Rgba, type Vec,
 } from 'vizmatic/stage'
 
@@ -13,35 +13,10 @@ const DT = 0.004
 const COLUMN = 480
 const CENTER: Vec = [-232, 8]
 
-type State = readonly [number, number, number]
+type Samples = readonly (readonly number[])[]
 
-function derivative([x, y, z]: State): State {
+function derivative(_time: number, [x, y, z]: readonly number[]): readonly number[] {
     return [SIGMA * (y - x), x * (RHO - z) - y, x * y - BETA * z]
-}
-
-function step(state: State, dt: number): State {
-    const add = (a: State, b: State, k: number): State => [a[0] + b[0] * k, a[1] + b[1] * k, a[2] + b[2] * k]
-    const k1 = derivative(state)
-    const k2 = derivative(add(state, k1, dt / 2))
-    const k3 = derivative(add(state, k2, dt / 2))
-    const k4 = derivative(add(state, k3, dt))
-    return [
-        state[0] + (dt / 6) * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]),
-        state[1] + (dt / 6) * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]),
-        state[2] + (dt / 6) * (k1[2] + 2 * k2[2] + 2 * k3[2] + k4[2]),
-    ]
-}
-
-function integrate(start: State, count: number): Float32Array {
-    const out = new Float32Array(count * 3)
-    let state = start
-    for (let i = 0; i < count; i++) {
-        out[i * 3] = state[0]
-        out[i * 3 + 1] = state[1]
-        out[i * 3 + 2] = state[2]
-        state = step(state, DT)
-    }
-    return out
 }
 
 export default film({
@@ -52,22 +27,21 @@ export default film({
 }, (s) => {
     const SPAN = 15000
     // Settle onto the attractor first, so every drawn run starts on it.
-    let settled: State = [1, 1, 1]
-    for (let i = 0; i < 6000; i++) settled = step(settled, DT)
+    const settled = integrateTrajectory(derivative, { initial: [1, 1, 1], to: 6000 * DT, step: DT }).sample(6000 * DT)
 
     const OFFSET = 1e-5
-    const runA = integrate(settled, SPAN)
-    const runB = integrate([settled[0] + OFFSET, settled[1], settled[2]], SPAN)
-    const separation = new Float32Array(SPAN)
+    const runA = integrateTrajectory(derivative, { initial: settled, to: (SPAN - 1) * DT, step: DT }).states
+    const runB = integrateTrajectory(derivative, { initial: [settled[0] + OFFSET, settled[1], settled[2]], to: (SPAN - 1) * DT, step: DT }).states
+    const separation = new Float64Array(SPAN)
     let partedAt = -1
     for (let i = 0; i < SPAN; i++) {
-        separation[i] = Math.hypot(runA[i * 3]! - runB[i * 3]!, runA[i * 3 + 1]! - runB[i * 3 + 1]!, runA[i * 3 + 2]! - runB[i * 3 + 2]!)
+        separation[i] = Math.hypot(runA[i]![0]! - runB[i]![0]!, runA[i]![1]! - runB[i]![1]!, runA[i]![2]! - runB[i]![2]!)
         if (partedAt < 0 && separation[i]! > 10) partedAt = i * DT
     }
 
     const CLOUD = 72
     const cloudColors: readonly Rgba[] = ramp(CLOUD, 'blue', 'teal', 'green', 'yellow', 'orange', 'pink', 'purple')
-    const cloud = Array.from({ length: CLOUD }, (_, i) => integrate([settled[0] + (i - CLOUD / 2) * 0.012, settled[1], settled[2]], SPAN))
+    const cloud = Array.from({ length: CLOUD }, (_, i) => integrateTrajectory(derivative, { initial: [settled[0] + (i - CLOUD / 2) * 0.012, settled[1], settled[2]], to: (SPAN - 1) * DT, step: DT }).states)
 
     const clock = s.value(0)
     const showSingle = s.value(1)
@@ -88,14 +62,14 @@ export default film({
         return [CENTER[0] + X * scale, CENTER[1] - (Y * se + Z * ce) * scale]
     }
 
-    const tail = (data: Float32Array, from: number, to: number, stride: number): Vec[] => {
+    const tail = (data: Samples, from: number, to: number, stride: number): Vec[] => {
         const out: Vec[] = []
-        for (let i = Math.max(0, from); i <= to; i += stride) out.push(project(data[i * 3]!, data[i * 3 + 1]!, data[i * 3 + 2]!))
+        for (let i = Math.max(0, from); i <= to; i += stride) out.push(project(data[i]![0]!, data[i]![1]!, data[i]![2]!))
         return out
     }
 
     /** A line that fades into its own past, in four stretches. */
-    const comet = (data: Float32Array, head: number, length: number, color: string | Rgba, width: number, stride: number, alpha: number): Node[] => {
+    const comet = (data: Samples, head: number, length: number, color: string | Rgba, width: number, stride: number, alpha: number): Node[] => {
         const out: Node[] = []
         const stops = [[1, 0.6, 0.1], [0.6, 0.32, 0.26], [0.32, 0.12, 0.55], [0.12, 0, 1]] as const
         for (const [far, near, opacity] of stops) {
@@ -115,19 +89,19 @@ export default film({
             // The long trail keeps the shape of the butterfly while one point runs through it.
             const points = tail(runA, 0, head, 2)
             if (points.length > 1) out.push(new Node(polyPath(points)).stroke('blue', 1.6, 0.8 * showSingle.value).glow(3, 'blue'))
-            out.push(dot(8, 'yellow').at(project(runA[head * 3]!, runA[head * 3 + 1]!, runA[head * 3 + 2]!)).glow(12).opacity(showSingle.value))
+            out.push(dot(8, 'yellow').at(project(runA[head]![0]!, runA[head]![1]!, runA[head]![2]!)).glow(12).opacity(showSingle.value))
         }
         if (showPair.value > 0) {
             const a = showPair.value
             out.push(...comet(runA, head, 1400, 'yellow', 3, 2, a), ...comet(runB, head, 1400, 'pink', 3, 2, a))
-            out.push(dot(8, 'yellow').at(project(runA[head * 3]!, runA[head * 3 + 1]!, runA[head * 3 + 2]!)).glow(10).opacity(a))
-            out.push(dot(8, 'pink').at(project(runB[head * 3]!, runB[head * 3 + 1]!, runB[head * 3 + 2]!)).glow(10).opacity(a))
+            out.push(dot(8, 'yellow').at(project(runA[head]![0]!, runA[head]![1]!, runA[head]![2]!)).glow(10).opacity(a))
+            out.push(dot(8, 'pink').at(project(runB[head]![0]!, runB[head]![1]!, runB[head]![2]!)).glow(10).opacity(a))
         }
         if (showCloud.value > 0) {
             const a = showCloud.value
             cloud.forEach((data, i) => {
                 out.push(...comet(data, head, 420, cloudColors[i]!, 2, 4, a))
-                out.push(dot(4.5, cloudColors[i]!).at(project(data[head * 3]!, data[head * 3 + 1]!, data[head * 3 + 2]!)).opacity(a))
+                out.push(dot(4.5, cloudColors[i]!).at(project(data[head]![0]!, data[head]![1]!, data[head]![2]!)).opacity(a))
             })
         }
         return out
@@ -147,8 +121,8 @@ export default film({
     const title = place(text('The rules are exact. The future is not.', { font: 'text-serif', size: 44, maxWidth: 430, leading: 1.08 }), -496)
     const equations = place(tex('\\begin{aligned} \\dot{x} &= \\sigma (y - x) \\\\ \\dot{y} &= x (\\rho - z) - y \\\\ \\dot{z} &= x y - \\beta z \\end{aligned}', { size: 34 }), -374)
     const constants = place(tex('\\sigma = 10, \\quad \\rho = 28, \\quad \\beta = 8/3', { size: 28, color: 'dim' }), -226)
-    const timeLabel = label('Model time', -172)
-    const timeRead = dynamic(() => place(text(`${clock.value.toFixed(2).padStart(5, ' ')} s`, { font: 'mono', size: 42, color: 'ink' }), -138)).zIndex(6)
+    const timeLabel = label('Model time (dimensionless)', -172)
+    const timeRead = dynamic(() => place(text(clock.value.toFixed(2).padStart(5, ' '), { font: 'mono', size: 42, color: 'ink' }), -138)).zIndex(6)
 
     const gapLabel = label('Distance between the two runs', -72)
     const gapRead = dynamic(() => {
@@ -159,29 +133,18 @@ export default film({
     }).zIndex(6)
     // Log-scale separation over time. The straight rise is exponential growth.
     const CX = COLUMN + 84, CW = 310, CT = 34, CH = 224
-    const logMin = -6, logMax = 2
-    const chartY = (value: number) => CT + CH - ((Math.log10(Math.max(1e-6, value)) - logMin) / (logMax - logMin)) * CH
-    const chartAxes = new Node().add(
-        line([CX, CT], [CX, CT + CH], { stroke: 'faint', width: 1.3 }),
-        line([CX, CT + CH], [CX + CW, CT + CH], { stroke: 'faint', width: 1.3 }),
-        ...[-5, -3, -1, 1].map((power) => line([CX - 4, chartY(10 ** power)], [CX + 4, chartY(10 ** power)], { stroke: 'faint', width: 1.3 })),
-    ).zIndex(6)
-    const chartTicks = new Node().add(...[-5, -3, -1, 1].map((power) => {
-        const tag = tex(`10^{${power}}`, { size: 28, color: 'dim', display: false })
-        tag.alignTo([CX - 14, 0], 'right')
-        const b = tag.bounds()
-        tag.shift(0, chartY(10 ** power) - (b.y + b.height / 2))
-        return tag
-    })).zIndex(6)
-    const chart = dynamic(() => {
-        const head = Math.min(SPAN - 1, Math.floor(clock.value / DT))
-        const points: Vec[] = []
-        const span = 26
-        for (let i = 0; i <= head; i += 12) points.push([CX + ((i * DT) / span) * CW, chartY(separation[i]!)])
-        return points.length > 1 ? new Node(polyPath(points)).stroke('pink', 2.6) : null
-    }).zIndex(6)
+    const chartSpan = Math.max(26, Math.ceil(partedAt + 4))
+    const chartAxes = axes({
+        x: [0, chartSpan], y: [1e-6, 1e2], yScale: 'log',
+        width: CW, height: CH, color: 'faint', tips: false, labelSize: 28,
+        xTicks: [], yTicks: [-5, -3, -1, 1].map((power) => 10 ** power),
+        yFormat: (value) => `10^{${Math.round(Math.log10(value))}}`,
+    }).at(CX + CW / 2, CT + CH / 2).zIndex(6)
+    const distanceSeries: Vec[] = []
+    for (let i = 0; i < SPAN; i += 12) distanceSeries.push([i * DT, separation[i]!])
+    chartAxes.plot(distanceSeries, { to: () => Math.min(clock.value, chartSpan), stroke: 'pink', width: 2.6 })
     const axisNote = place(text('Log distance vs. model time', { size: 26, color: 'dim' }), CT + CH + 16)
-    const partedNote = place(text(`Starting ${OFFSET} apart, they are 10 units apart by ${partedAt.toFixed(1)} s.`, { size: 26, color: 'ink', maxWidth: 420, leading: 1.35 }), 334)
+    const partedNote = place(text(`Starting ${OFFSET} apart, they are 10 units apart by t = ${partedAt.toFixed(1)}.`, { size: 26, color: 'ink', maxWidth: 420, leading: 1.35 }), 334)
     const cloudNote = place(text(`${CLOUD} starts packed into a line ${(0.012 * (CLOUD - 1)).toFixed(2)} long. Soon they cover the whole shape.`, { size: 26, color: 'ink', maxWidth: 420, leading: 1.35 }), 334)
 
     // ── Timeline ────────────────────────────────────────────────────────────
@@ -194,7 +157,7 @@ export default film({
     s.wait(0.2)
 
     s.chapter('Two paths')
-    s.play(showSingle.to(0.22), showPair.to(1), fadeIn([gapLabel, gapRead, chartAxes, chartTicks, chart, axisNote]), azimuth.to(-0.58, { ease: linear }), clock.to(0, { ease: smoother }), { duration: 2.2 })
+    s.play(showSingle.to(0.22), showPair.to(1), fadeIn([gapLabel, gapRead, chartAxes, axisNote]), azimuth.to(-0.58, { ease: linear }), clock.to(0, { ease: smoother }), { duration: 2.2 })
     s.play(clock.to(Math.min(partedAt + 3.5, SPAN * DT - 1), { ease: linear }), azimuth.to(-1.05, { ease: linear }), { duration: 10.5 })
     s.play(fadeIn(partedNote, { shift: [0, 8] }), { duration: 0.9 })
     s.wait(2.8)

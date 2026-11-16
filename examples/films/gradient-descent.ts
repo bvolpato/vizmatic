@@ -4,7 +4,7 @@
  * for a long time and still finish in different minima.
  */
 import {
-    Node, arrow, dot, dynamic, fadeIn, film, line, linear, parseColor, polyPath, ramp, rect, smoother, text, tex, write,
+    Node, arrow, contourPaths, dot, dynamic, fadeIn, film, line, linear, parseColor, polyPath, ramp, rect, smoother, text, tex, write,
     type Rgba, type Ring, type Vec,
 } from 'vizmatic/stage'
 
@@ -51,32 +51,6 @@ function ridge(y: number): number {
         else low = mid
     }
     return (low + high) / 2
-}
-
-/** Marching squares over the floor, as one list of short segments per level. */
-function contours(levels: readonly number[], resolution: number): [Vec, Vec][][] {
-    const out: [Vec, Vec][][] = levels.map(() => [])
-    const cell = (2 * SIZE) / resolution
-    const at = (i: number, j: number) => loss(-SIZE + i * cell, -SIZE + j * cell)
-    for (let i = 0; i < resolution; i++) {
-        for (let j = 0; j < resolution; j++) {
-            const v = [at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j + 1)]
-            const corners: Vec[] = [[i, j], [i + 1, j], [i + 1, j + 1], [i, j + 1]]
-            levels.forEach((level, index) => {
-                const hits: Vec[] = []
-                for (let k = 0; k < 4; k++) {
-                    const a = v[k]!, b = v[(k + 1) % 4]!
-                    if ((a < level) === (b < level)) continue
-                    const t = (level - a) / (b - a)
-                    const [ax, ay] = corners[k]!, [bx, by] = corners[(k + 1) % 4]!
-                    hits.push([-SIZE + (ax + (bx - ax) * t) * cell, -SIZE + (ay + (by - ay) * t) * cell])
-                }
-                if (hits.length >= 2) out[index]!.push([hits[0]!, hits[1]!])
-                if (hits.length === 4) out[index]!.push([hits[2]!, hits[3]!])
-            })
-        }
-    }
-    return out
 }
 
 export default film({
@@ -156,7 +130,7 @@ export default film({
         }
     }
 
-    const levelLines = contours(levels, 96)
+    const levelLines = contourPaths(loss, { x: [-SIZE, SIZE], y: [-SIZE, SIZE], levels, resolution: 96 })
     const faintPaint = parseColor('faint')
 
     const stage = dynamic(() => {
@@ -173,9 +147,9 @@ export default film({
         // The floor sits under everything, because the camera stays above the horizon.
         const floorCorners: Vec[] = ([[-SIZE, -SIZE], [SIZE, -SIZE], [SIZE, SIZE], [-SIZE, SIZE]] as const).map(([x, y]) => project(x, y, FLOOR).p)
         out.push(new Node(polyPath(floorCorners, true)).stroke(faintPaint, 1.4).fill('surface', 0.55))
-        levelLines.forEach((segments, index) => {
+        levelLines.forEach(({ paths }, index) => {
             const rings: Ring[] = []
-            for (const [a, b] of segments) rings.push(...polyPath([project(a[0], a[1], FLOOR).p, project(b[0], b[1], FLOOR).p]))
+            for (const path of paths) rings.push(...polyPath(path.map(([x, y]) => project(x, y, FLOOR).p)))
             if (rings.length) out.push(new Node(rings).stroke(levelColors[index]!, 1.2, 0.72))
         })
         const shadow = (path: Vec[], step: number, color: string, alpha: number) => {

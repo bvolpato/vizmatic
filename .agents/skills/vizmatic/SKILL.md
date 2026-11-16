@@ -57,6 +57,7 @@ For interactive authoring, `npx vizmatic preview intro.ts` opens a live timeline
 - **Never reparent mounted nodes**: do not wrap nodes already on stage in `group()`. Pass arrays to verbs (`fadeOut([a, b])`) and use `spotlight(target, { keep })` instead of manual dimming lists.
 - **Guard hidden `dynamic` nodes**: fading a parent or value does not remove a `dynamic(() => ...)` callback from `check`. Return `[]` when its visibility value is near zero.
 - **Verify math with `assertEqual`**: import `assertEqual` (plus pure math helpers such as `stableSoftmax`, `combineSoftmaxMass`, `dotProduct`, `multiplyMatrices`, and camera verbs `focusOn` / `resetCamera`) directly from `vizmatic/stage` rather than `node:assert` or root `vizmatic` so the same film runs in browser `preview` and Studio.
+- **Keep scientific meaning stable**: share `domain`, `colors`, and `scale` between `scalarField` and `colorBar`; label units and model assumptions. Use `integrateTrajectory` for time-dependent paths, `contourPaths` for level curves, and `isosurface` for implicit geometry. `molecule3d` draws supplied structures; it does not infer chemistry. Read the scientific section of `references/films.md` before using these tools. Keep one-film models in the film rather than adding subject-specific public wrappers.
 
 ### Lessons, narrated films, and sound
 

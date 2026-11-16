@@ -52,7 +52,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: .cache/films
-          key: pages-films-${{ runner.os }}-${{ hashFiles('examples/films/**', 'src/stage/**', 'src/video.ts', 'src/math.ts', 'assets/fonts/**') }}
+          key: pages-films-${{ runner.os }}-${{ hashFiles('examples/films/**', 'src/stage/**', 'src/video.ts', 'src/math.ts', 'src/chemistry-elements.ts', 'pnpm-lock.yaml', 'assets/fonts/**') }}
           restore-keys: |
             pages-films-${{ runner.os }}-
       - name: Render the film catalog

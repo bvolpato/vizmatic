@@ -4,7 +4,7 @@
  * general formula collapses to Euler's identity, one substitution at a time.
  */
 import {
-    Node, arc, arrow, circle, curveThrough, draw, dot, dynamic, fadeIn, fadeOut, film, flash, line, linear, morphMatching, rect, smoother, text, tex, to, write,
+    Node, arc, arrow, circle, curveThrough, draw, dot, dynamic, fadeIn, fadeOut, film, flash, indicate, line, linear, morphMatching, rect, smoother, surroundingBox, text, tex, to, write,
     type Vec,
 } from 'vizmatic/stage'
 
@@ -182,6 +182,20 @@ export default film({
     s.play(draw(sinFrame, { lag: 0.03 }), draw(cosFrame, { lag: 0.03 }), fadeIn(waveTicks), { duration: 1.6 })
     s.add(traces)
     s.play(fadeIn(traces), { duration: 0.4 })
+    // The matching terms pulse with their projections while the point completes its turn.
+    for (const [offset, fragment, color, words] of [
+        [1, '\\cos\\theta', 'blue', 'The horizontal projection is the real part: cosine.'],
+        [4.4, '\\sin\\theta', 'pink', 'The vertical projection is the imaginary component: sine.'],
+    ] as const) {
+        const term = general.part(fragment)
+        const mark = surroundingBox(term, { follow: true, color, pad: 8, width: 2 })
+        s.at(s.time + offset, () => {
+            s.caption(words, 3)
+            s.play(fadeIn(mark), { duration: 0.2 })
+            s.play(indicate(term, { color, scale: 1.08 }), { duration: 1.8 })
+            s.play(fadeOut(mark), { duration: 0.2 })
+        })
+    }
     s.play(theta.to(TAU, { ease: linear }), { duration: 8 })
     s.wait(0.8)
 
@@ -192,7 +206,8 @@ export default film({
     s.play(morphMatching(general, atPi), { duration: 1.4 })
     s.wait(0.9)
     s.play(morphMatching(atPi, values), { duration: 1.4 })
-    s.wait(0.9)
+    s.caption('At half a turn, the imaginary component is zero. Only minus one remains.', 4)
+    s.play(indicate(values.part('i \\cdot 0'), { color: 'pink', scale: 1.08 }), { duration: 0.9 })
     s.play(morphMatching(values, reduced), { duration: 1.2 })
     s.wait(0.7)
 

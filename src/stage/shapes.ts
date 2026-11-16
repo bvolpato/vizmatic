@@ -2,6 +2,7 @@ import { arcPath, circlePath, curveThrough, linePath, parametricPath, parseSvgPa
 import { toPaint, type ColorInput } from './color'
 import { Node, objectName } from './node'
 import { imageFromAsset, type ImageAsset, type ImageFitOptions } from './image'
+import { adaptivePath, continuousSpans, type AdaptiveSampling } from './sampling'
 
 export interface ShapeStyle {
     fill?: ColorInput | null
@@ -47,8 +48,25 @@ export function curve(points: readonly Vec[], style: ShapeStyle & { closed?: boo
     return styled(new Node(style.closed ? smoothPath(points, true) : curveThrough(points)), style, { stroke: 'ink' })
 }
 
-export function parametric(f: (t: number) => Vec, from: number, to: number, style: ShapeStyle & { samples?: number } = {}): Node {
-    return styled(new Node(parametricPath(f, from, to, style.samples ?? 96)), style, { stroke: 'ink' })
+export interface ParametricOptions extends ShapeStyle {
+    /** Equal starting intervals. Defaults to 96 for the uniform spline, or 16 with adaptive sampling. */
+    samples?: number
+    /** Opt in to bounded refinement without spline overshoot. Tolerance is measured in local pixels when constructed, before later node or parent transforms. */
+    adaptive?: boolean | AdaptiveSampling
+    /** Closed parameter intervals to exclude, including [t, t] for a known pole or jump. They are never sampled. */
+    discontinuities?: readonly (readonly [number, number])[]
+}
+
+/** A uniform spline by default, or an adaptive polyline. Finite sampling can miss features between probes; declare known discontinuities explicitly. */
+export function parametric(f: (t: number) => Vec, from: number, to: number, style: ParametricOptions = {}): Node {
+    if (!style.adaptive && !style.discontinuities?.length) return styled(new Node(parametricPath(f, from, to, style.samples ?? 96)), style, { stroke: 'ink' })
+    const spans = continuousSpans(from, to, style.discontinuities, 'parametric')
+    const samples = style.samples ?? (style.adaptive ? 16 : 96)
+    if (!Number.isInteger(samples) || samples < 1 || samples > 100000) throw new Error('parametric: samples must be an integer from 1 to 100000')
+    const path = style.adaptive
+        ? adaptivePath(f, spans, samples, typeof style.adaptive === 'object' ? style.adaptive : {}, { name: 'parametric' })
+        : spans.flatMap(([a, b]) => parametricPath(f, a, b, samples))
+    return styled(new Node(path), style, { stroke: 'ink' })
 }
 
 export function circle(radius: number, style: ShapeStyle = {}): Node {

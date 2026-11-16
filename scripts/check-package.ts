@@ -8,11 +8,11 @@ interface PackResult {
     entryCount?: number
 }
 
-// The RGBA transport, AVC splice planner and media excerpt planner ship in the public bundles.
+// Includes scientific plotting tools and the runnable film catalog, excluding model tests.
 const limits = {
-    size: 7_550_000,
-    unpackedSize: 21_800_000,
-    entryCount: 245,
+    size: 7_750_000,
+    unpackedSize: 22_500_000,
+    entryCount: 270,
 }
 
 // Inspect the existing build. npm also runs prepare for a dry run unless suppressed.

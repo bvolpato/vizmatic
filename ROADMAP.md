@@ -6,10 +6,12 @@ This page states what Vizmatic can do now and what comes next. Vizmatic aims to 
 
 ### Films
 
-- A vector animation engine in `vizmatic/stage`. Every object is Bezier geometry, so any shape can trace itself, morph, or bend through a function.
+- A deterministic animation engine in `vizmatic/stage`. Vector shapes can trace, morph, and bend; sampled fields and imported images share their transforms and export path.
 - A timeline that is a pure function of time. Any frame can be sampled in any order, so scrubbing is instant and output is reproducible.
 - TeX glyphs for equations, with `morphMatching` to carry shared terms between lines.
 - Objects for math, charts, computer science, and systems, plus 3D scenes with surfaces, curves, and an orbiting camera.
+- Scientific plots with log/symlog axes, adaptive sampling, contours, sampled scalar fields, numeric color bars, RK4 trajectories, and implicit 3D surfaces.
+- Structural equation targeting, reordered symbol morphs, chemical typesetting, and supplied 3D molecules with a bounded V2000 MOL/SDF importer.
 - Five looks, gradient strokes, glow, and bloom.
 - `<vz-film>`, a live, seekable player for any page, with chapters and a stepped presentation mode.
 - `fromSvg` and `fromComponent`, which turn any SVG or TSX figure into shapes that films can animate.
@@ -38,7 +40,7 @@ This page states what Vizmatic can do now and what comes next. Vizmatic aims to 
 - Optional burned-in open captions rendered onto video frames. Synchronized narration timing, embedded MP4 caption tracks, and WebVTT sidecars are available now.
 - ProRes and 4:4:4 masters for video editors. MP4 and WebM use 4:2:0 today for browser compatibility.
 - Frame caching for faster incremental renders.
-- Parity tests between the canvas and SVG backends, which today share one display list but use separate painters.
+- Broader Canvas/SVG parity coverage beyond the current image, equation, scalar-field, bloom, and export regressions.
 
 ### Figures
 

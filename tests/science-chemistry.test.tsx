@@ -41,6 +41,23 @@ function molecule(atoms: MoleculeAtom[], bonds: MoleculeBond[], theme: 'dark' | 
 }
 
 describe('MoleculeDiagram', () => {
+    it('draws directed wedge and hashed single bonds, with the wide end at to', () => {
+        const atoms: MoleculeAtom[] = [{ id: 'a', element: 'C', x: 0, y: 0 }, { id: 'b', element: 'H', x: 1, y: 0 }]
+        const wedge = elements(molecule(atoms, [{ from: 'a', to: 'b', order: 1, stereo: 'wedge' }])).find((node) => node.type === 'polygon')!
+        const points = String(wedge.props.points).split(' ').map((p) => p.split(',').map(Number))
+        expect(points[0][0]).toBeLessThan(points[1][0])
+        expect(points[1][0]).toEqual(points[2][0])
+        expect(points[1][1]).toBeGreaterThan(points[2][1])
+        const reversed = elements(molecule(atoms, [{ from: 'b', to: 'a', order: 1, stereo: 'wedge' }])).find((node) => node.type === 'polygon')!
+        const reversePoints = String(reversed.props.points).split(' ').map((p) => p.split(',').map(Number))
+        expect(reversePoints[0][0]).toBeGreaterThan(reversePoints[1][0])
+        const hashes = elements(molecule(atoms, [{ from: 'a', to: 'b', order: 1, stereo: 'hashed' }])).filter((node) => node.type === 'line')
+        const widths = hashes.map((line) => Math.hypot(Number(line.props.x2) - Number(line.props.x1), Number(line.props.y2) - Number(line.props.y1)))
+        expect(widths.length).toBeGreaterThan(2)
+        expect(widths.every((width, i) => i === 0 || width > widths[i - 1])).toBe(true)
+        expect(() => molecule(atoms, [{ from: 'a', to: 'b', order: 2, stereo: 'wedge' }])).toThrow('requires a single bond')
+        expect(() => molecule(atoms, [{ from: 'a', to: 'b', order: 1, stereo: 'unknown' as never }])).toThrow('stereo must be')
+    })
     it('fits coordinates at one scale and draws distinct explicit bond orders', () => {
         const diagram = molecule(
             [
@@ -130,6 +147,22 @@ describe('MoleculeDiagram', () => {
 })
 
 describe('reactionBalance and ReactionEquation', () => {
+    it('conserves atoms and coefficient-weighted electron charge in redox half reactions', () => {
+        const oxidized: ReactionTerm = { formula: 'Fe³⁺', composition: { Fe: 1 }, charge: 3 }
+        const reduced: ReactionTerm = { formula: 'Fe²⁺', composition: { Fe: 1 }, charge: 2 }
+        const electron: ReactionTerm = { formula: 'e⁻', composition: {}, charge: -1 }
+        expect(reactionBalance([oxidized, electron], [reduced])).toMatchObject({ status: 'balanced', elementDeltas: { Fe: 0 }, chargeDelta: 0 })
+        expect(reactionBalance([oxidized, { ...electron, coefficient: 2 }], [reduced])).toMatchObject({ status: 'unbalanced', elementDeltas: { Fe: 0 }, chargeDelta: 1 })
+        expect(reactionBalance([oxidized, { formula: 'e⁻', charge: -1 }], [reduced])).toMatchObject({ status: 'unavailable', missingTerms: ['reactants[1]'] })
+        expect(reactionBalance([
+            { formula: 'MnO₄⁻', composition: { Mn: 1, O: 4 }, charge: -1 },
+            { formula: 'H⁺', composition: { H: 1 }, charge: 1, coefficient: 8 },
+            { ...electron, coefficient: 5 },
+        ], [
+            { formula: 'Mn²⁺', composition: { Mn: 1 }, charge: 2 },
+            { formula: 'H₂O', composition: { H: 2, O: 1 }, coefficient: 4 },
+        ]).status).toBe('balanced')
+    })
     it('weights explicit composition and charge maps by coefficient', () => {
         const reactants: ReactionTerm[] = [
             { formula: 'H₂', coefficient: 2, composition: { H: 2 } },

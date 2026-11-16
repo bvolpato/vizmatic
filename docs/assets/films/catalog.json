@@ -40,6 +40,96 @@
     "look": "midnight"
   },
   {
+    "id": "hydrogen-orbitals",
+    "title": "Hydrogen: seeing a wavefunction",
+    "summary": "Signed orbital surfaces meet moving probability slices. The normalized 1s, 2p and 3d wavefunctions reveal lobes and nodal planes, with no electron orbits.",
+    "topic": "Physics",
+    "duration": 52,
+    "posterTime": 40,
+    "featured": true,
+    "look": "midnight"
+  },
+  {
+    "id": "maxwell",
+    "title": "Maxwell: the shape of light",
+    "summary": "A traveling electromagnetic wave meets a fixed observer. Electric and magnetic vectors reveal linear, elliptical and circular polarization, then the direction of energy flow.",
+    "topic": "Physics",
+    "duration": 42,
+    "posterTime": 29,
+    "featured": true,
+    "look": "midnight"
+  },
+  {
+    "id": "reaction-diffusion",
+    "title": "Two chemicals. Endless patterns.",
+    "summary": "A Gray–Scott simulation grows and divides from one seed. Local reaction and diffusion create a field of patterns, shown on one fixed concentration scale.",
+    "topic": "Chemistry",
+    "duration": 40.6,
+    "posterTime": 33,
+    "featured": true,
+    "look": "midnight"
+  },
+  {
+    "id": "gravitational-waves",
+    "title": "Gravitational waves: a changing separation",
+    "summary": "Rings of freely falling test particles reveal plus and cross polarization, then a traveling wave. Local displacements are magnified; the rings are measuring arrangements.",
+    "topic": "Physics",
+    "duration": 42,
+    "posterTime": 35,
+    "featured": true,
+    "look": "midnight"
+  },
+  {
+    "id": "stationary-action",
+    "title": "Stationary action: a path among neighbors",
+    "summary": "A ballistic path sits among nearby alternatives with the same endpoints. Their calculated actions reveal stationarity and quadratic changes under small variations.",
+    "topic": "Physics",
+    "duration": 42,
+    "posterTime": 30,
+    "featured": true,
+    "look": "midnight"
+  },
+  {
+    "id": "quantum-tunneling",
+    "title": "A barrier is not a wall",
+    "summary": "Exact stationary quantum scattering links complex amplitude, phase and probability density. Wider barriers transmit less current while reflection and transmission still sum to one.",
+    "topic": "Physics",
+    "duration": 40,
+    "posterTime": 23,
+    "featured": true,
+    "look": "midnight"
+  },
+  {
+    "id": "heat-equation",
+    "title": "Heat: why the ripples disappear",
+    "summary": "A temperature profile, a heat strip and its Fourier modes share one analytic solution. Higher frequencies decay faster, leaving the broadest shape behind.",
+    "topic": "Physics",
+    "duration": 40,
+    "posterTime": 17,
+    "featured": true,
+    "look": "midnight"
+  },
+  {
+    "id": "catalysis",
+    "title": "A catalyst changes the route",
+    "summary": "A lower reaction pathway shares the same endpoints. Explicit molecular geometry and chemical notation connect net hydrogenation with unchanged overall energy.",
+    "topic": "Chemistry",
+    "duration": 40,
+    "posterTime": 33,
+    "featured": true,
+    "look": "midnight"
+  },
+  {
+    "id": "boltzmann-entropy",
+    "title": "Entropy counts hidden arrangements",
+    "summary": "Twenty labeled particles change compartments. Exact binomial counts link each arrangement to coarse-grained entropy, including the fluctuations of a small system.",
+    "topic": "Physics",
+    "duration": 40,
+    "posterTime": 18.5,
+    "featured": true,
+    "look": "midnight"
+  },
+  {
     "id": "flash-attention",
     "title": "FlashAttention: tiling beats memory bandwidth",
     "summary": "Online running-max softmax streams K and V blocks through fast on-chip SRAM without materializing the N by N attention matrix in HBM.",
@@ -209,5 +299,15 @@
     "featured": false,
     "look": "paper",
     "stepped": true
+  },
+  {
+    "id": "pathlines",
+    "title": "A flow changes. A particle remembers.",
+    "summary": "A changing velocity field turns its instantaneous streamlines. A particle records a different, curved history, verified against an exact trajectory.",
+    "topic": "Physics",
+    "duration": 26,
+    "posterTime": 14,
+    "featured": false,
+    "look": "midnight"
   }
 ]

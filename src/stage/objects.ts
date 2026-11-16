@@ -1,4 +1,6 @@
-import { curveThrough, linePath, polyPath, type Path, type Ring, type Vec } from './geometry'
+import { apply, curveThrough, linePath, polyPath, type Path, type Ring, type Vec } from './geometry'
+import { scaleMapping, niceStep, formatAxisTick, type AxisScale, type ScaleMapping } from './scales'
+import { adaptivePath, continuousSpans, type AdaptiveSampling } from './sampling'
 import { Node, dynamic, group, ownLabels, objectName } from './node'
 import { arrow, dot, line, type ShapeStyle } from './shapes'
 import { tex } from './tex'
@@ -6,6 +8,8 @@ import { text, type TextOptions } from './text'
 import type { ColorInput } from './color'
 import { valueAt } from './numbers'
 import { said } from './objects/util'
+
+export type { AdaptiveSampling } from './sampling'
 
 /** A number, or a function that gives the number now: `() => t.value` follows a Value of the film. */
 export type Reactive = number | (() => number)
@@ -92,6 +96,15 @@ export interface AxesOptions {
     height?: number
     xStep?: number
     yStep?: number
+    /** Linear by default. Log domains must be positive; symlog also accepts zero and negative values. */
+    xScale?: AxisScale
+    yScale?: AxisScale
+    /** Explicit tick values in data coordinates. Values outside the current domain are hidden. */
+    xTicks?: readonly number[]
+    yTicks?: readonly number[]
+    /** Tick labels as TeX, just like the default labels. */
+    xFormat?: (value: number) => string
+    yFormat?: (value: number) => string
     color?: ColorInput
     /** Number labels on ticks. */
     labels?: boolean
@@ -103,12 +116,19 @@ export interface AxesOptions {
     tips?: boolean
 }
 
-export interface PlotOptions extends ShapeStyle {
+export interface PlotSampling {
+    /** Equal starting intervals. Defaults to 160 for uniform sampling, or 16 for adaptive sampling. */
+    samples?: number
+    /** Refine in mapped coordinates. Produces straight segments without spline overshoot. Opt in; uniform sampling is unchanged. */
+    adaptive?: boolean | AdaptiveSampling
+    /** Closed x intervals to exclude, including [x, x] for a known pole or jump. No samples are evaluated inside them. */
+    discontinuities?: readonly (readonly [number, number])[]
+}
+
+export interface PlotOptions extends ShapeStyle, PlotSampling {
     /** Where the curve starts and ends on the x axis. A function follows a Value, so `to: () => now.value` draws the curve up to a time. */
     from?: Reactive
     to?: Reactive
-    /** The number of equal parts that a function is sampled at. A series has its own points. */
-    samples?: number
 }
 
 export interface AxisMarkerOptions {
@@ -155,17 +175,24 @@ export class Axes extends Node {
     readonly moving: boolean
     private readonly xSource: AxisRange
     private readonly ySource: AxisRange
+    private readonly xScale: AxisScale
+    private readonly yScale: AxisScale
+    private xMapping?: ScaleMapping
+    private yMapping?: ScaleMapping
     /** What the frame is drawn with: it is drawn one time, or again on every frame when a range moves. */
-    private readonly style: { color: ColorInput; xStep?: number; yStep?: number; tips: boolean; labelSize: number }
+    private readonly style: { color: ColorInput; xStep?: number; yStep?: number; xTicks?: readonly number[]; yTicks?: readonly number[]; xFormat?: (value: number) => string; yFormat?: (value: number) => string; tips: boolean; labelSize: number }
 
     constructor(options: AxesOptions = {}) {
         super()
         this.xSource = rangeSource('x', options.x) ?? [-5, 5]
         this.ySource = rangeSource('y', options.y) ?? [-3, 3]
+        this.xScale = options.xScale ?? 'linear'
+        this.yScale = options.yScale ?? 'linear'
         this.moving = typeof this.xSource === 'function' || typeof this.ySource === 'function'
         this.plotWidth = options.width ?? 1100
         this.plotHeight = options.height ?? 640
-        this.style = { color: options.color ?? 'dim', xStep: options.xStep, yStep: options.yStep, tips: options.tips ?? true, labelSize: options.labelSize ?? 20 }
+        if (![this.plotWidth, this.plotHeight].every((v) => Number.isFinite(v) && v > 0)) throw new Error('axes: width and height must be finite and greater than 0')
+        this.style = { color: options.color ?? 'dim', xStep: options.xStep, yStep: options.yStep, xTicks: options.xTicks, yTicks: options.yTicks, xFormat: options.xFormat, yFormat: options.yFormat, tips: options.tips ?? true, labelSize: options.labelSize ?? 20 }
         const numbers = options.labels ?? true
         if (this.moving) {
             // A range that is wrong now stops the build here, and not at the first frame.
@@ -194,17 +221,37 @@ export class Axes extends Node {
         return rangeNow('y', this.ySource)
     }
 
+    private mapping(axis: 'x' | 'y'): ScaleMapping {
+        const range = axis === 'x' ? this.xRange : this.yRange
+        const cached = axis === 'x' ? this.xMapping : this.yMapping
+        if (cached && cached.domain[0] === range[0] && cached.domain[1] === range[1]) return cached
+        const made = scaleMapping(range, axis === 'x' ? this.xScale : this.yScale, `axes: ${axis}`)
+        if (axis === 'x') this.xMapping = made
+        else this.yMapping = made
+        return made
+    }
+
     /** The ticks of each axis and the point where the axes cross, for the ranges now. */
     private steps(): { xs: number[]; ys: number[]; originX: number; originY: number } {
         const xRange = this.xRange, yRange = this.yRange
-        const xStep = this.style.xStep ?? niceStep(xRange[1] - xRange[0]), yStep = this.style.yStep ?? niceStep(yRange[1] - yRange[0])
+        const xm = this.mapping('x'), ym = this.mapping('y')
+        const xStep = this.style.xStep ?? (xm.type === 'linear' ? niceStep(xRange[1] - xRange[0]) : undefined)
+        const yStep = this.style.yStep ?? (ym.type === 'linear' ? niceStep(yRange[1] - yRange[0]) : undefined)
         if (this.moving) {
             for (const [axis, range, step] of [['x', xRange, xStep], ['y', yRange, yStep]] as const) {
+                if (step === undefined || (axis === 'x' ? this.style.xTicks : this.style.yTicks)) continue
                 const count = (range[1] - range[0]) / step
                 if (!(count <= MOST_TICKS)) throw new Error(`axes: the ${axis} range ${range[0]} to ${range[1]} has ${Number.isFinite(count) ? Math.round(count) : 'no end of'} ticks at a step of ${step}, and axes with a range that moves draw each tick again on every frame. Give a larger ${axis}Step`)
             }
         }
-        return { xs: ticks(xRange, xStep), ys: ticks(yRange, yStep), originX: clampInto(0, xRange), originY: clampInto(0, yRange) }
+        const ticks = (mapping: ScaleMapping, values: readonly number[] | undefined, step: number | undefined): number[] => {
+            if (values?.some((v) => !Number.isFinite(v))) throw new Error('axes: tick values must be finite')
+            const [low, high] = mapping.domain
+            const made = values ? [...new Set(values)].filter((v) => v >= low && v <= high).sort((a, b) => a - b) : mapping.ticks(step)
+            if (this.moving && made.length > MOST_TICKS) throw new Error(`axes: a moving axis can show at most ${MOST_TICKS} ticks`)
+            return made
+        }
+        return { xs: ticks(xm, this.style.xTicks, xStep), ys: ticks(ym, this.style.yTicks, yStep), originX: clampInto(0, xRange), originY: clampInto(0, yRange) }
     }
 
     /**
@@ -215,8 +262,8 @@ export class Axes extends Node {
     private shown(axis: 'x' | 'y', value: number, half = 0): number {
         const moves = typeof (axis === 'x' ? this.xSource : this.ySource) === 'function'
         if (!moves) return 1
-        const range = axis === 'x' ? this.xRange : this.yRange, length = axis === 'x' ? this.plotWidth : this.plotHeight
-        const along = (value - range[0]) / (range[1] - range[0]) * length
+        const length = axis === 'x' ? this.plotWidth : this.plotHeight
+        const along = this.mapping(axis).map(value) * length
         return Math.max(0, Math.min(1, (Math.min(along, length - along) - half) / TICK_FADE))
     }
 
@@ -245,12 +292,12 @@ export class Axes extends Node {
             axis(this.p(originX, yRange[0]), this.p(originX, yRange[1])),
         ]
         for (const x of xs) {
-            if (x === originX) continue
+            if (x === originX && this.mapping('x').type !== 'log') continue
             const [px, py] = this.p(x, originY)
             out.push(faded(line([px, py - TICK_SIZE], [px, py + TICK_SIZE], { stroke: color, width: 2 }), this.shown('x', x)))
         }
         for (const y of ys) {
-            if (y === originY) continue
+            if (y === originY && this.mapping('y').type !== 'log') continue
             const [px, py] = this.p(originX, y)
             out.push(faded(line([px - TICK_SIZE, py], [px + TICK_SIZE, py], { stroke: color, width: 2 }), this.shown('y', y)))
         }
@@ -260,6 +307,9 @@ export class Axes extends Node {
     private numberMarks(): Node[] {
         const { xs, ys, originX, originY } = this.steps()
         const size = this.style.labelSize
+        const spacing = (values: number[]) => Math.min(...values.slice(1).map((v, i) => v - values[i]))
+        const xFormat = this.style.xFormat ?? ((v: number) => formatAxisTick(v, spacing(xs)))
+        const yFormat = this.style.yFormat ?? ((v: number) => formatAxisTick(v, spacing(ys)))
         // The middle of a number is 26 pixels under the x axis, or 28 beside the y axis. On fixed axes that is so at
         // every size of the numbers: films place what is beside the axes by it, so a number must not move there.
         // Axes with a range that moves are newer, and their room grows with the size of the numbers.
@@ -269,16 +319,17 @@ export class Axes extends Node {
         const clear = TICK_SIZE + TICK_ROOM
         const out: (Node | null)[] = []
         for (const x of xs) {
-            if (x === originX) continue
+            // A boundary log tick can be labeled unless the other axis runs through its label.
+            if (x === originX && (this.mapping('x').type !== 'log' || this.yRange[0] < originY)) continue
             const [px, py] = this.p(x, originY)
-            const number = tex(formatTick(x), { size, color: 'dim', display: false })
+            const number = tex(xFormat(x), { size, color: 'dim', display: false })
             number.moveTo([px, py + Math.max(under, clear + number.height / 2)])
             out.push(faded(number, this.shown('x', x, this.moving ? number.width / 2 : 0)))
         }
         for (const y of ys) {
-            if (y === originY) continue
+            if (y === originY && (this.mapping('y').type !== 'log' || this.xRange[0] < originX)) continue
             const [px, py] = this.p(originX, y)
-            const number = tex(formatTick(y), { size, color: 'dim', display: false })
+            const number = tex(yFormat(y), { size, color: 'dim', display: false })
             number.moveTo([px - Math.max(beside, clear + number.width / 2), py])
             out.push(faded(number, this.shown('y', y, this.moving ? number.height / 2 : 0)))
         }
@@ -300,11 +351,24 @@ export class Axes extends Node {
 
     /** Math coordinates to this group's local stage coordinates. */
     p(x: number, y: number): [number, number] {
-        const [x0, x1] = this.xRange, [y0, y1] = this.yRange
         return [
-            ((x - x0) / (x1 - x0) - 0.5) * this.plotWidth,
-            (0.5 - (y - y0) / (y1 - y0)) * this.plotHeight,
+            (this.mapping('x').map(x) - 0.5) * this.plotWidth,
+            (0.5 - this.mapping('y').map(y)) * this.plotHeight,
         ]
+    }
+
+    /** Local stage coordinates back to data coordinates. This is the inverse of `.p()`, without clamping. */
+    coords(px: number, py: number): [number, number] {
+        return [this.mapping('x').invert(px / this.plotWidth + 0.5), this.mapping('y').invert(0.5 - py / this.plotHeight)]
+    }
+
+    /** Stage coordinates back to data coordinates, including parent transforms. Inverse of `.world()`. */
+    fromWorld(px: number, py: number): [number, number] {
+        const matrix = this.worldMatrix()
+        const determinant = matrix[0] * matrix[3] - matrix[1] * matrix[2]
+        if (determinant === 0 || !Number.isFinite(determinant)) throw new Error('axes.fromWorld: the transform is singular')
+        const dx = px - matrix[4], dy = py - matrix[5]
+        return this.coords((matrix[3] * dx - matrix[2] * dy) / determinant, (matrix[0] * dy - matrix[1] * dx) / determinant)
     }
 
     /** Math coordinates to stage coordinates, following this group's transform. */
@@ -314,18 +378,33 @@ export class Axes extends Node {
     }
 
     /** Geometry of a function or of a series over a range, clipped to the visible y range. */
-    plotPath(curve: Curve, options: { from?: number; to?: number; samples?: number } = {}): Path {
-        return this.pathOf(curveOf('plotPath', 'the curve', curve), options.from ?? this.xRange[0], options.to ?? this.xRange[1], options.samples)
+    plotPath(curve: Curve, options: PlotSampling & { from?: number; to?: number } = {}): Path {
+        return this.pathOf(curveOf('plotPath', 'the curve', curve), options.from ?? this.xRange[0], options.to ?? this.xRange[1], options)
     }
 
-    private pathOf(curve: Sampled, from: number, to: number, samples = 160): Path {
+    private pathOf(curve: Sampled, from: number, to: number, options: PlotSampling = {}): Path {
+        const adaptive = !!options.adaptive && curve.xs === null
+        const samples = options.samples ?? (adaptive ? 16 : 160)
+        if (!Number.isInteger(samples) || samples < 1 || samples > 100000) throw new Error('plot: samples must be an integer from 1 to 100000')
+        if (!Number.isFinite(from) || !Number.isFinite(to)) throw new Error('plot: from and to must be finite')
+        const spans = continuousSpans(from, to, options.discontinuities)
+        if (adaptive) {
+            const matrix = this.worldMatrix(), y0 = this.yRange[0]
+            return adaptivePath((x) => this.p(x, curve.at(x)), spans, samples, typeof options.adaptive === 'object' ? options.adaptive : {}, {
+                parameter: { map: (x) => this.p(x, y0)[0], invert: (u) => this.coords(u, 0)[0] },
+                measure: (point) => apply(matrix, ...point),
+                clipY: [-this.plotHeight / 2, this.plotHeight / 2],
+            })
+        }
         const [y0, y1] = this.yRange
         const margin = (y1 - y0) * 0.02
-        const points: Vec[] = sampleXs(from, to, samples, [curve]).map((x) => {
-            const y = curve.at(x)
-            return Number.isFinite(y) && y >= y0 - margin && y <= y1 + margin ? this.p(x, y) : [NaN, NaN]
+        return spans.flatMap(([a, b]) => {
+            const points: Vec[] = sampleXs(a, b, samples, [curve]).map((x) => {
+                const y = curve.at(x)
+                return Number.isFinite(y) && y >= y0 - margin && y <= y1 + margin ? this.p(x, y) : [NaN, NaN]
+            })
+            return curve.xs === null ? curveThrough(points) : linesThrough(points)
         })
-        return curve.xs === null ? curveThrough(points) : linesThrough(points)
     }
 
     /**
@@ -346,9 +425,9 @@ export class Axes extends Node {
         const made = this.moving || typeof from === 'function' || typeof to === 'function'
             ? objectName(dynamic(() => {
                 const [a, b] = this.span(from, to)
-                return b > a ? styled(this.pathOf(sampled, a, b, style.samples)) : null
+                return b > a ? styled(this.pathOf(sampled, a, b, style)) : null
             }), 'curve')
-            : styled(this.pathOf(sampled, from ?? this.xRange[0], to ?? this.xRange[1], style.samples))
+            : styled(this.pathOf(sampled, from ?? this.xRange[0], to ?? this.xRange[1], style))
         this.add(made)
         return made
     }
@@ -474,25 +553,6 @@ function linesThrough(points: readonly Vec[]): Path {
 
 function clampInto(value: number, range: readonly [number, number]): number {
     return Math.max(range[0], Math.min(range[1], value))
-}
-
-function niceStep(span: number): number {
-    const rough = span / 8
-    const power = Math.pow(10, Math.floor(Math.log10(rough)))
-    const unit = rough / power
-    return (unit < 1.5 ? 1 : unit < 3.5 ? 2 : unit < 7.5 ? 5 : 10) * power
-}
-
-function ticks(range: readonly [number, number], step: number): number[] {
-    const out: number[] = []
-    const first = Math.ceil(range[0] / step - 1e-9) * step
-    for (let value = first; value <= range[1] + 1e-9; value += step) out.push(Math.round(value / step) * step)
-    return out
-}
-
-function formatTick(value: number): string {
-    const rounded = Math.round(value * 1000) / 1000
-    return String(rounded)
 }
 
 export interface PlaneOptions {

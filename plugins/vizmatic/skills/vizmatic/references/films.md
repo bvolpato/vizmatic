@@ -135,6 +135,52 @@ const eq = s.add(tex('a^2 + b^2 = c^2', { size: 80 }))
 for (const glyph of eq.part('b^2')) glyph.color('yellow')
 ```
 
+Selection keeps script and fraction structure: `x^2` does not select `x_2`.
+Local macros and the equation's display mode apply to fragments. `.parts()`
+returns every non-overlapping occurrence; an invisible fragment returns no
+targets. Matching morphs keep reordered glyphs visible, pairing duplicates in
+reading order. Use `row` for shared text/TeX baselines. `braceLabel` and
+`surroundingBox` accept `follow: true` when an annotation must track its target.
+
+For chemistry, use bundled `mhchem`. Keep conservation checks separate from
+typesetting:
+
+```ts
+tex(String.raw`\ce{C2H4 + H2 ->[Ni] C2H6}`)
+```
+
+### Scientific fields and models
+
+Use `axes({ x: [1, 100], xScale: 'log', yScale: 'symlog' })` for numerical scales, including
+inverse coordinate mapping and ticks. Log domains must be positive. Opt into
+`plot(f, { adaptive: { tolerance: 0.5 }, discontinuities: [[0, 0]] })` to refine the
+geometry and break known singularities. Narrow features can still escape a
+bounded sampler; check convergence and add exclusions deliberately.
+`parametric` uses the same adaptive options and parameter exclusions. Its
+tolerance is in local pixels before later transforms; uniform splines remain
+the default.
+
+`scalarField((x, y, t) => value, { x, y, domain, colors, scale })` renders a dense
+field as one sampled image. Positive y points up. Keep the same fixed `domain`,
+`colors`, and `scale` in `colorBar`; missing samples leave transparent holes.
+`contourPaths` returns data-coordinate level curves for 2D or projected 3D plots.
+
+`integrateTrajectory((t, state) => derivative, { initial, to, step })` gives a
+seekable fixed-step RK4 solution, including `sample(t)` and component bounds.
+It supports time-dependent fields; `streamLines` shows steady-field geometry.
+Check smaller steps and physical invariants rather than assuming numerical
+accuracy from a smooth curve.
+
+Use `isosurface(f, { x, y, z, level, resolution })` inside `scene3d` for implicit
+surfaces. Density lobes usually need `normals: 'decreasing'`; label the chosen
+threshold. `molecule3d` accepts explicit coordinates/bonds or one supported V2000
+MOL/SDF record. It does not generate conformations, infer bonds, or validate a
+reaction. Keep model-specific physics in the film. Extract a reusable primitive
+only when it serves more than one model.
+
+Worked films: `maxwell.ts`, `reaction-diffusion.ts`, `hydrogen-orbitals.ts`, and
+`catalysis.ts`. `lorenz.ts` uses the shared solver and a true logarithmic axis.
+
 A grid that bends under a matrix, or a perpendicular projection onto a line:
 
 ```ts

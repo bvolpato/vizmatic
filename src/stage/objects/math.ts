@@ -1,6 +1,6 @@
 import { Axes, NumberPlane, curveOf, endOf, sampleXs, type Curve, type PlaneOptions, type Reactive, type Sampled } from '../objects'
-import { apply, arcPath, circlePath, invert, parametricPath, pathBounds, pathLength, pointAt, polyPath, projectToLine, ring, type Path, type Ring, type Vec } from '../geometry'
-import { dynamic, Node, ownLabels, type Side, direction, objectName } from '../node'
+import { apply, arcPath, circlePath, invert, parametricPath, pathBounds, pathLength, pointAt, polyPath, projectToLine, ring, type Mat, type Path, type Ring, type Vec } from '../geometry'
+import { dynamic, Node, ownLabels, rebindCloneParts, type Side, direction, objectName } from '../node'
 import { brace, dot, line, rect, type ShapeStyle } from '../shapes'
 import { tex, TexNode } from '../tex'
 import type { TextOptions } from '../text'
@@ -340,6 +340,12 @@ export function streamLines(f: FieldFn, options: StreamLinesOptions = {}): Strea
 
 // ── Calculus on Axes ────────────────────────────────────────────────────────
 
+function requireZeroBaseline(what: string, axes: Axes): void {
+    if (!Number.isFinite(axes.p(axes.xRange[0], 0)[1])) {
+        throw new Error(`${what}: a zero baseline is undefined on a logarithmic y axis. Use areaUnder with a positive over curve, or band with two positive curves.`)
+    }
+}
+
 export interface RiemannOptions {
     from?: number
     to?: number
@@ -359,6 +365,7 @@ export interface RiemannOptions {
  */
 export function riemann(axes: Axes, f: (x: number) => number, options: RiemannOptions = {}): Node {
     oneObject('riemann', axes, 'the first argument', Axes, 'a pair of axes, such as axes()')
+    requireZeroBaseline('riemann', axes)
     const n = options.n ?? 12
     const rule = options.rule ?? 'mid'
     const colors = ramp(n, ...(options.colors ?? ['blue', 'teal', 'green']))
@@ -460,6 +467,7 @@ function fillBetween(what: string, axes: Axes, top: Sampled, base: Sampled | nul
  */
 export function areaUnder(axes: Axes, f: Curve, options: AreaOptions = {}): Node {
     oneObject('areaUnder', axes, 'the first argument', Axes, 'a pair of axes, such as axes()')
+    if (options.over === undefined) requireZeroBaseline('areaUnder', axes)
     const top = curveOf('areaUnder', 'the curve', f)
     return fillBetween('areaUnder', axes, top, options.over === undefined ? null : curveOf('areaUnder', 'over', options.over), options)
 }
@@ -753,6 +761,35 @@ export function matrix(rows: readonly (readonly (string | number)[])[], options:
 
 // ── Annotation marks ────────────────────────────────────────────────────────
 
+/** Cancel the annotation's transform so a measured stage-space mark is not transformed twice. */
+class AnnotationSpace extends Node {
+    constructor(private readonly matrix: Mat, mark: Node) {
+        super()
+        this.add(mark)
+    }
+    override localMatrix(): Mat { return this.matrix }
+}
+
+class FollowingAnnotation extends Node {
+    constructor(readonly targets: Node[], private readonly make: (targets: Node[]) => Node) {
+        super()
+        // Validate and load any label fonts while the film is being authored.
+        this.data = { ...make(targets).data, attached: targets }
+        this.draw = this.build
+    }
+
+    private build(): Node {
+        for (let parent: Node | null = this; parent; parent = parent.parent) {
+            if (this.targets.includes(parent)) throw new Error('A following annotation cannot be a child of its target')
+        }
+        return new AnnotationSpace(invert(this.worldMatrix()), this.make(this.targets))
+    }
+
+    [rebindCloneParts](copy: this): void {
+        copy.data['attached'] = copy.targets
+    }
+}
+
 function boundsOf(what: string, target: Node | Block | readonly (Node | Block)[]): { x: number; y: number; width: number; height: number } {
     // A block of the layout stands for its nodes.
     const list = nodesFor(what, target)
@@ -778,10 +815,13 @@ export interface BraceLabelOptions {
     /** The font of a plain label. Defaults to the font of the film. */
     font?: TextOptions['font']
     depth?: number
+    /** Remeasure the target on each frame. Keep the annotation outside its target's children. */
+    follow?: boolean
 }
 
 /** A brace along one side of a node or nodes, with a label at its point. */
 export function braceLabel(target: Node | Block | readonly (Node | Block)[], label: string, options: BraceLabelOptions = {}): Node {
+    if (options.follow) return new FollowingAnnotation(nodesFor('braceLabel', target), (nodes) => braceLabel(nodes, label, { ...options, follow: false }))
     const b = boundsOf('braceLabel', target)
     const side = options.side ?? 'bottom'
     const gap = options.gap ?? 12
@@ -813,10 +853,13 @@ export interface SurroundOptions {
     fill?: ColorInput
     fillOpacity?: number
     glow?: number
+    /** Remeasure the target on each frame. Padding stays in stage pixels. Static by default. */
+    follow?: boolean
 }
 
 /** A rounded box around a node or nodes, measured now. */
 export function surroundingBox(target: Node | Block | readonly (Node | Block)[], options: SurroundOptions = {}): Node {
+    if (options.follow) return new FollowingAnnotation(nodesFor('surroundingBox', target), (nodes) => surroundingBox(nodes, { ...options, follow: false }))
     const b = boundsOf('surroundingBox', target)
     const pad = options.pad ?? 12
     const box = rect(b.width + pad * 2, b.height + pad * 2, { radius: options.radius ?? 8, stroke: options.color ?? 'yellow', width: options.width ?? 2.5, glow: options.glow })

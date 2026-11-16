@@ -51,6 +51,7 @@
     "examples",
     "templates",
     "tools",
+    "!examples/**/*.test.ts",
     "!**/__pycache__",
     "PROMPT.md",
     "README.md",

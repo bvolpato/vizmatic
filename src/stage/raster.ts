@@ -22,7 +22,7 @@ function embeddedResources(frame: Frame): boolean {
     for (const op of frame.ops) {
         if (op.kind === 'image') {
             const { asset, src, width, height } = op.image
-            if (!isImageAsset(asset) || src !== asset.src || typeof width !== 'number' || typeof height !== 'number') return false
+            if ((!op.image.pixels && (!isImageAsset(asset) || src !== asset.src)) || typeof width !== 'number' || typeof height !== 'number') return false
             if (op.blend !== undefined && !['normal', 'screen', 'multiply', 'overlay'].includes(op.blend)) return false
         } else {
             if (!['normal', 'screen', 'multiply', 'overlay'].includes(op.blend)) return false
@@ -36,7 +36,9 @@ function embeddedResources(frame: Frame): boolean {
  * The bloom pass of the worker, as source text. Tests build the same function from this text, and compare it
  * with the first version of the function.
  */
-export const BLOOM_SOURCE = `const bloom = (${createBloom.toString()})()`
+// tsx/esbuild can retain function names with this helper. The serialized kernel
+// must supply it itself because a worker cannot close over the importing module.
+export const BLOOM_SOURCE = `const __name = (fn, name) => Object.defineProperty(fn, 'name', { value: name, configurable: true }); const bloom = (${createBloom.toString()})()`
 
 export const RASTER_WORKER_SOURCE = String.raw`
 const { parentPort, workerData } = require('node:worker_threads')
@@ -253,7 +255,9 @@ export class RasterPool {
         const resvgPath = resolveResvg()
         this.stats.workers = size
         for (let i = 0; i < size; i++) {
-            const worker = new Worker(RASTER_WORKER_SOURCE, { eval: true, workerData: { resvgPath } })
+            // This string is CommonJS even when its caller used node --input-type=module.
+            const execArgv = process.execArgv.filter((arg, i, args) => arg !== '--input-type' && !arg.startsWith('--input-type=') && args[i - 1] !== '--input-type')
+            const worker = new Worker(RASTER_WORKER_SOURCE, { eval: true, execArgv, workerData: { resvgPath } })
             worker.on('message', (message: WorkerReply) => {
                 const entry = this.pending.get(message.id)
                 this.pending.delete(message.id)

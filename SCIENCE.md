@@ -5,7 +5,58 @@ deterministic animation. Scientific components use the same public API and scene
 registry in native rendering and the in-browser editor. They require no network
 requests or scientific drawing service.
 
-## Choose a foundation
+## Scientific films
+
+Use `vizmatic/stage` for new animations. A film supplies its equations and model;
+the engine supplies typesetting, geometry, scales, layout, and deterministic
+playback. The same source runs in browser previews and video exports.
+
+| Capability | Reusable tools | Film |
+|---|---|---|
+| Equations and derivations | `tex`, structural `.part()` / `.parts()`, `morphMatching`, baseline-aligned `row` | [Euler's circle](examples/films/euler-circle.ts) |
+| Scalar fields and concentrations | `scalarField`, `colorBar`, `contourPaths` | [Reaction and diffusion](examples/films/reaction-diffusion.ts) |
+| Scales and differential equations | `axes` with `xScale` / `yScale`, `integrateTrajectory` | [Lorenz](examples/films/lorenz.ts) |
+| Waves and polarization | `scene3d`, `curve3d`, `vector3d`, `parametricSurface` | [Maxwell](examples/films/maxwell.ts) |
+| Implicit surfaces and probability | `isosurface`, `scalarField`, `colorBar` | [Hydrogen orbitals](examples/films/hydrogen-orbitals.ts) |
+| Molecular geometry and reaction paths | `molecule3d`, `tex` with `\ce`, `axes` | [Catalysis](examples/films/catalysis.ts) |
+
+`axes({ x: [1, 100], xScale: 'log', yScale: 'symlog' })` applies the same transform to
+coordinates, inverse coordinates, ticks, and plots. Log domains must be positive.
+`plot(f, { adaptive: { tolerance: 0.5 }, discontinuities: [[0, 0]] })` refines sampled
+geometry in stage pixels and leaves specified discontinuities open. Adaptive
+sampling is bounded and cannot discover every narrow feature of an arbitrary
+function. Series retain their original points; uniform sampling remains the
+default.
+Zero-baseline areas and Riemann rectangles cannot use a logarithmic y axis.
+Use a positive `over` curve or `band` to fill a region on that scale.
+
+`parametric(f, from, to, { adaptive: true })` uses the same bounded sampler for
+curves such as particle trajectories. Its tolerance is in local pixels at
+construction time, before later node or parent transforms. It accepts the same
+parameter-interval exclusions; the default uniform spline remains unchanged.
+
+`scalarField((x, y, t) => value, { x, y, domain, colors, scale })` draws a sampled
+image, with positive y upward. Keep `domain`, `colors`, and `scale` identical in
+its `colorBar`; do not renormalize each frame. Missing samples become transparent
+holes. Spatial resolution is explicit, from 2 to 512 samples per axis. A field
+supports the same placement, clipping, opacity, and blending as other nodes.
+`contourPaths(f, { x, y, levels, resolution })` returns connected polylines in
+data coordinates, for either 2D plots or projected 3D geometry.
+
+`integrateTrajectory((t, state) => derivative, { initial, to, step })` precomputes
+fixed-step RK4 with cubic interpolation. Sampling is independent of seek order.
+Use it for time-dependent particle paths as well as autonomous systems. It is
+not a stiff or adaptive solver; compare smaller steps and check the model's
+invariants. `streamLines` depicts the geometry of a steady field, not the particle
+paths of a changing field.
+
+`isosurface(f, { x, y, z, level, resolution })` creates a cached, bounded
+marching-tetrahedra mesh inside `scene3d`. The grid approximates the level set;
+surfaces that touch the sampling box remain open. For density lobes, use
+`normals: 'decreasing'`. A displayed probability isosurface is a chosen density
+threshold, not an electron boundary or orbit.
+
+## Still figures
 
 | Subject | Components and helpers | Worked examples |
 |---|---|---|
@@ -127,13 +178,27 @@ The worked lessons use these contracts:
 `MoleculeDiagram` renders supplied 2D atom positions and bond orders. It checks
 elements, identifiers, endpoints, and finite geometry. Supply the molecular
 structure deliberately: the renderer does not infer bonds, valence, a 3D
-conformation, stereochemistry, or chemical validity from a formula.
+conformation, stereochemistry, or chemical validity from a formula. Single bonds
+accept `stereo: 'wedge' | 'hashed'`; the narrow end is `from`, so atom order matters.
+
+For films, `molecule3d({ atoms, bonds }, options)` places explicit 3D coordinates
+in a `Scene3D`. `atom(id)` and `bond(from, to)` expose parts for animation. Display
+radii are illustrative, not measured atomic radii. The same function accepts one
+V2000 MOL/SDF string containing plain element atoms and explicit bonds. Unsupported
+stereochemistry, charges, isotopes, query atoms, and property blocks are rejected;
+V3000 and multiple SDF records are not supported. A planar input remains planar.
+Vizmatic does not generate conformers or add missing hydrogens.
+
+`tex` bundles MathJax's `mhchem` extension, including `\ce` and `\pu`, for formulas,
+reaction arrows, charges, and units. This typesets the author's chemistry; it does
+not infer its meaning or balance a reaction.
 
 `ReactionEquation` displays supplied formulas, coefficients, and phase labels.
 For conservation checks, supply an explicit `composition` map and optional
 integer `charge` for each term. `reactionBalance` compares coefficient-weighted
 element counts and charge. Missing composition means balance is unavailable;
-the rendered formula is not parsed or automatically balanced.
+the rendered formula is not parsed or automatically balanced. An electron term
+uses `composition: {}` and `charge: -1`; it contributes charge without an element.
 
 `ReactionEnergyDiagram` accepts absolute energy levels in one explicitly named
 unit. The barrier is the peak energy, not activation energy itself. Activation

@@ -53,6 +53,42 @@ export default film({ fps: 30 }, (s) => {
 
 `axes.marker({ x: () => now.value, label: 'now' })` draws a line across the plot at one value of x, with its label over the plot. With `y`, the line is level and its label is at the right of the plot, for a limit or a target. Near an end of the plot, the label stays beside the plot and does not pass the end. A marker that follows a value does not show while the value is outside the range.
 
+## Scientific scales and fields
+
+`axes` accepts `xScale` and `yScale`: `'linear'`, `'log'`, or `'symlog'`.
+Coordinates, inverse coordinates, and ticks share the transform. Log domains
+must be positive; symlog includes zero and negative values. Use `xTicks` /
+`yTicks` for explicit data values, and `xFormat` / `yFormat` for TeX labels.
+Zero-baseline areas and Riemann rectangles cannot use a logarithmic y axis;
+use a positive `over` curve or `band` for filled regions on that scale.
+
+For functions with sharp curvature or singularities, opt into
+`plot(f, { adaptive: { tolerance: 0.5 }, discontinuities: [[0, 0]] })`. The tolerance
+is measured in stage pixels. The sampler leaves unresolved jumps open, but
+bounded sampling cannot detect every narrow feature. List known singularities
+or excluded intervals explicitly. Series retain their original points.
+`parametric` accepts the same options for parameterized curves, with tolerance
+measured in local pixels before later transforms. Its uniform spline is still
+the default.
+
+`scalarField((x, y, t) => value, { x, y, domain, colors, scale })` draws a dense
+field as one sampled image. Positive y points up. `colorBar` uses the same
+`domain`, `colors`, and `scale`, so a numerical value keeps its meaning as time
+changes. Nonfinite samples are holes. `contourPaths(f, { x, y, levels })` returns
+connected level curves in data coordinates for 2D or projected 3D plots.
+
+`integrateTrajectory((t, state) => derivative, { initial, to, step })` precomputes
+a fixed-step RK4 trajectory with `sample(t)` and component bounds. The result
+supports reverse playback and out-of-order frames. Reduce the step to check
+convergence; it is not a stiff solver. `streamLines` depicts a steady field,
+while a changing field requires time-dependent particle trajectories.
+
+`isosurface(f, { x, y, z, level })` gives `scene3d` a cached implicit mesh.
+`molecule3d({ atoms, bonds })` provides a 3D scene with explicit atom positions
+and bond orders; it also accepts one supported V2000 MOL/SDF record. It does not
+generate conformations or infer bonds. See [the scientific films](../films.html)
+for density fields, polarization, orbital lobes, and catalyst paths.
+
 ## Bands
 
 `band(axes, low, high)` fills the band between two curves on the same axes: the interval around a forecast, the range of a sensor, the room between a load and its limit. Each curve is a function or a series. `from` and `to` take a number or a function, so `to: () => t.value` opens the band from left to right, as a curve is drawn. The band stays inside the y range, and it has a gap where a curve has no value. `areaUnder(axes, high, { over: low })` is the same band.

@@ -9,6 +9,7 @@ import { pathMixer } from './morph'
 import type { DrawOp } from './display'
 import type { ImageAsset, ImageCrop } from './image'
 import type { Block } from './layout'
+import type { PixelImage } from './pixels'
 
 /** Internal hook used by stage objects that store state outside their child nodes. */
 export const rebindCloneParts = Symbol('rebindCloneParts')
@@ -64,6 +65,8 @@ export interface StageImage {
     readonly height: number
     readonly crop?: Readonly<ImageCrop>
     readonly asset?: ImageAsset
+    /** Generated scientific fields, with no external image to load. */
+    readonly pixels?: PixelImage
 }
 
 export type PropName = keyof NodeProps
