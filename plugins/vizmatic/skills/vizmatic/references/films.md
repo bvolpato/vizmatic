@@ -59,6 +59,12 @@ s.play(morphMatching(eq0, eq1), seq(fadeOut(oldNote), fadeIn(newNote)), { durati
 
 ## Sound and captions
 
+Inspect the actual player with captions enabled and controls visible in both
+looks. For a 1080p film, keep important labels and scientific limits above
+y = 900 as a starting margin; longer captions may need more room. Put sources
+and model limits near the top. A clean exported frame alone does not prove that
+player overlays leave the explanation readable.
+
 `--audio narration.wav` adds a sound track. It is padded or trimmed to the film's length, so a film that ends early cuts off the voice. Hold to the end with `s.wait(Math.max(0, voiceLength - s.time))`. `s.caption(text, seconds)` adds a caption and draws nothing into the picture. Compilation sorts cues by start time and ends each cue at the next start if they overlap. The last cue declared at the same start wins. Browser playback and VTT export use this same timeline, so older cues do not resume after replacement. Give each sentence enough reading time before introducing the next cue.
 
 An MP4 carries the film's title, its chapters as markers on the player's timeline, and its captions as a track that the viewer can switch on. The same captions are also written as a WebVTT file beside the video. No second pass with FFmpeg is needed.

@@ -11,7 +11,7 @@ export default film({
     description: 'A ballistic path in uniform gravity, compared with fixed-endpoint sine variations. Actual integrals converge quadratically to stationary action. This example is a minimum; the general principle is stationarity.',
     look: 'midnight', font: 'text-serif', fps: 60, poster: 30,
 }, (s) => {
-    const kit = sceneKit({ heading: { size: 64, y: -466 }, area: { left: -875, right: 875, top: -290, bottom: 302 } })
+    const kit = sceneKit({ heading: { size: 64, y: -466 }, area: { left: -875, right: 875, top: -290, bottom: 200 } })
     s.add(kit.heading('Stationary action'))
     s.add(place(column([
         text('Tong · Cambridge', { size: 26, color: 'dim' }),
@@ -21,10 +21,10 @@ export default film({
         new Box(-875, -416, 875, -370), 'left'))
 
     const chapterBox = new Box(-875, -357, 875, -310)
-    const footerBox = new Box(-875, 350, 875, 438)
+    const footerBox = new Box(-875, 252, 875, 344)
     const [geometry, information] = kit.area.columns([1.5, 1], 70)
     const plot = place(axes({
-        x: [-0.65, 12.65], y: [-0.55, 7.45], width: 910, height: 547.4,
+        x: [-0.65, 12.65], y: [-0.55, 7.45], width: 760, height: 760 * 8 / 13.3,
         xTicks: [0, 3, 6, 9, 12], yTicks: [2, 4, 6], labelSize: 28,
         grid: true, tips: false, color: 'dim',
     }), geometry)
@@ -34,7 +34,7 @@ export default film({
     s.add(rect(heightBounds.width + 24, heightBounds.height + 24, { fill: 'bg', stroke: null })
         .at(heightBounds.x + heightBounds.width / 2, heightBounds.y + heightBounds.height / 2).zIndex(8))
     s.add(heightLabel.zIndex(9))
-    s.add(place(text('horizontal distance / m', { size: 27, color: 'dim' }), new Box(geometry.left, 305, geometry.right, 340)))
+    s.add(place(text('horizontal distance / m', { size: 27, color: 'dim' }), new Box(geometry.left, 208, geometry.right, 244)))
     const elapsed = s.value(0), family = s.value(0), epsilon = s.value(1.6), sweep = s.value(0)
     const physical = plot.plot((x) => path(x / 6)[1], { from: 0, to: () => 6 * elapsed.value, stroke: 'teal', width: 6, glow: 3 })
     plot.add(dynamic(() => {
@@ -81,7 +81,7 @@ export default film({
 
     const [integrandTitleBox, integrandBox, valuesBox] = information.rows([0.10, 0.44, 0.46], 20)
     const integrandTitle = place(text('Accumulate K − V along each path', { size: 30 }), integrandTitleBox)
-    const integrand = place(axes({ x: [0, 2.1], y: [-55, 90], width: 535, height: 190,
+    const integrand = place(axes({ x: [0, 2.1], y: [-55, 90], width: 535, height: 156,
         xTicks: [0, 1, 2], yTicks: [-40, 40, 80], labels: false, labelSize: 26, tips: false }), integrandBox)
     // Time labels sit below the negative-L region, so no curve crosses them.
     for (const t of [0, 1, 2]) {
@@ -104,12 +104,12 @@ export default film({
             ...([1.6, 0, -1.6] as const).map((e) => text(
                 `${e > 0 ? 'Upper   ' : e < 0 ? 'Lower   ' : 'Physical'} ${actionIntegral(e, sweep.value).toFixed(4)} J·s`,
                 { size: 31, font: 'mono', color: e > 0 ? 'blue' : e < 0 ? 'orange' : 'teal' })),
-        ], { gap: 18 }), valuesBox).nodes
+        ], { gap: 16 }), valuesBox).nodes
     })
 
     const [actionTitleBox, actionPlotBox, actionReadoutBox] = information.rows([0.10, 0.48, 0.42], 22)
     const actionTitle = place(text('Action S / J·s vs variation ε / m', { size: 30 }), actionTitleBox)
-    const actionPlot = place(axes({ x: [-1.9, 1.9], y: [3.5, 8.8], width: 530, height: 226,
+    const actionPlot = place(axes({ x: [-1.9, 1.9], y: [3.5, 8.8], width: 530, height: 176,
         xTicks: [-1.6, 0, 1.6], yTicks: [6, 8], labelSize: 26, tips: false }), actionPlotBox)
     actionPlot.plot(action, { from: -1.8, to: 1.8, stroke: 'dim', width: 3 })
     actionPlot.add(line(actionPlot.p(-0.68, action()), actionPlot.p(0.68, action()), { stroke: 'teal', width: 4 }))
@@ -126,7 +126,7 @@ export default film({
             text(`Trials   ${action(epsilon.value).toFixed(4)} J·s`, { size: 31, color: 'blue', font: 'mono' }),
             text(`Physical ${action().toFixed(4)} J·s`, { size: 31, color: 'teal', font: 'mono' }),
             text(`ΔS = ${(action(epsilon.value) - action()).toFixed(5)} J·s`, { size: 30, font: 'mono' }),
-        ], { gap: 14 }), actionReadoutBox).nodes
+        ], { gap: 12 }), actionReadoutBox).nodes
     })
 
     const chapters = [

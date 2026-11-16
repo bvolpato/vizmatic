@@ -6,7 +6,7 @@ import {
 import { displayGain, ringPoint, separation, strain, strainAmplitude, type Polarization } from './_gravitational-waves/model'
 
 const DURATION = 42
-const RADIUS = 192
+const RADIUS = 164
 const modeAt = (t: number): Polarization => t < 10 ? 'plus' : t < 20 ? 'cross' : 'circular'
 const visibility = (t: number): number => Math.min(1, ...[10, 20, 29].map((cut) => Math.abs(t - cut) / 0.22))
 
@@ -15,7 +15,7 @@ export default film({
     description: 'Linearized transverse-traceless strain, plus and cross polarizations, circular superposition, and a plane wave propagating at c. Test-mass separations are magnified 600 times. The rings are local measuring arrangements, not material space.',
     look: 'midnight', font: 'text-serif', fps: 60, poster: 35,
 }, (s) => {
-    const kit = sceneKit({ heading: { size: 64, y: -466 }, area: { left: -875, right: 875, top: -286, bottom: 300 } })
+    const kit = sceneKit({ heading: { size: 64, y: -466 }, area: { left: -875, right: 875, top: -286, bottom: 200 } })
     s.add(kit.heading('Gravitational waves'))
     s.add(place(column([
         text('Tong · Cambridge', { size: 26, color: 'dim' }),
@@ -24,7 +24,7 @@ export default film({
     s.add(place(text('Linearized TT strain · A = 0.001 · displacement ×600 · schematic units, c = 1', { size: 30, color: 'dim' }),
         new Box(-875, -416, 875, -370), 'left'))
     const chapterBox = new Box(-875, -357, 875, -310)
-    const footerBox = new Box(-875, 349, 875, 441)
+    const footerBox = new Box(-875, 252, 875, 344)
     const [ringBox, detailBox] = kit.area.columns([1.5, 1], 70)
     const center: Vec = ringBox.point()
     const at = (x: number, y: number): Vec => [center[0] + RADIUS * x, center[1] - RADIUS * y]
@@ -57,19 +57,19 @@ export default film({
     })
     s.add(ring)
     const axisNames = [
-        place(text('x', { size: 30, color: 'dim' }), new Box(center[0] + 294, center[1] - 24, center[0] + 344, center[1] + 24)),
-        place(text('y', { size: 30, color: 'dim' }), new Box(center[0] - 24, ringBox.top - 12, center[0] + 24, ringBox.top + 32)),
-        place(text('Local separations in the x–y plane', { size: 28, color: 'dim' }), new Box(ringBox.left, 305, ringBox.right, 342)),
+        place(text('x', { size: 30, color: 'dim' }), new Box(center[0] + 252, center[1] - 24, center[0] + 300, center[1] + 24)),
+        place(text('y', { size: 30, color: 'dim' }), new Box(center[0] - 24, ringBox.top - 29, center[0] + 24, ringBox.top + 15)),
+        place(text('Local separations in the x–y plane', { size: 28, color: 'dim' }), new Box(ringBox.left, 210, ringBox.right, 244)),
     ]
     s.add(axisNames)
     s.at(28.7, () => s.play(fadeOut(axisNames), { duration: 0.22 }))
 
     const [equationBox, responseBox] = detailBox.rows([0.49, 0.51], 30)
     const matrix = place(column([
-        tex('h^{\\mathrm{TT}}_{ab}=\\begin{pmatrix}h_+&h_\\times\\\\h_\\times&-h_+\\end{pmatrix}', { size: 42 }),
-        tex('\\Delta\\mathbf r=\\tfrac12 h^{\\mathrm{TT}}\\mathbf r_0', { size: 42 }),
+        tex('h^{\\mathrm{TT}}_{ab}=\\begin{pmatrix}h_+&h_\\times\\\\h_\\times&-h_+\\end{pmatrix}', { size: 36 }),
+        tex('\\Delta\\mathbf r=\\tfrac12 h^{\\mathrm{TT}}\\mathbf r_0', { size: 36 }),
         text('a, b = x, y   ·   first order in h', { size: 28, color: 'dim' }),
-    ], { gap: 26 }), equationBox)
+    ], { gap: 18 }), equationBox)
     s.add(matrix)
     s.at(28.7, () => s.play(fadeOut(matrix), { duration: 0.22 }))
 
@@ -95,9 +95,9 @@ export default film({
     s.add(gauges)
     const [phaseTitleBox, phasePlotBox] = responseBox.rows([0.2, 0.8], 14)
     const phaseTitle = place(text('Equal amplitudes, a quarter-cycle apart', { size: 29 }), phaseTitleBox)
-    const phasePlot = place(axes({ x: [-1.4, 1.4], y: [-1.4, 1.4], width: 200, height: 200,
+    const phasePlot = place(axes({ x: [-1.4, 1.4], y: [-1.4, 1.4], width: 172, height: 172,
         xTicks: [-1, 0, 1], yTicks: [-1, 0, 1], labels: false, tips: false, color: 'dim' }), phasePlotBox)
-    phasePlot.add(circle(200 / 2.8, { stroke: 'dim', width: 2, dash: [5, 7] }))
+    phasePlot.add(circle(172 / 2.8, { stroke: 'dim', width: 2, dash: [5, 7] }))
     phasePlot.add(dynamic((t) => {
         if (t < 20 || t >= 29) return []
         const { plus, cross } = strain(0, t, 'circular')
@@ -138,7 +138,7 @@ export default film({
     })
     s.add(wave)
     const propagationLabel = place(text('Propagation +z at c', { size: 30, color: 'yellow' }),
-        new Box(510, 112, 875, 157), 'right')
+        new Box(510, 42, 875, 87), 'right')
     const [equations, explanation] = propagationMath.columns([1.3, 1], 60)
     const travelingEquations = place(column([
         tex('h_+=A\\cos(kz-\\omega t)', { size: 36, color: 'teal' }),

@@ -482,6 +482,16 @@ function dimCopy(source: CanvasImageSource, image: StageImage, dim: number, back
 
 /** Paint a frame to a 2D context at a device scale. Same result as the SVG backend. */
 export function paintFrame(ctx: Canvas2D, frame: Frame, scale = 1, images?: ImageLookup): void {
+    // Isolate retained paint state so earlier gradients cannot alter later glows.
+    ctx.save()
+    try {
+        paintFrameContents(ctx, frame, scale, images)
+    } finally {
+        ctx.restore()
+    }
+}
+
+function paintFrameContents(ctx: Canvas2D, frame: Frame, scale: number, images?: ImageLookup): void {
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.globalAlpha = 1
     ctx.globalCompositeOperation = 'source-over'
