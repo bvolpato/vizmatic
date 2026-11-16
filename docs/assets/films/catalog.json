@@ -40,12 +40,12 @@
     "look": "midnight"
   },
   {
-    "id": "hydrogen-orbitals",
-    "title": "Hydrogen: seeing a wavefunction",
-    "summary": "Signed orbital surfaces meet moving probability slices. The normalized 1s, 2p and 3d wavefunctions reveal lobes and nodal planes, with no electron orbits.",
+    "id": "planetary-orbits",
+    "title": "Eight worlds, one gravity",
+    "summary": "Eight planets follow Keplerian orbits under one clock. Sweep past the giants, move into Saturn’s tilted rings, and return to the whole system. Enlarged worlds and compressed spacing keep every orbit visible.",
     "topic": "Physics",
-    "duration": 52,
-    "posterTime": 40,
+    "duration": 50,
+    "posterTime": 32,
     "featured": true,
     "look": "midnight"
   },
@@ -307,6 +307,16 @@
     "topic": "Physics",
     "duration": 26,
     "posterTime": 14,
+    "featured": false,
+    "look": "midnight"
+  },
+  {
+    "id": "hydrogen-orbitals",
+    "title": "Hydrogen: seeing a wavefunction",
+    "summary": "Signed orbital surfaces meet moving probability slices. The normalized 1s, 2p and 3d wavefunctions reveal lobes and nodal planes, with no electron orbits.",
+    "topic": "Physics",
+    "duration": 52,
+    "posterTime": 40,
     "featured": false,
     "look": "midnight"
   }

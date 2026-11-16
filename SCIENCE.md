@@ -17,6 +17,7 @@ playback. The same source runs in browser previews and video exports.
 | Scalar fields and concentrations | `scalarField`, `colorBar`, `contourPaths` | [Reaction and diffusion](examples/films/reaction-diffusion.ts) |
 | Scales and differential equations | `axes` with `xScale` / `yScale`, `integrateTrajectory` | [Lorenz](examples/films/lorenz.ts) |
 | Waves and polarization | `scene3d`, `curve3d`, `vector3d`, `parametricSurface` | [Maxwell](examples/films/maxwell.ts) |
+| Orbital motion and shaded geometry | `scene3d`, `curve3d`, `parametricSurface`, `scalarField` | [Eight worlds, one gravity](examples/films/planetary-orbits.ts) |
 | Implicit surfaces and probability | `isosurface`, `scalarField`, `colorBar` | [Hydrogen orbitals](examples/films/hydrogen-orbitals.ts) |
 | Molecular geometry and reaction paths | `molecule3d`, `tex` with `\ce`, `axes` | [Catalysis](examples/films/catalysis.ts) |
 

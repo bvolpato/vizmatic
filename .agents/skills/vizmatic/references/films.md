@@ -184,7 +184,7 @@ MOL/SDF record. It does not generate conformations, infer bonds, or validate a
 reaction. Keep model-specific physics in the film. Extract a reusable primitive
 only when it serves more than one model.
 
-Worked films: `maxwell.ts`, `reaction-diffusion.ts`, `hydrogen-orbitals.ts`, and
+Worked films: `planetary-orbits.ts`, `maxwell.ts`, `reaction-diffusion.ts`, `hydrogen-orbitals.ts`, and
 `catalysis.ts`. `lorenz.ts` uses the shared solver and a true logarithmic axis.
 
 A grid that bends under a matrix, or a perpendicular projection onto a line:
