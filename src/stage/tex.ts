@@ -2,6 +2,7 @@ import { Node } from './node'
 import { parseSvgPath, pathBounds, rectPath, transformPath, type Mat, type Path, mul } from './geometry'
 import { toPaint, type ColorInput } from './color'
 import { Suspend } from './stage'
+import { fallbackGlyph, fontFor, glyphPath, type FontFamily } from './font'
 
 export interface TexOptions {
     size?: number
@@ -13,28 +14,38 @@ export interface TexOptions {
 export class TexNode extends Node {
     readonly glyphs: Node[] = []
     source = ''
+    /** The formula's baseline in local coordinates, before its centered pivot and transforms. */
+    readonly baseline = 0
 
-    /** Glyphs matching a TeX fragment, such as eq.part('b^2'). Use it to color or morph a term. */
+    /** Glyphs matching a TeX fragment's structure, using this equation's macros and display mode. */
     part(fragment: string): Node[] {
-        const keys = texKeys(fragment)
-        const own = this.glyphs.map((glyph) => glyph.data['key'])
-        for (let start = 0; start + keys.length <= own.length; start++) {
-            if (keys.every((key, i) => key === own[start + i])) return this.glyphs.slice(start, start + keys.length)
-        }
-        return []
+        return this.parts(fragment)[0] ?? []
     }
 
-    /** Every occurrence of a fragment, in order. */
+    /** Every non-overlapping occurrence in reading order. Fragments without visible glyphs return []. */
     parts(fragment: string): Node[][] {
-        const keys = texKeys(fragment)
-        const own = this.glyphs.map((glyph) => glyph.data['key'])
+        if (!fragment.trim()) return []
+        const display = this.data['texDisplay'] !== false
+        const target = layoutTex(fragment, display, this.source).structure
+        if (!target || target.glyphs.length === 0) return []
+        const own = layoutTex(this.source, display).structure
+        if (!own) return []
         const out: Node[][] = []
-        for (let start = 0; start + keys.length <= own.length; start++) {
-            if (keys.every((key, i) => key === own[start + i])) {
-                out.push(this.glyphs.slice(start, start + keys.length))
-                start += keys.length - 1
+        const needle = target.kind === 'row' ? target.children : [target]
+        const visit = (part: Part): void => {
+            if (part.signature === target.signature) {
+                out.push(part.glyphs.map((i) => this.glyphs[i]!))
+                return
+            }
+            for (let i = 0; i < part.children.length; i++) {
+                // Only siblings in a row form a sequence. Script and fraction arguments are distinct slots.
+                if (part.kind === 'row' && needle.every((item, j) => item.signature === part.children[i + j]?.signature)) {
+                    out.push(part.children.slice(i, i + needle.length).flatMap((item) => item.glyphs.map((j) => this.glyphs[j]!)))
+                    i += needle.length - 1
+                } else visit(part.children[i]!)
             }
         }
+        visit(own)
         return out
     }
 }
@@ -44,16 +55,39 @@ interface RawGlyph {
     key: string
 }
 
-type MathEngine = (tex: string, display: boolean) => string
+interface Part {
+    kind: string
+    signature: string
+    children: Part[]
+    glyphs: number[]
+}
+
+interface RawPart {
+    kind: string
+    children: RawPart[]
+    glyph?: number
+    slot?: number
+}
+
+interface Layout {
+    glyphs: RawGlyph[]
+    structure: Part | null
+}
+
+type MathEngine = (tex: string, display: boolean, context?: string) => string
 
 let engine: MathEngine | null = null
 let loading: Promise<void> | null = null
-const layouts = new Map<string, RawGlyph[]>()
+const layouts = new Map<string, Layout>()
+const LAYOUT_CACHE_LIMIT = 128
 
 function requireEngine(): MathEngine {
     if (engine) return engine
     loading ??= import('../math').then((module) => {
-        engine = (tex, display) => module.renderMathSvg(tex, { fontSize: 1000, display, color: '#000000' }).svg
+        engine = (tex, display, context) => {
+            const options = { fontSize: 1000, display, color: '#000000' }
+            return (context === undefined ? module.renderMathSvg(tex, options) : module.renderMathFragmentSvg(context, tex, options)).svg
+        }
     }).catch((error) => {
         loading = null
         throw error
@@ -62,12 +96,23 @@ function requireEngine(): MathEngine {
 }
 
 /** Read MathJax's SVG: nested groups with transforms around glyph paths and rule rectangles. */
-function layoutTex(tex: string, display: boolean): RawGlyph[] {
-    const cacheKey = `${display ? 'D' : 'I'}${tex}`
+function layoutTex(tex: string, display: boolean, context?: string): Layout {
+    const cacheKey = JSON.stringify([display, tex, context])
     const cached = layouts.get(cacheKey)
-    if (cached) return cached
-    const svg = requireEngine()(tex, display)
+    if (cached) {
+        layouts.delete(cacheKey)
+        layouts.set(cacheKey, cached)
+        return cached
+    }
+    const svg = requireEngine()(tex, display, context)
     const out: RawGlyph[] = []
+    const root: RawPart = { kind: '', children: [] }
+    const groups = [root]
+    const add = (path: Path, key: string): void => {
+        if (!pathBounds(path)) return
+        groups[groups.length - 1]!.children.push({ kind: 'glyph', children: [], glyph: out.length })
+        out.push({ path, key })
+    }
     const stack: Mat[] = []
     let current: Mat = [1, 0, 0, 1, 0, 0]
     const viewBox = /viewBox="([^"]+)"/.exec(svg)?.[1]?.trim().split(/[ ,]+/).map(Number) ?? [0, 0, 1000, 1000]
@@ -107,13 +152,22 @@ function layoutTex(tex: string, display: boolean): RawGlyph[] {
             continue
         }
         if (closing) {
-            if (name === 'g') current = stack.pop() ?? current
+            if (name === 'g') {
+                current = stack.pop() ?? current
+                groups.pop()
+            }
             continue
         }
         const transform = attr('transform')
         const local = transform ? parseTransform(transform) : ([1, 0, 0, 1, 0, 0] as Mat)
         if (name === 'g') {
+            const part: RawPart = {
+                kind: attr('data-vizmatic-kind') ?? attr('data-mml-node') ?? '', children: [],
+                slot: Number(attr('data-vizmatic-slot') ?? 0),
+            }
+            groups[groups.length - 1]!.children.push(part)
             if (!selfClosing) {
+                groups.push(part)
                 stack.push(current)
                 current = mul(current, local)
             }
@@ -124,19 +178,62 @@ function layoutTex(tex: string, display: boolean): RawGlyph[] {
             if (!d) continue
             const code = attr('data-c')
             const placed = transformPath(parseSvgPath(d), local)
-            out.push({
-                path: transformPath(clip ? clampPath(placed, clip) : placed, current),
-                key: code ? String.fromCodePoint(parseInt(code, 16)) : '?',
-            })
+            add(transformPath(clip ? clampPath(placed, clip) : placed, current), code ? String.fromCodePoint(parseInt(code, 16)) : '?')
         } else if (name === 'rect') {
             const x = Number(attr('x') ?? 0), y = Number(attr('y') ?? 0)
             const w = Number(attr('width') ?? 0), h = Number(attr('height') ?? 0)
-            if (w > 0 && h > 0) out.push({ path: transformPath(rectPath(x, y, w, h), mul(current, local)), key: 'rule' })
+            if (w > 0 && h > 0) add(transformPath(rectPath(x, y, w, h), mul(current, local)), 'rule')
+        } else if (name === 'text' && !selfClosing) {
+            const end = svg.indexOf('</text>', tag.lastIndex)
+            if (end < 0) throw new Error('MathJax returned an unclosed text element')
+            const content = decodeXml(svg.slice(tag.lastIndex, end))
+            const size = Number.parseFloat(attr('font-size') ?? '1000')
+            const family: FontFamily = attr('font-family') === 'monospace' ? 'mono' : attr('font-family') === 'sans-serif' ? 'sans' : 'text-serif'
+            const variant = attr('data-variant') ?? ''
+            const weight = variant.includes('bold') ? 700 : 400
+            const italic = variant.includes('italic')
+            const font = fontFor(family, weight, italic)
+            let x = Number(attr('x') ?? 0)
+            const y = Number(attr('y') ?? 0)
+            for (const char of content) {
+                const code = char.codePointAt(0)!
+                const glyph = font.glyphFor(code)
+                const found = glyph ? { font, glyph } : fallbackGlyph(family, code, weight, italic)
+                if (!found) throw new Error(`TeX text has no bundled outline for U+${code.toString(16).toUpperCase()} (${char})`)
+                const path = glyphPath(found.font, found.glyph, size)
+                if (!path.length && !/\s/u.test(char)) throw new Error(`TeX text has no bundled outline for U+${code.toString(16).toUpperCase()} (${char})`)
+                add(transformPath(path, mul(mul(current, local), [1, 0, 0, 1, x, y])), char)
+                x += found.font.advance(found.glyph) * size / found.font.unitsPerEm
+            }
+            tag.lastIndex = end + '</text>'.length
         }
     }
     const scaled = out.map((glyph) => ({ key: glyph.key, path: transformPath(glyph.path, [unit, 0, 0, unit, 0, 0]) }))
-    layouts.set(cacheKey, scaled)
-    return scaled
+    const layout = { glyphs: scaled, structure: structure(root, scaled) }
+    // Store only completed layouts. Loading fallback fonts suspends and retries the film.
+    layouts.set(cacheKey, layout)
+    if (layouts.size > LAYOUT_CACHE_LIMIT) layouts.delete(layouts.keys().next().value!)
+    return layout
+}
+
+function decodeXml(value: string): string {
+    const named: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" }
+    return value.replace(/&(#x[\da-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (_, entity: string) =>
+        entity[0] === '#' ? String.fromCodePoint(Number.parseInt(entity.slice(entity[1] === 'x' ? 2 : 1), entity[1] === 'x' ? 16 : 10)) : named[entity]!)
+}
+
+/** Keep argument boundaries, but ignore typography and redundant one-child TeX groups. */
+function structure(raw: RawPart, glyphs: readonly RawGlyph[]): Part | null {
+    if (raw.glyph !== undefined) return { kind: 'glyph', signature: JSON.stringify(glyphs[raw.glyph]!.key), children: [], glyphs: [raw.glyph] }
+    const children = [...raw.children].sort((a, b) => (a.slot ?? 0) - (b.slot ?? 0)).flatMap((child) => {
+        const part = structure(child, glyphs)
+        return part ? [part] : []
+    })
+    if (!children.length) return null
+    const row = ['', 'math', 'mrow', 'TeXAtom', 'mstyle', 'mi', 'mn', 'mo', 'mtext', 'text'].includes(raw.kind)
+    if (row && children.length === 1) return children[0]!
+    const kind = row ? 'row' : raw.kind
+    return { kind, children, glyphs: children.flatMap((part) => part.glyphs).sort((a, b) => a - b), signature: `${kind}(${children.map((part) => part.signature).join(',')})` }
 }
 
 /** Delimiter extenders are straight bars, so clamping their points equals clipping them. */
@@ -162,15 +259,11 @@ function parseTransform(value: string): Mat {
     return m
 }
 
-function texKeys(fragment: string): string[] {
-    return layoutTex(fragment, false).map((glyph) => glyph.key)
-}
-
 /** Typeset TeX with real math glyphs. `tex.part('x^2')` selects a term for color or morphing. */
 export function tex(source: string, options: TexOptions = {}): TexNode {
     const size = options.size ?? 56
     const display = options.display ?? true
-    const glyphs = layoutTex(source, display)
+    const { glyphs } = layoutTex(source, display)
     const paint = toPaint(options.color ?? 'ink')
     const node = new TexNode()
     node.source = source
@@ -199,5 +292,6 @@ export function tex(source: string, options: TexOptions = {}): TexNode {
         node.base.py = (minY + maxY) / 2
     }
     node.data['size'] = size
+    node.data['texDisplay'] = display
     return node
 }

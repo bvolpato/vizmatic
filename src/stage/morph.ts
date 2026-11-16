@@ -191,3 +191,19 @@ export function matchSequence<T>(a: readonly T[], b: readonly T[]): [number, num
     }
     return pairs
 }
+
+/** Match every common key, including reorders. Duplicate occurrences pair in reading order. */
+export function matchKeys<T>(a: readonly T[], b: readonly T[]): [number, number][] {
+    const targets = new Map<T, { indices: number[]; next: number }>()
+    b.forEach((key, index) => {
+        let bucket = targets.get(key)
+        if (!bucket) targets.set(key, bucket = { indices: [], next: 0 })
+        bucket.indices.push(index)
+    })
+    const pairs: [number, number][] = []
+    a.forEach((key, index) => {
+        const bucket = targets.get(key)
+        if (bucket && bucket.next < bucket.indices.length) pairs.push([index, bucket.indices[bucket.next++]!])
+    })
+    return pairs
+}

@@ -8,7 +8,7 @@ import { contrast, isGradient, over, sampleStops, toPaint, type ColorInput, type
 import { clock, Track } from './track'
 import { Node, type NodeProps, type PropName } from './node'
 import { Block, nodeOrPoint, nodesFor, oneNode } from './layout'
-import { matchSequence, pathMixer } from './morph'
+import { matchKeys, pathMixer } from './morph'
 import { Pictogram } from './objects/pictograms'
 import type { Stage } from './stage'
 
@@ -708,7 +708,7 @@ function finishMorph(a: readonly Node[], b: readonly Node[], ghosts: readonly No
 
 /**
  * Morph equations and labels by meaning. Glyphs that exist on both sides travel
- * to their new places. The rest fade out or in where they stand.
+ * to their new places. Duplicate keys pair in reading order. The rest fade out or in where they stand.
  */
 export function morphMatching(from: Node, to: Node, options: AnimOptions & { key?: (leaf: Node) => unknown; fadeShift?: Vec } = {}): Anim {
     oneNode('morphMatching', from, 'the first argument')
@@ -720,7 +720,7 @@ export function morphMatching(from: Node, to: Node, options: AnimOptions & { key
             const keyOf = options.key ?? ((leaf: Node) => leaf.data['key'])
             const fromLeaves = drawable(from), toLeaves = drawable(to)
             const fromBaked = fromLeaves.map(bake), toBaked = toLeaves.map(bake)
-            const pairs = matchSequence(fromLeaves.map(keyOf), toLeaves.map(keyOf))
+            const pairs = matchKeys(fromLeaves.map(keyOf), toLeaves.map(keyOf))
             const usedFrom = new Set(pairs.map(([i]) => i)), usedTo = new Set(pairs.map(([, j]) => j))
             const ghosts = pairs.map(([i, j]) => ghost(ctx.stage, fromBaked[i]!, toBaked[j]!, ctx))
             const span = ctx.t1 - ctx.t0

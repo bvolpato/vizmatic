@@ -11,6 +11,7 @@
 import { apply, invert, mul, pathBounds, transformPath, unionBounds, IDENTITY, type Bounds, type Mat, type Vec } from './geometry'
 import { Node } from './node'
 import { TextNode } from './text'
+import { TexNode } from './tex'
 import { clock } from './track'
 
 /**
@@ -558,7 +559,7 @@ function itemsOf(what: string, items: unknown): LayoutItem[] {
  * no base line, or with a text that is turned, lines up by its box.
  */
 function baseOf(item: LayoutItem): number | null {
-    if (item instanceof TextNode) {
+    if (item instanceof TextNode || item instanceof TexNode) {
         const m = item.worldMatrix()
         return Math.abs(m[1]) > 1e-9 ? null : apply(m, 0, item.baseline)[1]
     }

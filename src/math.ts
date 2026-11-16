@@ -5,6 +5,9 @@ import { TeX } from 'mathjax-full/js/input/tex.js'
 import type TexError from 'mathjax-full/js/input/tex/TexError.js'
 import 'mathjax-full/js/input/tex/ams/AmsConfiguration.js'
 import 'mathjax-full/js/input/tex/newcommand/NewcommandConfiguration.js'
+import 'mathjax-full/js/input/tex/mhchem/MhchemConfiguration.js'
+import { STATE } from 'mathjax-full/js/core/MathItem.js'
+import type { MmlNode } from 'mathjax-full/js/core/MmlTree/MmlNode.js'
 import { mathjax } from 'mathjax-full/js/mathjax.js'
 import { SVG } from 'mathjax-full/js/output/svg.js'
 
@@ -34,11 +37,22 @@ const RENDER_CACHE_LIMIT = 128
 
 function createDocument() {
     const inputJax = new TeX({
-        packages: ['base', 'ams', 'newcommand'],
+        packages: ['base', 'ams', 'newcommand', 'mhchem'],
         formatError(_jax: unknown, error: TexError) {
             throw new Error(`Invalid TeX: ${error.message}`, { cause: error })
         },
     })
+    // Keep logical limits identifiable when MathJax moves them beside an inline operator.
+    inputJax.postFilters.add(({ data }: { data: { root: MmlNode } }) => {
+        data.root.walkTree((node) => {
+            if (['munder', 'mover', 'munderover'].includes(node.kind)) {
+                (node as MmlNode).attributes.set('data-vizmatic-kind', node.kind)
+                node.childNodes.forEach((child, index) => {
+                    (child as MmlNode).attributes.set('data-vizmatic-slot', index)
+                })
+            }
+        })
+    }, -4.5)
     return mathjax.document('', { InputJax: inputJax, OutputJax: outputJax })
 }
 
@@ -65,6 +79,15 @@ function parseViewBox(value: unknown): [number, number, number, number] {
 
 /** Typeset TeX as a standalone SVG with pixel dimensions and baseline metrics. */
 export function renderMathSvg(tex: string, options: RenderMathSvgOptions = {}): RenderMathSvgResult {
+    return renderSvg(tex, options)
+}
+
+/** Internal: parse a target with the equation's local macros and display mode. */
+export function renderMathFragmentSvg(source: string, fragment: string, options: RenderMathSvgOptions = {}): RenderMathSvgResult {
+    return renderSvg(fragment, options, source === fragment ? undefined : source)
+}
+
+function renderSvg(tex: string, options: RenderMathSvgOptions, context?: string): RenderMathSvgResult {
     if (typeof tex !== 'string' || tex.trim().length === 0) {
         throw new Error('TeX input must be a non-empty string')
     }
@@ -80,7 +103,7 @@ export function renderMathSvg(tex: string, options: RenderMathSvgOptions = {}): 
     }
     const normalizedColor = color.trim()
     const display = options.display ?? false
-    const key = JSON.stringify([tex, fontSize, normalizedColor, display])
+    const key = JSON.stringify([tex, fontSize, normalizedColor, display, context])
     const cached = renderCache.get(key)
     if (cached) {
         renderCache.delete(key)
@@ -90,7 +113,10 @@ export function renderMathSvg(tex: string, options: RenderMathSvgOptions = {}): 
 
     let container
     try {
-        container = createDocument().convert(tex, {
+        const document = createDocument()
+        // Compile the source even if its SVG is cached: definitions belong to this document.
+        if (context !== undefined) document.convert(context, { display, end: STATE.COMPILED })
+        container = document.convert(tex, {
             display,
             em: fontSize,
             ex: fontSize * EX_FACTOR,
