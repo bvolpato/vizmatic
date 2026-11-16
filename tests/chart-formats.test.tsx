@@ -1,7 +1,7 @@
 import React from 'react'
 import { describe, expect, it } from 'vitest'
-import { getThemeColors, renderToBuffer, renderToSvg } from '../src'
-import { ParetoBarChart, PieChart } from '../src/primitives/charts'
+import { getThemeColors, renderToBuffer, renderToSvg, withDensity } from '../src'
+import { LineChart, ParetoBarChart, PieChart } from '../src/primitives/charts'
 
 function findElements(
     value: unknown,
@@ -22,6 +22,38 @@ function findElements(
 function props(element: React.ReactElement): Record<string, unknown> {
     return element.props as Record<string, unknown>
 }
+
+describe('line chart coordinates', () => {
+    it.each([true, false])('aligns endpoints with their ticks when showPoints is %s', (showPoints) => {
+        const chart = LineChart({
+            c: withDensity(getThemeColors('light'), 1.8),
+            series: [{ name: 'Accuracy', points: [-0.1, 0, 0.5, 0.929, 1, 1.1] }],
+            min: 0,
+            max: 1,
+            height: 240,
+            showPoints,
+        })
+        const tickY = (value: number) => Number(props(findElements(chart,
+            (element) => element.key === `line-tick-${value}`)[0]).y1)
+        const bottom = tickY(0)
+        const top = tickY(1)
+        const expected = [bottom, bottom, (top + bottom) / 2, bottom + 0.929 * (top - bottom), top, top]
+        const line = findElements(chart, (element) => element.key === 'Accuracy-line')[0]
+        const coordinates = [...String(props(line).d).matchAll(/[ML] ([\d.]+) ([\d.]+)/g)]
+        expect(coordinates).toHaveLength(expected.length)
+        coordinates.forEach((point, index) => {
+            expect(Math.abs(Number(point[2]) - expected[index])).toBeLessThanOrEqual(0.051)
+        })
+        const markers = findElements(chart, (element) => element.type === 'circle')
+        expect(markers).toHaveLength(showPoints ? expected.length : 0)
+        markers.forEach((marker, index) => {
+            const { cy, r } = props(marker)
+            expect(Number(cy)).toBeCloseTo(expected[index], 10)
+            expect(Number(cy) - Number(r)).toBeGreaterThanOrEqual(0)
+            expect(Number(cy) + Number(r)).toBeLessThanOrEqual(240)
+        })
+    })
+})
 
 describe('categorical chart formats', () => {
     it('renders readable pie wedges and handles a single full-circle slice', async () => {

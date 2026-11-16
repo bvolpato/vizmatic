@@ -824,7 +824,7 @@ if (typeof asset !== 'string' || !asset.startsWith('data:image/svg+xml;base64,')
         await expect(renderToSvg(chart, 460, 260)).resolves.not.toContain('NaN')
     })
 
-    it('keeps clamped bars and line markers inside the plot area', () => {
+    it('clamps bars and marker centers to the plot while keeping marker ink inside the chart', () => {
         const c = getThemeColors('light')
         const barChart = BarChart({
             c,
@@ -855,8 +855,10 @@ if (typeof asset !== 'string' || !asset.startsWith('data:image/svg+xml;base64,')
             const props = reactProps(marker)
             const extent = Number(props.r) + Number(props.strokeWidth ?? 0) / 2
             const center = Number(props.cy)
-            expect(center - extent).toBeGreaterThanOrEqual(10)
-            expect(center + extent).toBeLessThanOrEqual(210)
+            expect(center).toBeGreaterThanOrEqual(10)
+            expect(center).toBeLessThanOrEqual(210)
+            expect(center - extent).toBeGreaterThanOrEqual(0)
+            expect(center + extent).toBeLessThanOrEqual(220)
         }
     })
 
