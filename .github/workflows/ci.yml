@@ -71,6 +71,7 @@ jobs:
           tests/cli-film.test.ts
           tests/stage-export.test.ts
           tests/stage-frame-reuse.test.ts
+          tests/catalog-film-quality.test.ts
           tests/scene-renderer.test.ts
           tests/studio-mp4.test.ts
 
@@ -96,8 +97,8 @@ jobs:
           test -z "$(git status --porcelain --untracked-files=all)"
       - run: pnpm docs:check
       - run: pnpm exec playwright install --with-deps chromium
-      - name: Check image pixels in Chromium and Node
-        run: pnpm exec vitest run tests/stage-image.test.ts
+      - name: Check image pixels and bloom in Chromium
+        run: pnpm exec vitest run tests/stage-image.test.ts tests/stage-bloom-browser.test.ts tests/stage-engine-upgrades.test.ts
         env:
           VIZMATIC_BROWSER_TESTS: '1'
       - name: Install FFmpeg, which the Studio journey uses to decode its exports

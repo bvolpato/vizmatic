@@ -1,15 +1,15 @@
 /**
- * Render a small poster for each film in both site themes. WebP keeps the films
- * wall light: a poster here is about a tenth of the size of a full PNG. Existing
- * posters stay in place, so the site build does not need a browser. Run it by hand
- * with --force after a film changes.
+ * Render a poster for each film in both site themes. Lossless WebP preserves the
+ * bloom's dither. Existing posters stay in place, so the site build does not need
+ * FFmpeg. Run it by hand with --force after a film changes.
  *
  *   npx tsx scripts/build-film-posters.ts --force
  */
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
+import { access, copyFile, mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { chromium } from 'playwright'
+import { promisify } from 'node:util'
 import { compileFilm, isFilm, resolveLook, type FilmDefinition } from '../src/stage/index'
 import { renderFilmFrame } from '../src/stage/export'
 import { loadFilmCatalog } from './site-content'
@@ -21,12 +21,18 @@ const THEMES = [
 ] as const
 
 const exists = (path: string) => access(path).then(() => true, () => false)
+const execFileAsync = promisify(execFile)
+
+export async function encodeFilmPoster(png: string, webp: string): Promise<void> {
+    await execFileAsync('ffmpeg', [
+        '-v', 'error', '-nostdin', '-y', '-i', png, '-frames:v', '1',
+        '-c:v', 'libwebp', '-lossless', '1', '-compression_level', '6', '-pix_fmt', 'bgra', webp,
+    ])
+}
 
 export async function buildFilmPosters(force = false): Promise<number> {
     await mkdir(POSTER_DIR, { recursive: true })
     const scratch = await mkdtemp(join(tmpdir(), 'vizmatic-posters-'))
-    const browser = await chromium.launch({ headless: true })
-    const page = await browser.newPage()
     let written = 0
     try {
         for (const film of await loadFilmCatalog()) {
@@ -50,22 +56,13 @@ export async function buildFilmPosters(force = false): Promise<number> {
                 )
                 const png = join(scratch, `${film.id}-${theme.name}.png`)
                 await renderFilmFrame(compiled, film.posterTime ?? compiled.duration * 0.66, png, { width: 1440 })
-                const webp = await page.evaluate(async (source) => {
-                    const image = new Image()
-                    image.src = source
-                    await image.decode()
-                    const canvas = document.createElement('canvas')
-                    canvas.width = image.naturalWidth
-                    canvas.height = image.naturalHeight
-                    canvas.getContext('2d')!.drawImage(image, 0, 0)
-                    return canvas.toDataURL('image/webp', 0.86).split(',')[1]!
-                }, `data:image/png;base64,${(await readFile(png)).toString('base64')}`)
-                await writeFile(theme.target, Buffer.from(webp, 'base64'))
+                const webp = join(scratch, `${film.id}-${theme.name}.webp`)
+                await encodeFilmPoster(png, webp)
+                await copyFile(webp, theme.target)
                 written++
             }
         }
     } finally {
-        await browser.close()
         await rm(scratch, { recursive: true, force: true })
     }
     return written

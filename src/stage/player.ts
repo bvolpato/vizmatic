@@ -1,4 +1,4 @@
-import { paintCanvasBloom, type BloomLayer } from './bloom-canvas'
+import { paintCanvasBloom, type CanvasBloom } from './bloom-canvas'
 import { paintFrame, type Frame } from './display'
 import { isSuspend, type CompiledFilm } from './stage'
 import type { StageImage } from './node'
@@ -30,7 +30,7 @@ export class FilmPlayer {
     private currentTime = 0
     private playing = false
     private scale = 1
-    private bloomLayers: BloomLayer[] = []
+    private bloomState: CanvasBloom | null = null
     private observer: ResizeObserver | null = null
     speed: number
 
@@ -64,7 +64,7 @@ export class FilmPlayer {
         const sizeChanged = film.width !== this.film.width || film.height !== this.film.height
         this.film = film
         if (sizeChanged) {
-            this.bloomLayers = []
+            this.bloomState = null
             this.resize()
         }
         this.paint()
@@ -75,7 +75,7 @@ export class FilmPlayer {
         const sizeChanged = film.width !== this.film.width || film.height !== this.film.height
         this.film = film
         this.currentTime = Math.max(0, Math.min(film.duration, this.currentTime))
-        this.bloomLayers = []
+        this.bloomState = null
         if (sizeChanged) {
             this.resize()
             if (this.playing) this.paint()
@@ -95,7 +95,7 @@ export class FilmPlayer {
         if (this.canvas.width !== width || this.canvas.height !== height) {
             this.canvas.width = width
             this.canvas.height = height
-            this.bloomLayers = []
+            this.bloomState = null
         }
         this.scale = width / this.film.width
         if (!this.playing) this.paint()
@@ -198,7 +198,7 @@ export class FilmPlayer {
         }
         paintFrame(this.ctx, frame, this.scale, this.lookupImage)
         if (this.options.bloom !== false && frame.bloom > 0 && frame.dark) {
-            this.bloomLayers = paintCanvasBloom(this.canvas, this.ctx, frame.bloom, frame.background, this.bloomLayers)
+            this.bloomState = paintCanvasBloom(this.canvas, this.ctx, frame.bloom, frame.background, this.bloomState)
         }
     }
 }

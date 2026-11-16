@@ -264,16 +264,20 @@ export function buildOps(root: Node, camera: CameraState, width: number, height:
 
 // ── Glow ────────────────────────────────────────────────────────────────────
 
-const GLOW_PASSES = 7
+/** A blurred understroke with the old halo's approximate intensity and reach, without its seven hard edges. */
+function glowProfile(op: PathOp): { width: number; sigma: number; alpha: number } {
+    return { width: (op.stroke ? op.strokeWidth : 0) + op.glow * 0.4, sigma: op.glow * 0.3, alpha: 0.65 }
+}
 
-/** Passes of a soft glow, from widest to narrowest, with weights that sum to a gentle core. */
-function glowPasses(glow: number, width: number): { width: number; alpha: number }[] {
-    const out: { width: number; alpha: number }[] = []
-    for (let i = GLOW_PASSES; i >= 1; i--) {
-        const k = i / GLOW_PASSES
-        out.push({ width: width + glow * 2 * k, alpha: 0.16 * (1 - k) * (1 - k) + 0.018 })
-    }
-    return out
+/** Include the round stroke and four standard deviations; retain offscreen source pixels that can bleed into view. */
+function glowBounds(path: Path, width: number, sigma: number, frame: Frame): { x: number; y: number; width: number; height: number } | null {
+    const b = pathBounds(path)
+    if (!b) return null
+    const tail = 4 * sigma, pad = width / 2 + tail
+    const x = Math.max(b.x - pad, -tail), y = Math.max(b.y - pad, -tail)
+    const right = Math.min(b.x + b.width + pad, frame.width + tail)
+    const bottom = Math.min(b.y + b.height + pad, frame.height + tail)
+    return right > x && bottom > y ? { x, y, width: right - x, height: bottom - y } : null
 }
 
 function glowOf(op: PathOp): Rgba | null {
@@ -333,7 +337,7 @@ export function frameToSvg(frame: Frame, options: { scale?: number; transparent?
     const w = frame.width, h = frame.height
     const defs: string[] = []
     const body: string[] = []
-    let gradientCount = 0, dimCount = 0
+    let gradientCount = 0, dimCount = 0, glowCount = 0
     const clipIds = new Map<Path, string>()
     let closeClips = ''
     const paintAttr = (paint: Paint, attr: 'fill' | 'stroke', alpha: number): string => {
@@ -383,14 +387,15 @@ export function frameToSvg(frame: Frame, options: { scale?: number; transparent?
         const style = op.blend !== 'normal' ? ` style="mix-blend-mode:${op.blend}"` : ''
         if (op.glow > 0) {
             const color = glowOf(op)
-            const glowD = pathData(op.strokePath.length ? op.strokePath : op.path)
-            if (color && glowD) {
+            const path = op.strokePath.length ? op.strokePath : op.path
+            const profile = glowProfile(op)
+            const bounds = glowBounds(path, profile.width, profile.sigma, frame)
+            if (color && bounds) {
                 const base = Math.max(op.fillAlpha, op.strokeAlpha) * (frame.dark ? 1 : 0.22)
                 const mode = frame.dark ? ' style="mix-blend-mode:screen"' : ''
-                const passes = glowPasses(op.glow, op.stroke ? op.strokeWidth : 0)
-                    .map((pass) => `<path d="${glowD}" fill="none" stroke="${css([color[0], color[1], color[2], 1])}" stroke-opacity="${fmt(pass.alpha * base)}" stroke-width="${fmt(pass.width)}" stroke-linecap="round" stroke-linejoin="round"/>`)
-                    .join('')
-                body.push(`<g${mode}>${passes}</g>`)
+                const id = `h${glowCount++}`
+                defs.push(`<filter id="${id}" filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse" x="${fmt(bounds.x)}" y="${fmt(bounds.y)}" width="${fmt(bounds.width)}" height="${fmt(bounds.height)}" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="${fmt(profile.sigma)}"/></filter>`)
+                body.push(`<path d="${pathData(path)}" fill="none" stroke="${css([color[0], color[1], color[2], 1])}" stroke-opacity="${fmt(profile.alpha * base)}" stroke-width="${fmt(profile.width)}" stroke-linecap="round" stroke-linejoin="round" filter="url(#${id})"${mode}/>`)
             }
         }
         if (op.fill && op.stroke && op.strokePath === op.path) {
@@ -510,21 +515,33 @@ export function paintFrame(ctx: Canvas2D, frame: Frame, scale = 1, images?: Imag
             ctx.globalCompositeOperation = BLEND[op.blend]
             if (op.glow > 0) {
                 const color = glowOf(op)
-                if (color) {
+                const path = op.strokePath.length ? op.strokePath : op.path
+                const profile = glowProfile(op)
+                const bounds = glowBounds(path, profile.width, profile.sigma, frame)
+                if (color && bounds) {
                     const base = Math.max(op.fillAlpha, op.strokeAlpha) * (frame.dark ? 1 : 0.22)
-                    const previous = ctx.globalCompositeOperation
-                    if (frame.dark) ctx.globalCompositeOperation = 'screen'
+                    ctx.save()
+                    // Bound the filter's intermediate surface, especially on CPU-backed canvases.
+                    ctx.beginPath()
+                    ctx.rect(bounds.x, bounds.y, bounds.width, bounds.height)
+                    ctx.clip()
+                    ctx.globalCompositeOperation = frame.dark ? 'screen' : 'source-over'
+                    ctx.globalAlpha = profile.alpha * base
                     ctx.strokeStyle = css([color[0], color[1], color[2], 1])
                     ctx.lineCap = 'round'
                     ctx.lineJoin = 'round'
+                    ctx.lineWidth = profile.width
                     ctx.setLineDash([])
-                    const glowPath = ringsToPath2D(op.strokePath.length ? op.strokePath : op.path)
-                    for (const pass of glowPasses(op.glow, op.stroke ? op.strokeWidth : 0)) {
-                        ctx.globalAlpha = pass.alpha * base
-                        ctx.lineWidth = pass.width
-                        ctx.stroke(glowPath)
-                    }
-                    ctx.globalCompositeOperation = previous
+                    // shadowBlur uses sigma = blur / 2 in device pixels, unaffected by setTransform.
+                    // Drawing only the shadow is faster than ctx.filter on CPU canvases and also works without filter support.
+                    const offset = (frame.width - pathBounds(path)!.x + profile.width / 2 + 4 * profile.sigma) * scale
+                    ctx.setTransform(scale, 0, 0, scale, offset, 0)
+                    ctx.shadowColor = ctx.strokeStyle
+                    ctx.shadowBlur = 2 * profile.sigma * scale
+                    ctx.shadowOffsetX = -offset
+                    ctx.shadowOffsetY = 0
+                    ctx.stroke(ringsToPath2D(path))
+                    ctx.restore()
                 }
             }
             if (op.fill) {

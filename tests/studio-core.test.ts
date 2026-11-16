@@ -273,7 +273,8 @@ describe('Studio export evenSize and FramePainter motionBlur', () => {
             const ctx = {
                 globalAlpha: 1,
                 globalCompositeOperation: 'source-over',
-                filter: 'none',
+                getImageData: vi.fn(() => { log.push(label + ':bloom-read'); return { data: new Uint8ClampedArray(320 * 180 * 4) } }),
+                putImageData: vi.fn(() => log.push(label + ':bloom-write')),
                 fillStyle: '#000',
                 strokeStyle: '#000',
                 lineWidth: 1,
@@ -330,7 +331,7 @@ describe('Studio export evenSize and FramePainter motionBlur', () => {
             await painter.paint(0.5, 30)
 
             // Player canvas should NOT run per-subframe bloom when blur > 1 (only c0 clearRect + path draws).
-            expect(playerCanvas.log.some((entry) => entry.includes('screen'))).toBe(false)
+            expect(playerCanvas.log).not.toContain('c0:bloom-read')
 
             // Accumulate canvas clears before EVERY frame, averages 3 subframes via destination-in + lighter, then runs post-average screen bloom once per frame.
             const clears = accumulate.log.filter((entry) => entry === 'c1:clearRect')
@@ -340,8 +341,8 @@ describe('Studio export evenSize and FramePainter motionBlur', () => {
             expect(accumulate.log).toContain('c1:drawImage:lighter:0.50')
             expect(accumulate.log).toContain('c1:fillRect:destination-in:0.67')
             expect(accumulate.log).toContain('c1:drawImage:lighter:0.33')
-            // 3 bloom layers * 2 frames = 6 screen composites on accumulate
-            expect(accumulate.log.filter((entry) => entry.startsWith('c1:drawImage:screen:'))).toHaveLength(6)
+            expect(accumulate.log.filter((entry) => entry === 'c1:bloom-read')).toHaveLength(2)
+            expect(accumulate.log.filter((entry) => entry === 'c1:bloom-write')).toHaveLength(2)
         } finally {
             painter.destroy()
         }

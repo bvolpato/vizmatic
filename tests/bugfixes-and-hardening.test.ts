@@ -9,7 +9,7 @@ import { disableUserCodeCapabilities } from '../src/playground-sandbox'
 import { isValidSceneStyleProperty, validateResolvedSceneResources, validateSceneGraph } from '../src/scene-graph'
 import { renderSceneFrame } from '../src/scene-renderer'
 import { filePathToUrl, loadBinaryAsset } from '../src/stage/assets'
-import { paintCanvasBloom, type BloomLayer } from '../src/stage/bloom-canvas'
+import { paintCanvasBloom } from '../src/stage/bloom-canvas'
 import { compileFilm, film, frameToSvg, fromSvg, image, LOOKS, paintFrame, parseColor, rect, type ImageOp, type PathOp } from '../src/stage/index'
 import { FilmPlayer } from '../src/stage/player'
 import { sanitizePreviewLogText, startPreview } from '../src/stage/preview/server'
@@ -215,41 +215,15 @@ describe('Section 2 bugfixes', () => {
     })
 
     it('prevents dark marks on non-black dark backgrounds from glowing positive in paintCanvasBloom', () => {
-        const operations: Array<{ target: string; composite: string; style?: string }> = []
-        const makeCanvas = (label: string) => {
-            const ctx = {
-                globalCompositeOperation: 'source-over',
-                globalAlpha: 1,
-                filter: 'none',
-                fillStyle: '#000000',
-                setTransform: vi.fn(),
-                clearRect: vi.fn(),
-                drawImage: vi.fn(() => {
-                    operations.push({ target: label, composite: ctx.globalCompositeOperation })
-                }),
-                fillRect: vi.fn(() => {
-                    operations.push({ target: label, composite: ctx.globalCompositeOperation, style: String(ctx.fillStyle) })
-                }),
-            }
-            return {
-                width: 320,
-                height: 180,
-                getContext: () => ctx,
-            }
-        }
-        let layerSeq = 0
-        vi.stubGlobal('document', {
-            createElement: () => makeCanvas(`layer-${layerSeq++}`),
-        })
-        const mainCanvas = makeCanvas('main')
-        const mainCtx = mainCanvas.getContext()
-        const layers: BloomLayer[] = []
-        paintCanvasBloom(mainCanvas as unknown as HTMLCanvasElement, mainCtx as unknown as CanvasRenderingContext2D, 1, '#0b1526', layers)
-
-        const layer0Ops = operations.filter((op) => op.target === 'layer-0')
-        expect(layer0Ops.map((op) => op.composite)).toEqual(['source-over', 'lighten', 'difference'])
-        expect(layer0Ops[1]?.style).toBe('#0b1526')
-        expect(layer0Ops[2]?.style).toBe('#0b1526')
+        const width = 320, height = 180
+        const data = new Uint8ClampedArray(width * height * 4)
+        for (let i = 0; i < data.length; i += 4) data.set([11, 21, 38, 255], i)
+        for (let y = 70; y < 110; y++) for (let x = 140; x < 180; x++) data.set([0, 0, 0, 255], (y * width + x) * 4)
+        const before = data.slice()
+        const ctx = { getImageData: () => ({ data }), putImageData: vi.fn() }
+        paintCanvasBloom({ width, height } as HTMLCanvasElement, ctx as unknown as CanvasRenderingContext2D, 1, '#0b1526')
+        expect(data).toEqual(before)
+        expect(ctx.putImageData).toHaveBeenCalledOnce()
     })
 
     it('propagates Node.blend onto ImageOp, frameToSvg, and paintFrame', async () => {

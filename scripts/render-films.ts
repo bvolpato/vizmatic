@@ -26,6 +26,7 @@ export interface CatalogEntry {
 }
 
 const OUT = 'docs/assets/films'
+const CATALOG_DITHER = true
 const BROWSER_ONLY_STAGE_FILES = new Set(['browser.ts', 'player.ts', 'bloom-canvas.ts'])
 
 export async function readCatalog(): Promise<CatalogEntry[]> {
@@ -107,7 +108,7 @@ export async function computeFilmCacheKey(
     filmsDir = resolve('examples/films'),
 ): Promise<string> {
     const hash = createHash('sha256')
-    hash.update(`engine:${engineHash}\nid:${entry.id}\nlook:${entry.look}\nquality:${quality}\n`)
+    hash.update(`engine:${engineHash}\nid:${entry.id}\nlook:${entry.look}\nquality:${quality}\ndither:${CATALOG_DITHER}\n`)
     const entryFile = join(filmsDir, `${entry.id}.ts`)
     const files = await collectFilmFiles(entryFile)
     const companionDir = await listFilesSorted(join(filmsDir, entry.id))
@@ -176,7 +177,7 @@ async function main(): Promise<void> {
             }
         }
         const started = performance.now()
-        const video = await renderFilmVideo(film, outputMp4, { quality, workers })
+        const video = await renderFilmVideo(film, outputMp4, { quality, workers, dither: CATALOG_DITHER })
         if (cacheDir) await saveCachedFilm(cacheDir, entry.id, cacheKey, outputMp4)
         const seconds = (performance.now() - started) / 1000
         console.log(`video ${entry.id} ${video.frameCount} frames ${(video.bytes / 1e6).toFixed(1)} MB in ${seconds.toFixed(0)}s (${(video.frameCount / seconds).toFixed(0)} fps)`)

@@ -4,7 +4,7 @@
  * is. This module runs in the Studio page and inside the code sandbox.
  */
 import * as gifenc from 'gifenc'
-import { paintCanvasBloom, type BloomLayer } from '../stage/bloom-canvas'
+import { paintCanvasBloom, type CanvasBloom } from '../stage/bloom-canvas'
 import { FilmPlayer } from '../stage/player'
 import { isSuspend, type CompiledFilm, type Frame } from '../stage/index'
 import { muxMp4, muxWebm, vp9Config, type Mp4Sample, type VideoCodec } from './mp4'
@@ -80,7 +80,7 @@ export class FramePainter {
     private readonly player: FilmPlayer
     private readonly accumulate: HTMLCanvasElement | null
     private readonly accumulateCtx: CanvasRenderingContext2D | null
-    private bloomLayers: BloomLayer[] = []
+    private bloomState: CanvasBloom | null = null
 
     constructor(private readonly film: CompiledFilm, readonly width: number, readonly height: number, private readonly blur: number) {
         this.player = new FilmPlayer(this.canvas, film, { pixelRatio: width / film.width, bloom: blur <= 1 })
@@ -129,7 +129,7 @@ export class FramePainter {
         ctx.globalAlpha = 1
         ctx.globalCompositeOperation = 'source-over'
         if (lastFrame && lastFrame.bloom > 0 && lastFrame.dark) {
-            this.bloomLayers = paintCanvasBloom(this.accumulate, ctx, lastFrame.bloom, lastFrame.background, this.bloomLayers)
+            this.bloomState = paintCanvasBloom(this.accumulate, ctx, lastFrame.bloom, lastFrame.background, this.bloomState)
         }
         return this.accumulate
     }

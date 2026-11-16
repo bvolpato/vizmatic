@@ -1,6 +1,8 @@
 import { createElement } from 'react'
 import { Resvg } from '@resvg/resvg-js'
-import { describe, expect, it, vi } from 'vitest'
+import { build } from 'esbuild'
+import { chromium } from 'playwright'
+import { describe, expect, it } from 'vitest'
 import {
     GraphDiagram,
     createTeachingAllocation,
@@ -33,11 +35,9 @@ import {
     gaussian,
     group,
     lerpArray,
-    line,
     multiplyMatrices,
     namedBox,
     normalizeVector,
-    paintFrame,
     pathBounds,
     pictogram,
     place,
@@ -56,100 +56,145 @@ import {
     type Node,
     type PathOp,
     type Rgba,
+    type Frame,
 } from '../src/stage/index'
+import { linePath, rectPath } from '../src/stage/geometry'
 import { FILM_OBJECTS } from '../src/stage/catalog'
 import { fromComponent } from '../src/stage/export'
 import { KINDS, PALETTE } from '../src/studio/catalog'
 
-class StubPath2D {
-    readonly d: string
-    constructor(d = '') {
-        this.d = d
-    }
-    moveTo(): void {}
-    lineTo(): void {}
-    bezierCurveTo(): void {}
-    closePath(): void {}
+function glowFrame(dark = true, changes: Partial<PathOp> = {}): Frame {
+    const path = linePath([80, 120], [240, 120])
+    return { width: 320, height: 240, background: null, bloom: 0, dark, ops: [{
+        kind: 'path', path, strokePath: path, fill: null, fillAlpha: 0,
+        stroke: [255, 255, 255, 1], strokeAlpha: 1, strokeWidth: 4,
+        cap: 'round', join: 'round', dash: null, dashOffset: 0,
+        glow: 40, glowColor: null, blend: 'normal', ...changes,
+    }] }
 }
 
-describe('light-look glow halo scaling', () => {
-    it('attenuates glow understrokes by 0.22 on light looks in both SVG and Canvas while keeping dark looks luminous', async () => {
-        const spec = film({ bloom: 0 }, (s) => {
-            s.add(line([-120, 0], [120, 0], { stroke: 'blue', width: 4 }).glow(14))
-            s.wait(0.2)
-        })
-        const darkFilm = await compileFilm(spec, { look: 'midnight' })
-        const lightFilm = await compileFilm(spec, { look: 'paper' })
-        const darkFrame = darkFilm.frame(0)
-        const lightFrame = lightFilm.frame(0)
+function glowPixels(frame: Frame, scale = 1): Uint8Array {
+    return new Resvg(frameToSvg(frame, { scale }), { font: { loadSystemFonts: false } }).render().pixels
+}
 
-        expect(darkFrame.dark).toBe(true)
-        expect(lightFrame.dark).toBe(false)
+describe('smooth node glow', () => {
+    it('fades continuously to zero with the original halo intensity and extent, and keeps a crisp core', () => {
+        const pixels = glowPixels(glowFrame())
+        const alpha = (x: number, y: number) => pixels[(y * 320 + x) * 4 + 3]
+        const profile = Array.from({ length: 64 }, (_, i) => alpha(160, 124 + i))
+        const jumps = profile.slice(1).map((value, i) => Math.abs(value - profile[i]))
+        // The old seven strokes jump by 20/255 at this radius. Check actual pixels, not pass counts.
+        expect(Math.max(...jumps)).toBeLessThanOrEqual(5)
+        expect(new Set(profile).size).toBeGreaterThan(25)
+        expect(profile.every((value, i) => i === 0 || value <= profile[i - 1])).toBe(true)
+        expect(profile[0]).toBeGreaterThan(75)
+        expect(profile[0]).toBeLessThan(105)
+        expect(profile.reduce((sum, value) => sum + value, 0)).toBeGreaterThan(1100)
+        expect(profile.reduce((sum, value) => sum + value, 0)).toBeLessThan(1600)
+        expect(alpha(160, 166)).toBeLessThanOrEqual(1)
+        expect(alpha(160, 120)).toBe(255)
+    })
 
-        const darkSvg = frameToSvg(darkFrame)
-        const lightSvg = frameToSvg(lightFrame)
-
-        const extractGlowOpacities = (svg: string): number[] => {
-            const match = /<g[^>]*>([\s\S]*?)<\/g>/.exec(svg)
-            expect(match).not.toBeNull()
-            const groupBody = match![1]!
-            const paths = [...groupBody.matchAll(/<path[^>]*>/g)].map((m) => m[0])
-            // 7 glow understrokes inside <g>, with the crisp core stroke right after </g>
-            expect(paths).toHaveLength(7)
-            return paths.map((tag) => {
-                const op = /stroke-opacity="([^"]+)"/.exec(tag)
-                return op ? Number(op[1]) : 1
-            })
+    it('attenuates only the halo by 0.22 on light looks', () => {
+        const dark = glowPixels(glowFrame()), light = glowPixels(glowFrame(false))
+        for (let y = 124; y < 168; y++) {
+            const index = (y * 320 + 160) * 4 + 3
+            expect(Math.abs(light[index] - dark[index] * 0.22)).toBeLessThanOrEqual(1.5)
         }
+        expect(light[(120 * 320 + 160) * 4 + 3]).toBe(255)
+    })
 
-        const darkAlphas = extractGlowOpacities(darkSvg)
-        const lightAlphas = extractGlowOpacities(lightSvg)
-        darkAlphas.forEach((alpha, i) => {
-            expect(lightAlphas[i]!).toBeCloseTo(alpha * 0.22, 2)
-        })
+    it('bounds filters to the trimmed geometry without clipping the blur tail or zero-height paths', () => {
+        const frame = glowFrame(true, { strokePath: linePath([80, 120], [160, 120]) })
+        const svg = frameToSvg(frame)
+        const filter = /<filter\b[^>]+>/.exec(svg)?.[0]
+        expect(filter).toBeDefined()
+        const attr = (name: string) => Number(new RegExp(` ${name}="([^"]+)"`).exec(filter!)?.[1])
+        expect(attr('width') * attr('height')).toBeLessThan(frame.width * frame.height / 2)
+        expect(attr('height')).toBeGreaterThan(80)
+        // Enlarging the filter must not uncover any clipped halo pixels.
+        const enlarged = svg.replace(filter!, filter!.replace(/ (x|y|width|height)="[^"]+"/g, '')
+            .replace('>', ' x="-320" y="-240" width="960" height="720">'))
+        const pixels = glowPixels(frame), reference = new Resvg(enlarged).render().pixels
+        expect(Math.max(...pixels.filter((_, i) => i % 4 === 3).map((a, i) => Math.abs(a - reference[i * 4 + 3])))).toBeLessThanOrEqual(1)
+        expect(pixels[(120 * 320 + 230) * 4 + 3]).toBe(0)
+        expect(pixels[(110 * 320 + 70) * 4 + 3]).toBeGreaterThan(5)
+        const clipped = glowPixels(glowFrame(true, { clips: [rectPath(100, 100, 60, 40)] }))
+        expect(clipped[(120 * 320 + 99) * 4 + 3]).toBe(0)
+        expect(clipped[(120 * 320 + 100) * 4 + 3]).toBe(255)
+        expect(clipped[(99 * 320 + 130) * 4 + 3]).toBe(0)
+    })
 
-        // Verify paintFrame also scales glow alphas by 0.22 on light looks and uses source-over vs screen
-        vi.stubGlobal('Path2D', StubPath2D)
-        const recordPaint = (frame: typeof darkFrame) => {
-            const strokes: Array<{ alpha: number; composite: string }> = []
-            const ctx = {
-                globalAlpha: 1,
-                globalCompositeOperation: 'source-over',
-                fillStyle: '#000',
-                strokeStyle: '#000',
-                lineCap: 'round',
-                lineJoin: 'round',
-                lineWidth: 1,
-                setTransform: vi.fn(),
-                transform: vi.fn(),
-                clearRect: vi.fn(),
-                fillRect: vi.fn(),
-                fill: vi.fn(),
-                stroke: vi.fn(() => {
-                    strokes.push({ alpha: ctx.globalAlpha, composite: ctx.globalCompositeOperation })
-                }),
-                setLineDash: vi.fn(),
-                save: vi.fn(),
-                restore: vi.fn(),
-            }
-            paintFrame(ctx as unknown as CanvasRenderingContext2D, frame)
-            return strokes
-        }
-
+    it.runIf(process.env.VIZMATIC_BROWSER_TESTS === '1')('matches browser Canvas and SVG pixels at device scales, including clips and trimmed strokes', async () => {
+        const bundled = await build({ entryPoints: ['src/stage/display.ts'], bundle: true, write: false,
+            format: 'iife', globalName: 'glowRenderer', platform: 'browser', target: 'es2022' })
+        const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] })
         try {
-            const darkStrokes = recordPaint(darkFrame)
-            const lightStrokes = recordPaint(lightFrame)
-            expect(darkStrokes).toHaveLength(8)
-            expect(lightStrokes).toHaveLength(8)
-            for (let i = 0; i < 7; i++) {
-                expect(darkStrokes[i]!.composite).toBe('screen')
-                expect(lightStrokes[i]!.composite).toBe('source-over')
-                expect(lightStrokes[i]!.alpha).toBeCloseTo(darkStrokes[i]!.alpha * 0.22, 5)
+            const page = await browser.newPage()
+            await page.addScriptTag({ content: bundled.outputFiles[0].text })
+            const shape = rectPath(120, 90, 80, 60, 12)
+            const frames = [
+                glowFrame(), glowFrame(false),
+                glowFrame(true, { strokeAlpha: 0, fillAlpha: 1 }),
+                glowFrame(true, { strokePath: linePath([80, 120], [160, 120]), clips: [rectPath(100, 100, 100, 40)] }),
+                glowFrame(true, { path: shape, strokePath: shape, stroke: null, fill: [255, 255, 255, 1], fillAlpha: 1 }),
+                glowFrame(true, { path: linePath([-10, 5], [100, 5]), strokePath: linePath([-10, 5], [100, 5]) }),
+                ...[true, false].map(dark => ({ ...glowFrame(dark, { stroke: [70, 150, 210, 1], strokeAlpha: 0, fillAlpha: 1, blend: 'multiply' }), background: '#406080' })),
+            ]
+            for (const frame of frames) for (const scale of [0.5, 1, 2]) for (const offscreen of [false, true]) {
+                const actual = await page.evaluate(async ({ serialized, svg, scale, offscreen }) => {
+                    const frame = JSON.parse(serialized)
+                    const canvas = offscreen ? new OffscreenCanvas(frame.width * scale, frame.height * scale) : document.createElement('canvas')
+                    canvas.width = frame.width * scale; canvas.height = frame.height * scale
+                    const ctx = canvas.getContext('2d', { willReadFrequently: true })! as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
+                    const renderer = (globalThis as unknown as { glowRenderer: { paintFrame: typeof import('../src/stage/display').paintFrame } }).glowRenderer
+                    const encode = (data: Uint8ClampedArray): string => {
+                        let bytes = ''
+                        for (let i = 0; i < data.length; i += 32768) bytes += String.fromCharCode(...data.subarray(i, i + 32768))
+                        return btoa(bytes)
+                    }
+                    renderer.paintFrame(ctx, { ...frame, background: null, ops: frame.ops.map((op: PathOp) => ({ ...op, glow: 0 })) }, scale)
+                    const core = encode(ctx.getImageData(0, 0, canvas.width, canvas.height).data.filter((_, i) => i % 4 === 3))
+                    renderer.paintFrame(ctx, frame, scale)
+                    const painted = encode(ctx.getImageData(0, 0, canvas.width, canvas.height).data)
+                    const image = new Image()
+                    image.src = 'data:image/svg+xml,' + encodeURIComponent(svg)
+                    await image.decode()
+                    ctx.setTransform(1, 0, 0, 1, 0, 0)
+                    ctx.clearRect(0, 0, canvas.width, canvas.height)
+                    ctx.drawImage(image, 0, 0)
+                    return { painted, core, svg: encode(ctx.getImageData(0, 0, canvas.width, canvas.height).data) }
+                }, { serialized: JSON.stringify(frame, (_, value) => value instanceof Float64Array ? Array.from(value) : value), svg: frameToSvg(frame, { scale }), scale, offscreen })
+                const reference = glowPixels(frame, scale)
+                const referenceCore = glowPixels({ ...frame, background: null, ops: frame.ops.map(op => ({ ...op, glow: 0 })) }, scale)
+                const canvasCore = Buffer.from(actual.core, 'base64')
+                // Compare premultiplied channels; RGB under near-zero alpha is quantized differently by rasterizers.
+                for (const encoded of [actual.painted, actual.svg]) {
+                    const pixels = Buffer.from(encoded, 'base64')
+                    let max = 0, total = 0, at = 0
+                    for (let i = 0; i < pixels.length; i += 4) {
+                        // Exclude the independently rendered crisp core, including both rasterizers' antialiased edge pixels.
+                        if (referenceCore[i + 3] || canvasCore[i / 4]) continue
+                        for (let c = 0; c < 4; c++) {
+                            const a = pixels[i + c] * (c === 3 ? 1 : pixels[i + 3] / 255)
+                            const b = reference[i + c] // Resvg.pixels already contains premultiplied RGB.
+                            const delta = Math.abs(a - b)
+                            if (delta > max) { max = delta; at = i / 4 }
+                            total += delta
+                        }
+                    }
+                    const context = `scale=${scale}, dark=${frame.dark}, offscreen=${offscreen}, pixel=${at % (frame.width * scale)},${Math.floor(at / (frame.width * scale))}`
+                    expect(max, context).toBeLessThanOrEqual(8)
+                    expect(total / pixels.length, context).toBeLessThan(0.6)
+                    if (frame === frames[0] || frame === frames[1]) {
+                        expect(pixels[(120 * scale * frame.width * scale + 160 * scale) * 4 + 3]).toBe(255)
+                    }
+                }
             }
         } finally {
-            vi.unstubAllGlobals()
+            await browser.close()
         }
-    })
+    }, 30_000)
 })
 
 describe('camera choreography verbs: focusOn and resetCamera', () => {
