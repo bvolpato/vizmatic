@@ -1295,8 +1295,7 @@ export function LineChart({
     const pointFor = (value: number, index: number) => {
         const x = xStart + index * xStep
         // Values outside an explicit min/max clamp to the plot edge rather than drawing off-canvas.
-        const markerInset = showPoints ? d.g(4) : 2
-        const y = clamp(yInPlot(value, domain, plot), plot.y + markerInset, plot.bottom - markerInset)
+        const y = clamp(yInPlot(value, domain, plot), plot.y, plot.bottom)
         return { x, y }
     }
 
