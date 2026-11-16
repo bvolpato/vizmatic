@@ -78,6 +78,7 @@ jobs:
   playground:
     name: playground browser (Node 22)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -98,7 +99,7 @@ jobs:
       - run: pnpm docs:check
       - run: pnpm exec playwright install --with-deps chromium
       - name: Check visual parity in Chromium
-        run: pnpm exec vitest run --maxWorkers 2 tests/stage-image.test.ts tests/stage-bloom-browser.test.ts tests/stage-engine-upgrades.test.ts tests/stage-tex-browser.test.ts tests/stage-scalar-field-browser.test.ts tests/stage-color-bar-raster.test.ts tests/fourier-seek-browser.test.ts
+        run: timeout --kill-after=10s 180s pnpm exec vitest run --maxWorkers 2 --reporter verbose tests/stage-image.test.ts tests/stage-bloom-browser.test.ts tests/stage-engine-upgrades.test.ts tests/stage-tex-browser.test.ts tests/stage-scalar-field-browser.test.ts tests/stage-color-bar-raster.test.ts tests/fourier-seek-browser.test.ts
         env:
           VIZMATIC_BROWSER_TESTS: '1'
       - name: Install FFmpeg, which the Studio journey uses to decode its exports
