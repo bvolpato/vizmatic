@@ -1,4 +1,5 @@
 import { createBloom, type Bloom } from './bloom-kernel.mjs'
+import { paintWebGLBloom } from './bloom-webgl'
 import { parseColor } from './color'
 
 export interface CanvasBloom {
@@ -7,7 +8,10 @@ export interface CanvasBloom {
     paint: Bloom
 }
 
-/** Keep soft light in floating point until the final, dithered write, just as in video export. */
+/**
+ * Keep soft light in floating point until the final, dithered write, as in video export.
+ * Private player/export helper: paintFrame must have restored all clips on main.
+ */
 export function paintCanvasBloom(
     target: HTMLCanvasElement,
     main: CanvasRenderingContext2D,
@@ -20,6 +24,7 @@ export function paintCanvasBloom(
         state.background = background
         state.color = parseColor(background ?? '#000000')
     }
+    if (paintWebGLBloom(target, main, bloom, state.color)) return state
     const { width, height } = target
     const image = main.getImageData(0, 0, width, height)
     // ImageData uses clamped bytes, which round. The shared kernel needs truncating bytes for its dither.

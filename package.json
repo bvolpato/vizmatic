@@ -130,6 +130,7 @@
     "render:video": "pnpm build && tsx scripts/render-video-example.ts",
     "benchmark:quality": "pnpm build && tsx scripts/benchmark-quality.ts && pnpm site:build",
     "benchmark:export": "tsx scripts/bench-export.ts",
+    "benchmark:browser": "node scripts/bench-browser.mjs",
     "check:examples": "tsx scripts/check-examples.ts",
     "render:films": "tsx scripts/render-films.ts",
     "check:films": "tsx src/cli.ts check examples/films",

@@ -27,7 +27,7 @@ export interface CatalogEntry {
 
 const OUT = 'docs/assets/films'
 const CATALOG_DITHER = true
-const BROWSER_ONLY_STAGE_FILES = new Set(['browser.ts', 'player.ts', 'bloom-canvas.ts'])
+const BROWSER_ONLY_STAGE_FILES = new Set(['browser.ts', 'player.ts', 'bloom-canvas.ts', 'bloom-webgl.ts'])
 
 export async function readCatalog(): Promise<CatalogEntry[]> {
     return JSON.parse(await readFile('examples/films/catalog.json', 'utf8')) as CatalogEntry[]

@@ -501,13 +501,19 @@ function paintFrameContents(ctx: Canvas2D, frame: Frame, scale: number, images?:
         ctx.fillStyle = frame.background
         ctx.fillRect(0, 0, frame.width, frame.height)
     }
-    for (const op of frame.ops) {
-        const clipped = !!op.clips?.length
-        if (clipped) {
-            ctx.save()
-            for (const clip of op.clips!) ctx.clip(ringsToPath2D(clip))
-        }
-        try {
+    // Adjacent marks from a clipped group share its paths, even when their clip arrays differ.
+    let activeClips: readonly Path[] | undefined
+    try {
+        for (const op of frame.ops) {
+            const clips = op.clips?.length ? op.clips : undefined
+            if (clips !== activeClips && (clips?.length !== activeClips?.length || clips?.some((clip, i) => clip !== activeClips?.[i]))) {
+                if (activeClips) ctx.restore()
+                activeClips = clips
+                if (clips) {
+                    ctx.save()
+                    for (const clip of clips) ctx.clip(ringsToPath2D(clip))
+                }
+            }
             if (op.kind === 'image') {
                 const source = op.image.pixels ? pixelCanvas(op.image.pixels) : images?.(op.image) ?? browserImageSource(op.image.asset)
                 if (!source) throw new ImageAssetError('Image pixels are unavailable. Await image preparation and provide an ImageLookup outside the browser.')
@@ -570,9 +576,9 @@ function paintFrameContents(ctx: Canvas2D, frame: Frame, scale: number, images?:
                 ctx.lineDashOffset = op.dashOffset
                 ctx.stroke(ringsToPath2D(op.strokePath))
             }
-        } finally {
-            if (clipped) ctx.restore()
         }
+    } finally {
+        if (activeClips) ctx.restore()
     }
     ctx.globalAlpha = 1
     ctx.globalCompositeOperation = 'source-over'

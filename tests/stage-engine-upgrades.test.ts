@@ -78,6 +78,49 @@ function glowPixels(frame: Frame, scale = 1): Uint8Array {
 }
 
 describe('smooth node glow', () => {
+    it.runIf(process.env.VIZMATIC_BROWSER_TESTS === '1')('preserves compositing when consecutive marks share nested clips', async () => {
+        const bundled = await build({ entryPoints: ['src/stage/display.ts'], bundle: true, write: false,
+            format: 'iife', globalName: 'renderer', platform: 'browser', target: 'es2022' })
+        const browser = await chromium.launch({ headless: true, timeout: 10_000 })
+        try {
+            const page = await browser.newPage()
+            await page.addScriptTag({ content: bundled.outputFiles[0].text })
+            const frame = glowFrame(true, { path: rectPath(40, 40, 240, 160, 20), glow: 0 })
+            const results = await page.evaluate(({ serialized, clipA, clipB }) => {
+                const base = JSON.parse(serialized) as Frame
+                const a = JSON.parse(clipA), b = JSON.parse(clipB)
+                const clipStacks = [[a], [a], undefined, [b], [a, b], [a, b], [a], undefined]
+                const frame: Frame = { ...base, ops: clipStacks.map((clips, i) => ({ ...base.ops[0], clips,
+                    fill: [40 + Math.floor(i / 2) * 20, 180, 210, 1], fillAlpha: 0.25,
+                    stroke: i < 2 ? null : [255, 255, 255, 1],
+                    strokeAlpha: 0.6, strokeWidth: 2 + i, dash: i % 2 ? [6, 3] : null,
+                    glow: i === 5 ? 6 : 0, blend: i % 2 ? 'screen' : 'normal',
+                })) as PathOp[] }
+                const { paintFrame } = (globalThis as unknown as { renderer: typeof import('../src/stage/display') }).renderer
+                return [1, 2].map(scale => {
+                    const create = () => {
+                        const canvas = new OffscreenCanvas(frame.width * scale, frame.height * scale)
+                        return canvas.getContext('2d', { willReadFrequently: true })!
+                    }
+                    const batched = create(), separate = create()
+                    paintFrame(batched, frame, scale)
+                    // Render each mark in isolation, retaining the pixels already composited.
+                    separate.clearRect = () => undefined
+                    for (const op of frame.ops) paintFrame(separate, { ...frame, ops: [op] }, scale)
+                    const read = (ctx: OffscreenCanvasRenderingContext2D) => ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height).data
+                    const actual = read(batched), expected = read(separate)
+                    return { scale, equal: actual.every((v, i) => v === expected[i]), ink: actual.some(v => v > 0) }
+                })
+            }, { serialized: JSON.stringify(frame, (_, v) => v instanceof Float64Array ? Array.from(v) : v),
+                clipA: JSON.stringify(rectPath(60, 60, 160, 100), (_, v) => v instanceof Float64Array ? Array.from(v) : v),
+                clipB: JSON.stringify(rectPath(100, 40, 160, 140), (_, v) => v instanceof Float64Array ? Array.from(v) : v) })
+            for (const result of results) {
+                expect(result.equal, `scale=${result.scale}`).toBe(true)
+                expect(result.ink).toBe(true)
+            }
+        } finally { await browser.close() }
+    }, 30_000)
+
     it('fades continuously to zero with the original halo intensity and extent, and keeps a crisp core', () => {
         const pixels = glowPixels(glowFrame())
         const alpha = (x: number, y: number) => pixels[(y * 320 + x) * 4 + 3]
