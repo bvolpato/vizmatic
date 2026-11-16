@@ -6,6 +6,8 @@ function createCanvasMock() {
     const fills: string[] = []
     const ctx = {
         fillStyle: '',
+        save() {},
+        restore() {},
         setTransform() {},
         clearRect() {},
         fillRect() {
@@ -200,7 +202,7 @@ describe('<vz-film> live reconfigure, captions overlay, and synced audio', () =>
                 return { width: 200, left: 0 }
             }
             getContext() {
-                return { fillStyle: '', setTransform() {}, clearRect() {}, fillRect() {} }
+                return { fillStyle: '', save() {}, restore() {}, setTransform() {}, clearRect() {}, fillRect() {} }
             }
         }
 
