@@ -325,10 +325,14 @@ describe('Studio export evenSize and FramePainter motionBlur', () => {
 
         const painter = new FramePainter(transparentFilm, 320, 180, 3)
         try {
+            const evaluate = vi.spyOn(transparentFilm, 'frame')
             const playerCanvas = canvases[0]!
             const accumulate = canvases[1]!
             await painter.paint(0, 30)
             await painter.paint(0.5, 30)
+            expect(evaluate.mock.calls.map(([time]) => time)).toEqual([
+                0, 1 / 180, 2 / 180, 0.5, 0.5 + 1 / 180, 0.5 + 2 / 180,
+            ].map(time => expect.closeTo(time, 12)))
 
             // Player canvas should NOT run per-subframe bloom when blur > 1 (only c0 clearRect + path draws).
             expect(playerCanvas.log).not.toContain('c0:bloom-read')

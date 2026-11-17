@@ -137,10 +137,11 @@ export class FilmPlayer {
         else this.play()
     }
 
-    seek(time: number): void {
+    /** A prepared frame must come from this film at the clamped seek time. */
+    seek(time: number, prepared?: Frame): void {
         if (this.destroyed) return
         this.currentTime = Math.max(0, Math.min(this.film.duration, time))
-        this.paint()
+        this.paint(prepared)
         this.options.onSeek?.(this.currentTime)
         this.options.onTime?.(this.currentTime)
     }
@@ -206,11 +207,11 @@ export class FilmPlayer {
         return element
     }
 
-    private paint(): void {
+    private paint(prepared?: Frame): void {
         if (this.destroyed) return
         let frame: Frame
         try {
-            frame = this.film.frame(this.currentTime)
+            frame = prepared ?? this.film.frame(this.currentTime)
         } catch (error) {
             if (isSuspend(error)) {
                 if (this.pendingPaint?.promise !== error.promise) {

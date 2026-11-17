@@ -69,6 +69,54 @@ describe('FilmPlayer lifecycle', () => {
         }
     })
 
+    it('seeks with a prepared frame without reevaluating, preserving callbacks and playback', async () => {
+        const compiled = await compileFilm(film({ bloom: 0 }, s => { s.wait(2) }))
+        const prepared = { ...compiled.frame(2), background: '#123456' }
+        const { canvas, fills } = createCanvasMock()
+        const clock = animationClock()
+        const onSeek = vi.fn(), onTime = vi.fn()
+        const player = new FilmPlayer(canvas, compiled, { onSeek, onTime })
+        const evaluate = vi.spyOn(compiled, 'frame')
+        try {
+            player.play()
+            fills.length = 0
+            player.seek(99, prepared)
+            expect(evaluate).not.toHaveBeenCalled()
+            expect(fills).toEqual(['#123456'])
+            expect(player.time).toBe(2)
+            expect(onSeek).toHaveBeenCalledExactlyOnceWith(2)
+            expect(onTime).toHaveBeenCalledExactlyOnceWith(2)
+            expect(player.isPlaying).toBe(true)
+            expect(clock.pending.size).toBe(1)
+            player.destroy()
+            player.seek(0, prepared)
+            expect(fills).toHaveLength(1)
+            expect(onTime).toHaveBeenCalledTimes(1)
+        } finally {
+            player.destroy()
+        }
+    })
+
+    it('a prepared seek cancels an obsolete suspended paint', async () => {
+        const compiled = await compileFilm(film({ bloom: 0 }, s => { s.wait(2) }))
+        const prepared = compiled.frame(1)
+        const asset = deferred<void>()
+        const evaluate = vi.spyOn(compiled, 'frame').mockImplementation(() => { throw new Suspend(asset.promise) })
+        const { canvas, fills } = createCanvasMock()
+        const player = new FilmPlayer(canvas, compiled)
+        try {
+            evaluate.mockClear()
+            player.seek(1, prepared)
+            asset.resolve()
+            await asset.promise
+            expect(evaluate).not.toHaveBeenCalled()
+            expect(fills).toHaveLength(1)
+            expect(player.time).toBe(1)
+        } finally {
+            player.destroy()
+        }
+    })
+
     it('repaints a changed buffer immediately during playback and while paused', async () => {
         const compiled = await compileFilm(film({ bloom: 0 }, s => { s.wait(2) }))
         const { canvas, fills } = createCanvasMock()

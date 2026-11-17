@@ -55,6 +55,17 @@ export class ExportCancelled extends Error {
 
 const BITS_PER_PIXEL: Record<ExportQuality, number> = { draft: 0.05, standard: 0.11, high: 0.22 }
 
+// WebCodecs names map to H.273 code points in both nclx and vpcC.
+const COLOR_PRIMARIES = new Map<string, number>([
+    ['bt709', 1], ['bt470bg', 5], ['smpte170m', 6], ['bt2020', 9], ['smpte432', 12],
+])
+const COLOR_TRANSFER = new Map<string, number>([
+    ['bt709', 1], ['smpte170m', 6], ['linear', 8], ['iec61966-2-1', 13], ['pq', 16], ['hlg', 18],
+])
+const COLOR_MATRIX = new Map<string, number>([
+    ['rgb', 0], ['bt709', 1], ['bt470bg', 5], ['smpte170m', 6], ['bt2020-ncl', 9],
+])
+
 /** Pick an even size for the film's aspect ratio. Video encoders need even dimensions. */
 export function evenSize(film: { width: number; height: number }, width: number): { width: number; height: number } {
     let w = Math.max(16, Math.round(width / 2) * 2)
@@ -147,7 +158,7 @@ export class FramePainter {
             }
         }
         if (!frame) frame = this.film.frame(time)
-        this.player.seek(time)
+        this.player.seek(time, frame)
         return frame
     }
 
@@ -289,8 +300,11 @@ async function exportVideo(film: CompiledFilm, settings: ExportSettings, control
         }
     }
     const color = {
-        primaries: 1, transfer: 1, matrix: 1,
-        fullRange: (colorSpace as VideoColorSpaceInit | undefined)?.fullRange ?? false,
+        // Missing or unsupported color values are unspecified (2), not assumed BT.709.
+        primaries: COLOR_PRIMARIES.get(colorSpace?.primaries ?? '') ?? 2,
+        transfer: COLOR_TRANSFER.get(colorSpace?.transfer ?? '') ?? 2,
+        matrix: COLOR_MATRIX.get(colorSpace?.matrix ?? '') ?? 2,
+        fullRange: colorSpace?.fullRange ?? false,
     }
     const box = choice.mp4Codec === 'vp09' ? vp9Config(choice.codec, color) : description
     if (!box) throw new Error('The encoder did not supply a decoder configuration.')
