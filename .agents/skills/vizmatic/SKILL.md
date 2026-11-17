@@ -1,6 +1,8 @@
 ---
 name: vizmatic
-description: Create and render theme-aware diagrams, dense TSX figures, explainer films, narrated lessons, decks, GIFs, and MP4 videos from code. Use for technical or math animations, teaching videos, architecture diagrams, charts, and docs figures.
+description: "Create and render theme-aware diagrams, dense technical figures, explainer films, narrated lessons, and animations with Vizmatic. Choose the film or figure workflow based on the output."
+metadata:
+  short-description: "Render explainer films and dense technical figures"
 ---
 
 # Vizmatic
