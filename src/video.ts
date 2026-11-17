@@ -713,7 +713,10 @@ export async function renderRgbaVideo(
     if (options.audioPath) args.push('-map', `${audioInput}:a:0`, '-af', `asetpts=PTS-STARTPTS,apad,atrim=duration=${seconds}`)
     if (captionInput >= 0) args.push('-map', `${captionInput}:0`, '-c:s', 'mov_text', '-metadata:s:s:0', 'language=eng')
     if (metadataInput >= 0) args.push('-map_metadata', String(metadataInput), '-map_chapters', String(metadataInput))
-    args.push('-frames:v', String(schedule.count), '-t', seconds, '-vf', repeat ? `${COLOR_FILTER},fps=${fps}` : COLOR_FILTER)
+    // VideoToolbox can reach the frame limit before FFmpeg finishes muxing AAC.
+    // The input already ends at the last scheduled frame, including held frames.
+    if (h264Encoder !== 'videotoolbox' || !options.audioPath) args.push('-frames:v', String(schedule.count))
+    args.push('-t', seconds, '-vf', repeat ? `${COLOR_FILTER},fps=${fps}` : COLOR_FILTER)
     if (codec === 'vp9') {
         // The quality mode needs a zero bitrate. Row threading makes VP9 practical at HD and above.
         args.push('-c:v', 'libvpx-vp9', '-crf', String(crf), '-b:v', '0', '-deadline', 'good', '-cpu-used', '2', '-row-mt', '1', '-threads:v', String(threads))

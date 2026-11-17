@@ -168,6 +168,29 @@ describe('RGBA video export', () => {
         })
     }, 30_000)
 
+    it.skipIf(!hasFfmpeg || !hasFfprobe).for([false, true])('preserves the full AAC track in a captioned VideoToolbox export (sparse frames: %s)', { timeout: 60_000 }, async (sparse, { skip }) => {
+        const format = { width: 160, height: 90, fps: 24 }
+        if (await resolveH264Encoder('videotoolbox', 'ffmpeg', format) !== 'videotoolbox') return skip()
+        const directory = await tempDirectory()
+        const audioPath = join(directory, 'tone.wav'), outputPath = join(directory, 'captioned.mp4')
+        const tone = spawnSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'sine=f=440:r=48000:d=22', audioPath])
+        expect(tone.status).toBe(0)
+        const pixels = new Uint8Array(format.width * format.height * 4)
+        await renderRgbaVideo(() => pixels, {
+            ...format, duration: 22_000, audioPath, outputPath, h264Encoder: 'videotoolbox', requireH264Encoder: true,
+            frameIsRepeat: sparse ? ({ index }) => index > 0 : undefined,
+            captions: [{ t0: 0.125, t1: 3, text: 'First cue' }, { t0: 13, t1: 18.395, text: 'Last cue' }],
+        })
+        const probe = spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_name,time_base,duration_ts,nb_frames',
+            '-of', 'json', outputPath], { encoding: 'utf8' })
+        expect(probe.status, probe.stderr).toBe(0)
+        expect(JSON.parse(probe.stdout).streams).toEqual([
+            expect.objectContaining({ codec_name: 'h264', nb_frames: '528' }),
+            expect.objectContaining({ codec_name: 'aac', time_base: '1/48000', duration_ts: 22 * 48_000 }),
+            expect.objectContaining({ codec_name: 'mov_text' }),
+        ])
+    })
+
     it.skipIf(!hasFfmpeg || !hasFfprobe)('tags BT.709 and keeps colors through a decode', async () => {
         const swatches = [[255, 215, 94], [92, 196, 240], [79, 216, 196], [255, 107, 107]] as const
         const size = 64
