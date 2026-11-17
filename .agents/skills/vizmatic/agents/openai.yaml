@@ -1,7 +1,10 @@
 interface:
   display_name: "Vizmatic"
-  short_description: "Make explainer films, narrated lessons, and dense figures"
-  default_prompt: "Use $vizmatic to explain this with an animated film or a dense dark/light figure, check it for defects, and render the outputs."
+  short_description: "Render explainer films and dense technical figures"
+  default_prompt: "Use $vizmatic to explain this mechanism with a film or technical figure, then render and verify the output."
+  icon_small: "./assets/skill.svg"
+  icon_large: "./assets/skill.svg"
+  brand_color: "#3D246E"
 
 policy:
   allow_implicit_invocation: true
