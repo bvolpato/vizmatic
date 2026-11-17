@@ -1,5 +1,6 @@
 import { access, copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { build } from 'esbuild'
+import { createSourceFile, isExportDeclaration, isImportDeclaration, isStringLiteral, ScriptTarget } from 'typescript'
 import { STAGE_FONTS } from './build-stage'
 
 const out = 'docs/assets/studio'
@@ -35,7 +36,12 @@ async function copyFilmCatalog(): Promise<number> {
         const source = await readFile(`examples/films/${file}`, 'utf8').catch(() => null)
         // The sandbox only provides vizmatic/stage, so films with other imports stay out of the list.
         if (source === null) continue
-        const imports = [...source.matchAll(/from\s+['"]([^'"]+)['"]/g)].map((match) => match[1])
+        const module = createSourceFile(file, source, ScriptTarget.Latest)
+        const imports = module.statements.flatMap((statement) => {
+            if (!isImportDeclaration(statement) && !isExportDeclaration(statement)) return []
+            const specifier = statement.moduleSpecifier
+            return specifier && isStringLiteral(specifier) ? [specifier.text] : []
+        })
         if (imports.some((name) => name !== 'vizmatic/stage')) continue
         await writeFile(`${out}/films/${stem}.tsx`, source)
         // Prefer compact site posters, then fall back to rendered film stills if present.

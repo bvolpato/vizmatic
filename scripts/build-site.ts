@@ -285,9 +285,12 @@ const sourceByName = new Map(sources.map((source) => [source.name, source]))
 const prepared = await prepareGuides()
 await buildStage({ demos: prepared.demos })
 // Studio is its own application with its own page. The site only links to it.
+const studioFilmIds = new Set<string>()
 if (hasStudio) {
     const { buildStudio } = await import('./build-studio')
     await buildStudio()
+    const studioFilms = JSON.parse(await readFile('docs/assets/studio/films.json', 'utf8')) as { id: string }[]
+    for (const { id } of studioFilms) studioFilmIds.add(id)
     registerSitePages([{ file: 'studio.html', title: 'Studio | Vizmatic', description: 'Build and animate films in one browser tab: a timeline, an inspector, live code, and frame-exact MP4 export.' }])
 }
 await buildSiteMedia()
@@ -353,7 +356,7 @@ await Promise.all(films.map(async (film, index) => {
       <div class="film-actions">
         <a class="button primary" href="../assets/films/${film.id}.mp4" download>Download MP4</a>
         <a class="button" href="https://github.com/bvolpato/vizmatic/blob/main/${sourcePath}">Source on GitHub</a>
-        ${hasStudio ? `<a class="button" href="../studio.html?film=${film.id}">Open in the Studio</a>` : ''}
+        ${studioFilmIds.has(film.id) ? `<a class="button" href="../studio.html?film=${film.id}">Open in the Studio</a>` : ''}
       </div>
       <details class="film-source"><summary>Read the source</summary>${code}</details>
       <nav class="film-pager" aria-label="Other films">${previous ? `<a href="${previous.id}.html"><small>Previous</small>${escapeHtml(previous.title)}</a>` : ''}${next ? `<a href="${next.id}.html"><small>Next</small>${escapeHtml(next.title)}</a>` : ''}</nav>

@@ -78,6 +78,9 @@ const generatedPaths = [
     ...(await readdir(join(root, 'docs', 'film')).catch(() => [] as string[])).filter((name) => name.endsWith('.html')).map((name) => join(root, 'docs', 'film', name)),
 ]
 const pageEntries = await Promise.all(generatedPaths.map(async (path) => ({ path, html: await readFile(path, 'utf8') })))
+const studioFilms = pageEntries.some(({ path }) => basename(path) === 'studio.html')
+    ? JSON.parse(await readFile(join(root, 'docs', 'assets', 'studio', 'films.json'), 'utf8')) as { id: string }[] : []
+const studioFilmIds = new Set(studioFilms.map(({ id }) => id))
 
 const missing: string[] = []
 let refCount = 0
@@ -91,6 +94,10 @@ for (const { path, html: page } of pageEntries) {
     for (const ref of refs) {
         const cleanRef = ref.split('#')[0]?.split('?')[0]
         if (!cleanRef) continue
+        if (basename(cleanRef) === 'studio.html') {
+            const film = new URL(ref, 'https://vizmatic.invalid/').searchParams.get('film')
+            if (film && !studioFilmIds.has(film)) fail(`${relative(root, path)} links to an unavailable Studio film: ${film}`)
+        }
         // Film MP4s are ignored by git and built by the Pages workflow, where --require-video checks them.
         if (/assets\/films\/[\w-]+\.mp4$/.test(cleanRef)) continue
         const target = cleanRef.startsWith('/') ? join(root, 'docs', cleanRef) : resolve(dirname(path), cleanRef)
