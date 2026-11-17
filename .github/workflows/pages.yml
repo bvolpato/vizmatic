@@ -25,7 +25,112 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  prepare:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+    steps:
+      # Resolve a movable branch or tag once. Later jobs check out this exact SHA.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+      - id: commit
+        name: Record the commit of that ref
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Check catalog workflow compatibility before building
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs'
+          let source = ''
+          try { source = readFileSync('scripts/render-films.ts', 'utf8') } catch {}
+          if (!/^export const CATALOG_PROTOCOL = 'cpu-shards-v1'$/m.test(source)) {
+            console.error('::error::The selected ref does not support the sharded CPU catalog workflow (--shard, --print-cache-key, --require-cache). Choose main or a release containing the catalog cache/sharding update. Older refs such as v0.8.3 cannot be deployed with this workflow.')
+            process.exit(1)
+          }
+          NODE
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      # prepare builds the package once; subsequent jobs use these exact outputs.
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/upload-artifact@v6
+        with:
+          name: pages-package-${{ steps.commit.outputs.sha }}
+          path: dist
+          if-no-files-found: error
+          retention-days: 1
+
+  catalog:
+    name: Catalog CPU shard ${{ matrix.shard }}/4
+    needs: prepare
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - uses: actions/download-artifact@v7
+        with:
+          name: pages-package-${{ needs.prepare.outputs.sha }}
+          path: dist
+      - name: Install CPU encoder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+      - id: cache-key
+        name: Hash this shard's rendering inputs
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          key="$(pnpm exec tsx scripts/render-films.ts --shard "$SHARD/4" --print-cache-key | tail -n 1)"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+      - name: Cache this shard's rendered films
+        uses: actions/cache@v6
+        with:
+          path: .cache/films
+          key: pages-films-v2-${{ runner.os }}-4-${{ matrix.shard }}-${{ steps.cache-key.outputs.key }}
+          restore-keys: |
+            pages-films-v2-${{ runner.os }}-4-${{ matrix.shard }}-
+      - name: Render this CPU shard
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: pnpm render:films --shard "$SHARD/4" --workers 4 --no-posters --cache-dir .cache/films
+      # Upload this run's outputs, not stale files restored from an older shard plan.
+      - name: Stage verified shard files
+        run: |
+          mkdir -p .cache/shard
+          for film in docs/assets/films/*.mp4; do
+            id="$(basename "$film" .mp4)"
+            cp "$film" ".cache/films/$id.sha256" .cache/shard/
+          done
+      - uses: actions/upload-artifact@v6
+        with:
+          name: pages-films-${{ needs.prepare.outputs.sha }}-${{ matrix.shard }}
+          path: .cache/shard/*
+          include-hidden-files: true
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
   deploy:
+    needs: [prepare, catalog]
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -33,33 +138,33 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.ref }}
-      - id: commit
-        name: Record the commit of that ref
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          ref: ${{ needs.prepare.outputs.sha }}
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7.1.0
         with:
           node-version: 22
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Build showcase media from source
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - uses: actions/download-artifact@v7
+        with:
+          name: pages-package-${{ needs.prepare.outputs.sha }}
+          path: dist
+      - name: Install CPU encoder
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
-          pnpm render:video
-      - name: Cache rendered film catalog MP4s
-        uses: actions/cache@v6
+      - uses: actions/download-artifact@v7
         with:
+          pattern: pages-films-${{ needs.prepare.outputs.sha }}-*
           path: .cache/films
-          key: pages-films-${{ runner.os }}-${{ hashFiles('examples/films/**', 'src/stage/**', 'src/video.ts', 'src/math.ts', 'src/chemistry-elements.ts', 'pnpm-lock.yaml', 'assets/fonts/**') }}
-          restore-keys: |
-            pages-films-${{ runner.os }}-
-      - name: Render the film catalog
-        run: pnpm render:films --workers 4 --no-posters --cache-dir .cache/films
-      # The website is not committed. This step renders the examples, then runs `pnpm site:build`,
-      # which writes each page and bundle into docs/.
-      - run: pnpm render:examples
+          merge-multiple: true
+      - name: Assemble and verify the complete film catalog
+        run: pnpm render:films --no-posters --cache-dir .cache/films --require-cache
+      - name: Build showcase media from source
+        run: pnpm exec tsx scripts/render-video-example.ts
+      # Use the package from prepare instead of rebuilding for each render command.
+      - run: pnpm exec tsx scripts/render-examples.ts
+      - run: pnpm site:build
       - run: pnpm docs:check --require-video
       # The rendered examples, the film posters, and some data files in docs/ are still committed.
       # This step fails when the build of this run changed one of them.
@@ -73,7 +178,7 @@ jobs:
         name: Create Pages deployment
         env:
           GH_TOKEN: ${{ github.token }}
-          PAGES_SHA: ${{ steps.commit.outputs.sha }}
+          PAGES_SHA: ${{ needs.prepare.outputs.sha }}
         run: |
           set -euo pipefail
 
