@@ -17,6 +17,7 @@ import re
 import subprocess
 
 import film
+import speech
 
 # A transcript gives the time of a word to about a second. A beat that is heard farther from its place
 # than this is not where the timeline has it.
@@ -30,14 +31,12 @@ def letters(word):
 def heard_words(root, movie):
     """Each word that a transcript of the movie hears, with its time."""
     import soundfile as sf
-    from faster_whisper import WhisperModel
 
     (root / "stills").mkdir(exist_ok=True)
     sound = root / "stills" / "movie.wav"
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(movie), "-ac", "1", "-ar", "16000", str(sound)], check=True)
     audio, _ = sf.read(sound, dtype="float32")
-    model = WhisperModel("small.en", device="cpu", compute_type="int8")
-    segments, _ = model.transcribe(audio, beam_size=5, language="en", word_timestamps=True)
+    segments = speech.segments(speech.whisper(), audio, beam_size=5, language="en", word_timestamps=True)
     return [(word.word.strip().lower().strip(".,?!:"), word.start) for segment in segments for word in segment.words]
 
 

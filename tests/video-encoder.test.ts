@@ -3,6 +3,8 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { renderFilmVideo } from '../src/stage/export'
+import { film } from '../src/stage/stage'
 import { renderRgbaVideo, resolveH264Encoder, type H264EncoderRequest } from '../src/video'
 
 const directories: string[] = []
@@ -146,6 +148,38 @@ describe('H.264 encoder selection', () => {
         expect(await resolveH264Encoder('videotoolbox', fake.ffmpegPath, format, { tune: 'animation' })).toBe('videotoolbox')
     })
 
+    it('probes and encodes a high-quality film with the native VideoToolbox quality', async () => {
+        const fake = await encoder()
+        const movie = film({ ...format, bloom: 0.2 }, s => { s.wait(0.1) })
+        const result = await renderFilmVideo(movie, join(fake.path, 'high.mp4'), {
+            width: format.width, backend: 'cpu', workers: 1, motionBlur: 1, quality: 'high', dither: true,
+            h264Encoder: 'videotoolbox', requireH264Encoder: true, ffmpegPath: fake.ffmpegPath,
+        })
+        expect(result.h264Encoder).toBe('videotoolbox')
+        const calls = await fake.calls()
+        for (const kind of ['lavfi', 'rawvideo']) {
+            const args = calls.find(call => call.args.includes(kind))!.args
+            expect(value(args, '-c:v')).toBe('h264_videotoolbox')
+            expect(value(args, '-q:v')).toBe('90')
+            expect(value(args, '-allow_sw')).toBe('0')
+            expect(args).not.toContain('-x264-params')
+        }
+    })
+
+    it('retains the high-quality software settings when optional VideoToolbox is unavailable', async () => {
+        const fake = await encoder({ failures: 1 })
+        const movie = film({ ...format, bloom: 0.2 }, s => { s.wait(0.1) })
+        const result = await renderFilmVideo(movie, join(fake.path, 'fallback.mp4'), {
+            width: format.width, backend: 'cpu', workers: 1, motionBlur: 1,
+            quality: 'high', look: 'midnight', dither: true, h264Encoder: 'videotoolbox', ffmpegPath: fake.ffmpegPath,
+        })
+        expect(result.h264Encoder).toBe('libx264')
+        const args = (await fake.calls()).find(call => call.args.includes('rawvideo'))!.args
+        expect(value(args, '-crf')).toBe('15')
+        expect(value(args, '-x264-params')).toContain('trellis=0')
+        expect(args).not.toContain('-q:v')
+    })
+
     it('falls back before rendering, but a required unavailable encoder preserves the previous movie', async () => {
         const fake = await encoder({ failures: 10 })
         const outputPath = join(fake.path, 'movie.mp4')
@@ -244,6 +278,7 @@ describe('H.264 encoder selection', () => {
         await expect(resolveH264Encoder('cuda' as H264EncoderRequest, fake.ffmpegPath, format)).rejects.toThrow('h264Encoder must be')
         await expect(resolveH264Encoder('nvenc', fake.ffmpegPath, { ...format, width: 191 })).rejects.toThrow('Invalid H.264 probe')
         await expect(resolveH264Encoder('nvenc', fake.ffmpegPath, format, { crf: 52 })).rejects.toThrow('crf must be')
+        await expect(resolveH264Encoder('videotoolbox', fake.ffmpegPath, format, { videoToolboxQuality: 101 })).rejects.toThrow('videoToolboxQuality must be')
         expect(await fake.calls()).toEqual([])
     })
 

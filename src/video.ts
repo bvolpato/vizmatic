@@ -53,6 +53,8 @@ export interface RgbaVideoOptions {
      * NVENC uses NVIDIA's dedicated video encoder; RGBA drawing and color conversion are unchanged.
      */
     h264Encoder?: H264EncoderRequest
+    /** Native quality for explicit Apple VideoToolbox output, from 0 to 100. The default is 75. */
+    videoToolboxQuality?: number
     /** Fail before painting if an explicit encoder cannot encode these settings. Auto permits software. */
     requireH264Encoder?: boolean
     /**
@@ -393,7 +395,7 @@ async function loopbackPair(): Promise<{ ours: Socket; theirs: Socket } | undefi
 const ffmpegOptions = new Map<string, Promise<boolean>>()
 
 type H264Format = { width: number; height: number; fps: number }
-type H264SelectionOptions = Pick<RgbaVideoOptions, 'preset' | 'crf' | 'tune' | 'x264Params' | 'signal' | 'requireH264Encoder'>
+type H264SelectionOptions = Pick<RgbaVideoOptions, 'preset' | 'crf' | 'tune' | 'x264Params' | 'signal' | 'requireH264Encoder' | 'videoToolboxQuality'>
 
 const NVENC_PRESETS: Readonly<Record<string, string>> = {
     ultrafast: 'p1', superfast: 'p2', veryfast: 'p3', faster: 'p4', fast: 'p5', medium: 'p6',
@@ -407,8 +409,8 @@ function nvencArgs(options: H264SelectionOptions): string[] {
         '-profile:v', 'high', '-rc', 'vbr', '-cq', String(options.crf ?? 18), '-b:v', '0', '-g', '250']
 }
 
-function videoToolboxArgs({ width, height, fps }: H264Format): string[] {
-    const args = ['-c:v', 'h264_videotoolbox', '-allow_sw', '0', '-profile:v', 'high', '-q:v', '75', '-g', '250']
+function videoToolboxArgs({ width, height, fps }: H264Format, quality = 75): string[] {
+    const args = ['-c:v', 'h264_videotoolbox', '-allow_sw', '0', '-profile:v', 'high', '-q:v', String(quality), '-g', '250']
     const blocks = Math.ceil(width / 16) * Math.ceil(height / 16)
     if (blocks <= 8192 && blocks * fps <= 245760) args.push('-level:v', '4.0')
     else if (blocks <= 8704 && blocks * fps <= 522240) args.push('-level:v', '4.2')
@@ -469,7 +471,7 @@ async function probeH264Encoder(
     const { width, height, fps } = format
     const args = ['-nostdin', '-v', 'error', '-abort_on', 'empty_output', '-f', 'lavfi', '-i', `color=size=${width}x${height}:rate=${fps},format=rgba`,
         '-frames:v', '1', '-vf', COLOR_FILTER,
-        ...(encoder === 'nvenc' ? nvencArgs(options) : videoToolboxArgs(format)),
+        ...(encoder === 'nvenc' ? nvencArgs(options) : videoToolboxArgs(format, options.videoToolboxQuality)),
         '-pix_fmt', 'yuv420p', ...COLOR_TAGS, '-f', 'null', '-']
     const key = JSON.stringify([ffmpegPath, args])
     if (hardwareProbes.has(key)) return true
@@ -511,6 +513,11 @@ export async function resolveH264Encoder(
     options: H264SelectionOptions = {},
 ): Promise<H264Encoder> {
     if (options.signal?.aborted) throw abortError()
+    if (options.videoToolboxQuality !== undefined) {
+        if (requested !== 'videotoolbox') throw new Error('videoToolboxQuality requires h264Encoder: videotoolbox')
+        if (!Number.isInteger(options.videoToolboxQuality) || options.videoToolboxQuality < 0 || options.videoToolboxQuality > 100)
+            throw new Error('videoToolboxQuality must be an integer between 0 and 100')
+    }
     if (requested === 'libx264') return requested
     if (requested !== 'videotoolbox' && requested !== 'nvenc' && requested !== 'auto')
         throw new Error('h264Encoder must be libx264, videotoolbox, nvenc or auto')
@@ -711,7 +718,7 @@ export async function renderRgbaVideo(
         // The quality mode needs a zero bitrate. Row threading makes VP9 practical at HD and above.
         args.push('-c:v', 'libvpx-vp9', '-crf', String(crf), '-b:v', '0', '-deadline', 'good', '-cpu-used', '2', '-row-mt', '1', '-threads:v', String(threads))
     } else if (h264Encoder === 'videotoolbox') {
-        args.push(...videoToolboxArgs({ width, height, fps }))
+        args.push(...videoToolboxArgs({ width, height, fps }, options.videoToolboxQuality))
     } else if (h264Encoder === 'nvenc') {
         args.push(...nvencArgs(options))
     } else {

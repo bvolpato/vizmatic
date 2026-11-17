@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { GpuBrowser } from '../src/stage/gpu-browser'
 import { GpuRasterizer } from '../src/stage/gpu-raster'
 import { encodeGpuJob } from '../src/stage/gpu-wire'
+import * as sourceBundle from '../src/stage/gpu-source'
 
 vi.mock('../src/stage/gpu-browser', () => ({ GpuBrowser: { launch: vi.fn() } }))
 vi.mock('../src/stage/display-canvas', () => ({ paintFrame: vi.fn() }))
@@ -29,6 +30,26 @@ function deferred<T>() {
 }
 
 describe('GPU startup settlement', () => {
+    it('can paint prepared frames when a Node-only source cannot bundle for the browser', async () => {
+        vi.spyOn(sourceBundle, 'bundleGpuFilm').mockRejectedValue(new Error('Cannot bundle node:fs for browser'))
+        vi.mocked(GpuBrowser.launch).mockResolvedValue({
+            async close() {},
+            async send(method: string, params?: { url: string }) {
+                if (method === 'Target.createTarget') {
+                    const url = params!.url
+                    const config = await (await fetch(new URL('./config', url))).json()
+                    expect(config.source).toBeFalsy()
+                    await fetch(new URL('./ready', url), { method: 'POST', headers: { 'x-film-source': 'frames' } })
+                }
+                return { gpu: { auxAttributes: { glRenderer: 'Hardware GPU' }, featureStatus: { '2d_canvas': 'enabled' } } }
+            },
+        } as unknown as GpuBrowser)
+        const renderer = await GpuRasterizer.create(undefined, {
+            file: 'local-film.ts', overrides: {}, expected: { width: 1, height: 1, fps: 1, duration: 1, title: '' },
+        })
+        try { expect(renderer.usesFilmSource).toBe(false) } finally { await renderer.close() }
+    })
+
     it('accumulates separate bloom and readback timings from delivered frames', async () => {
         let url = ''
         vi.mocked(GpuBrowser.launch).mockResolvedValue({
@@ -119,13 +140,14 @@ describe('GPU startup settlement', () => {
     })
 })
 
-async function startRuntime(upload: 'ok' | 'network error' | 'HTTP error') {
+async function startRuntime(upload: 'ok' | 'network error' | 'HTTP error', unavailableSource = false) {
     const packet = encodeGpuJob({
         frames: [{ width: 2, height: 2, background: null, bloom: 0, dark: true, ops: [] }],
         width: 2, height: 2, dither: false,
     })
     const readback = deferred<PlaneLayout[]>(), copying = deferred<void>(), next = deferred<Response>()
     const closed = vi.fn(), errors: string[] = [], uploads: Uint8Array[] = [], headers: Headers[] = []
+    if (unavailableSource) vi.stubGlobal('location', { href: 'file:///unavailable-source/' })
     let polls = 0, pollSignal: AbortSignal | null | undefined
     vi.stubGlobal('document', {
         createElement: () => ({ width: 0, height: 0, getContext: () => ({ resetTransform() {}, clearRect() {} }) }),
@@ -135,8 +157,11 @@ async function startRuntime(upload: 'ok' | 'network error' | 'HTTP error') {
         close = closed
     })
     vi.stubGlobal('fetch', async (url: string, init?: RequestInit): Promise<Response> => {
-        if (url === './config') return Response.json({})
-        if (url === './ready') return new Response(null)
+        if (url === './config') return Response.json(unavailableSource ? { source: { overrides: {}, expected: {} } } : {})
+        if (url === './ready') {
+            expect(new Headers(init?.headers).get('x-film-source')).toBe('frames')
+            return new Response(null)
+        }
         if (url === './error') { errors.push(String(init!.body)); return new Response(null) }
         if (url === './next') {
             if (polls++ === 0) return new Response(Uint8Array.from(packet).buffer, { headers: { 'x-frame-id': '0' } })
@@ -183,10 +208,10 @@ describe('GPU runtime final-frame delivery', () => {
         }
     })
 
-    it('delivers a successful readback while keeping the next poll open', async () => {
+    it.each([false, true])('delivers a prepared frame with an unavailable browser source: %s', async unavailableSource => {
         let now = 100
         vi.spyOn(performance, 'now').mockImplementation(() => now)
-        const runtime = await startRuntime('ok')
+        const runtime = await startRuntime('ok', unavailableSource)
         try {
             now += 50
             runtime.readback.resolve([])

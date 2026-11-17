@@ -14,9 +14,9 @@ const images = new Map<string, ImageBitmap>()
 let bloom: CanvasBloom | null = null
 let film: CompiledFilm | undefined
 
-async function prepareFilm(): Promise<void> {
-    const { source } = await (await fetch('./config')).json() as { source?: { overrides: CompileOverrides; expected: Record<string, unknown> } }
-    if (!source) return
+interface FilmSource { overrides: CompileOverrides; expected: Record<string, unknown> }
+
+async function prepareFilm(source: FilmSource): Promise<CompiledFilm> {
     const engineUrl = new URL('./engine/stage.js', location.href).href
     const filmUrl = new URL('./film.js', location.href).href
     const engine = await import(engineUrl) as typeof Engine
@@ -24,10 +24,11 @@ async function prepareFilm(): Promise<void> {
     const module = await import(filmUrl)
     const definition = [module.default, module.default?.default, module.film].find(engine.isFilm)
     if (!definition) throw new Error('The GPU source module does not export a film')
-    film = await engine.compileFilm(definition, source.overrides)
+    const compiled = await engine.compileFilm(definition, source.overrides)
     for (const [key, value] of Object.entries(source.expected)) {
-        if (film[key as keyof CompiledFilm] !== value) throw new Error(`GPU film metadata differs from the CPU film: ${key}`)
+        if (compiled[key as keyof CompiledFilm] !== value) throw new Error(`GPU film metadata differs from the CPU film: ${key}`)
     }
+    return compiled
 }
 
 async function sample(time: number) {
@@ -108,8 +109,10 @@ async function paint(job: GpuFrameJob): Promise<{ pixels: Promise<Uint8Array<Arr
 
 async function run(): Promise<void> {
     if (!context || !average || !supportsWebGLBloom(canvas)) throw new Error('Hardware Canvas/WebGL bloom is unavailable')
-    await prepareFilm()
-    await fetch('./ready', { method: 'POST' })
+    const { source } = await (await fetch('./config')).json() as { source?: FilmSource }
+    // Node can prepare display frames when the browser cannot load the film or its local assets.
+    if (source) film = await prepareFilm(source).catch(() => undefined)
+    await fetch('./ready', { method: 'POST', headers: { 'x-film-source': film ? 'ready' : 'frames' } })
     const transport = new AbortController()
     const { signal } = transport
     try {

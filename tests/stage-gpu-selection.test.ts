@@ -53,6 +53,16 @@ function mockGpu(mismatch = false) {
 }
 
 describe('GPU probe selection', () => {
+    it.each([
+        { workers: 32, memoryBudget: 1024 ** 3 },
+        { workers: 4, memoryBudget: 3 * 16 * 16 * 16 },
+    ])('keeps the CPU when the probe cannot fill a batch of $workers workers', async options => {
+        const result = await selectGpuRenderer(await fixture(), { ...selection('auto'), ...options })
+        expect(result.gpu).toBeUndefined()
+        expect(result.reason).toContain('whole CPU worker batch')
+        expect(GpuRasterizer.create).not.toHaveBeenCalled()
+    })
+
     it.each(['auto', 'gpu'] as const)('aborts a never-resolving suspended frame and closes both backends for %s', async request => {
         const controller = new AbortController()
         const gpu = mockGpu()
@@ -84,41 +94,45 @@ describe('GPU probe selection', () => {
         } finally { clearTimeout(timer) }
     })
 
-    it.each(['auto', 'gpu'] as const)('accounts for adjacent mixed holds only in auto selection, with %s requested', async request => {
+    it.each([
+        { request: 'auto', held: 3, selected: false },
+        { request: 'auto', held: 1, selected: true },
+        { request: 'auto', held: 0, selected: true },
+        { request: 'gpu', held: 3, selected: true },
+    ] as const)('samples consecutive output frames for $request with $held holds', async ({ request, held, selected }) => {
         const gpu = mockGpu()
         const closeCpu = vi.spyOn(RasterPool.prototype, 'close')
-        const compiled = await fixture()
+        const compiled = await compileFilm(film({ width: 16, height: 16, fps: 30 }, s => { s.wait(40) }))
         const frameAt = compiled.frame.bind(compiled)
-        vi.spyOn(compiled, 'frame').mockImplementation(time => ({
-            ...frameAt(time), background: time < 0.5 ? '#123456' : '#234567',
-        }))
+        vi.spyOn(compiled, 'frame').mockImplementation(time => {
+            const index = Math.round(time * compiled.fps)
+            // Each sample center belongs to a different scene. The first scenes hold their frames.
+            const scene = Math.floor(index / 400)
+            const value = scene < held ? scene : index % 400
+            return { ...frameAt(time), background: `#${value.toString(16).padStart(6, '0')}` }
+        })
         let now = 0
         vi.spyOn(performance, 'now').mockImplementation(() => now)
         vi.spyOn(RasterPool.prototype, 'run').mockImplementation(async () => { now += 100; return gpu.pixels })
         gpu.run.mockImplementation(async () => { now += 10; return gpu.pixels })
-        const result = await selectGpuRenderer(compiled, { ...selection(request), count: 1200 })
-        if (request === 'auto') {
-            expect(result).toEqual({ source: false, reason: 'CPU reuses adjacent sampled frames' })
-            expect(gpu.close).toHaveBeenCalledTimes(1)
-        } else {
-            expect(result.gpu).toBe(gpu.gpu)
-            expect(gpu.close).not.toHaveBeenCalled()
-        }
+        const result = await selectGpuRenderer(compiled, { ...selection(request), to: 40, count: 1200 })
+        expect(result.gpu).toBe(selected ? gpu.gpu : undefined)
+        expect(gpu.close).toHaveBeenCalledTimes(selected ? 0 : 1)
         expect(closeCpu).toHaveBeenCalledTimes(1)
     })
 
     it.each([4, 5])('requires %i frames to amortize the entire probe, including warmup', async count => {
         const gpu = mockGpu()
-        const compiled = await fixture()
+        const compiled = await compileFilm(film({ width: 16, height: 16, fps: 30 }, s => { s.wait(count / 30) }))
         const frameAt = compiled.frame.bind(compiled)
         vi.spyOn(compiled, 'frame').mockImplementation(time => ({
-            ...frameAt(time), background: ['#123456', '#234567', '#345678'][Math.min(2, Math.floor(time * 3))],
+            ...frameAt(time), background: `#00000${Math.round(time * compiled.fps)}`,
         }))
         let now = 0
         vi.spyOn(performance, 'now').mockImplementation(() => now)
         vi.spyOn(RasterPool.prototype, 'run').mockImplementation(async () => { now += 100; return gpu.pixels })
         gpu.run.mockImplementation(async () => { now += 10; return gpu.pixels })
-        const result = await selectGpuRenderer(compiled, { ...selection('auto'), count })
+        const result = await selectGpuRenderer(compiled, { ...selection('auto'), count, to: compiled.duration })
         // Warmup costs 110 ms and measurement costs 330 ms. Each exported frame saves 90 ms.
         if (count === 4) {
             expect(result.gpu).toBeUndefined()

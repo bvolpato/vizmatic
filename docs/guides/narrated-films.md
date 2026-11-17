@@ -20,6 +20,8 @@ HF_HUB_OFFLINE=1 npx vizmatic narrated build my-film --draft
 
 A voice run that makes no new take does not load the model, and contacts nobody.
 
+On Apple Silicon, speech synthesis and transcription use Metal Performance Shaders (MPS) when the installed engine supports the GPU. The tools print the selected device. If a Metal operation fails in automatic mode, the tool retries that take or transcript on the CPU. Use `VIZMATIC_NARRATION_DEVICE=cpu` to select the CPU, or `VIZMATIC_NARRATION_DEVICE=mps` to require the GPU. Device selection applies to new work. Existing takes retain their audio and word times.
+
 ## Start a film
 
 Two commands make a first movie:

@@ -25,6 +25,7 @@ import sys
 
 import checks
 import film
+import speech
 
 RATE = 24000
 BREATH = 0.17  # Seconds of silence between two sentences of one beat.
@@ -34,15 +35,24 @@ BREATH = 0.17  # Seconds of silence between two sentences of one beat.
 def model():
     """The voice model. It loads for the first take that is not on disk, so a run that changes no beat is fast."""
     print("voice: loading the voice model. It asks huggingface.co for the model files, and sends no text of the script.", file=sys.stderr, flush=True)
+    import torch
     from kokoro import KPipeline
-    return KPipeline(lang_code="a", repo_id="hexgrad/Kokoro-82M")
+
+    return speech.SpeechModel(
+        lambda device: KPipeline(lang_code="a", repo_id="hexgrad/Kokoro-82M", device=device),
+        torch.backends.mps.is_available,
+        "cuda" if torch.cuda.is_available() else "cpu",
+    )
 
 
 def synthesize(text, voice):
     """Speak one beat. Returns the samples and the time of each word, in seconds from the start of the beat."""
     import numpy as np
     audio, words, offset = [], [], 0.0
-    for result in model()(text, voice=voice["name"], speed=voice["speed"], split_pattern=r"(?<=[.?!])\s+"):
+    results = model().run(lambda engine: list(engine(
+        text, voice=voice["name"], speed=voice["speed"], split_pattern=r"(?<=[.?!])\s+",
+    )))
+    for result in results:
         chunk = np.asarray(result.audio, dtype=np.float32)
         for token in result.tokens or []:
             if token.start_ts is not None and token.end_ts is not None and re.search(r"\w", token.text):
