@@ -1,6 +1,6 @@
 ---
 name: vizmatic
-description: "Create theme-aware technical diagrams, dense figures, explainer films, narrated lessons, or animations with Vizmatic. Choose the film or figure workflow based on the output."
+description: "Create and render theme-aware diagrams, dense technical figures, explainer films, narrated lessons, and animations with Vizmatic. Choose the film or figure workflow based on the output."
 metadata:
   short-description: "Render explainer films and dense technical figures"
 ---
