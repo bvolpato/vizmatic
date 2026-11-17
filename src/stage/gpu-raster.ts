@@ -47,6 +47,7 @@ async function body(request: IncomingMessage, maximum: number): Promise<Buffer> 
 /** One hardware Canvas/WebGL worker. Binary frames stay on an authenticated loopback connection. */
 export class GpuRasterizer {
     device = ''
+    usesFilmSource = false
     rasterMs = 0
     bloomMs = 0
     readbackMs = 0
@@ -103,8 +104,9 @@ export class GpuRasterizer {
         if (this.signal?.aborted) throw new DOMException('The export was aborted', 'AbortError')
         const path = await runtimePath()
         this.source = await readFile(path)
-        if (this.filmSource) {
-            this.files.set('film.js', await bundleGpuFilm(this.filmSource))
+        const filmBundle = this.filmSource && await bundleGpuFilm(this.filmSource).catch(() => undefined)
+        if (filmBundle) {
+            this.files.set('film.js', filmBundle)
             const directory = dirname(path)
             for (const name of await readdir(directory)) if (name.endsWith('.js')) this.files.set(`engine/${name}`, await readFile(join(directory, name)))
             const fonts = join(directory, '..', '..', 'assets', 'fonts')
@@ -150,10 +152,11 @@ export class GpuRasterizer {
         } else if (request.method === 'GET' && route === 'runtime.js') {
             response.writeHead(200, { 'Content-Type': 'text/javascript' }).end(this.source)
         } else if (request.method === 'GET' && route === 'config') {
-            response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ source: this.filmSource && { overrides: this.filmSource.overrides, expected: this.filmSource.expected } }))
+            response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ source: this.files.has('film.js') && this.filmSource && { overrides: this.filmSource.overrides, expected: this.filmSource.expected } }))
         } else if (request.method === 'GET' && this.files.has(route)) {
             response.writeHead(200, { 'Content-Type': route.endsWith('.js') ? 'text/javascript' : 'font/ttf' }).end(this.files.get(route))
         } else if (request.method === 'POST' && route === 'ready') {
+            this.usesFilmSource = this.files.has('film.js') && request.headers['x-film-source'] === 'ready'
             response.end(); this.readyResolve()
         } else if (request.method === 'GET' && route === 'next') {
             if (this.closing || this.failure) { response.writeHead(204).end(); return }

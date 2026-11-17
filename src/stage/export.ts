@@ -88,11 +88,11 @@ export interface FilmGifOutput {
  *   with the 0.6 of the animation tune. `standard` needs 1.0, and `draft` needs 2.0.
  * None of these changes the decoder settings of the file, so `filmEncoderSettings` stays true.
  */
-const QUALITY: Record<Quality, { crf: number; vp9Crf: number; preset: string; motionBlur: number; dither: boolean; grain: string }> = {
-    draft: { crf: 26, vp9Crf: 40, preset: 'veryfast', motionBlur: 1, dither: false, grain: 'aq-strength=2.0' },
-    standard: { crf: 18, vp9Crf: 31, preset: 'medium', motionBlur: 1, dither: false, grain: 'aq-strength=1.0:subme=6:trellis=0' },
-    high: { crf: 15, vp9Crf: 24, preset: 'slow', motionBlur: 4, dither: true, grain: 'subme=6:trellis=0' },
-    master: { crf: 11, vp9Crf: 15, preset: 'slow', motionBlur: 8, dither: true, grain: 'subme=6:trellis=0' },
+const QUALITY: Record<Quality, { crf: number; videoToolboxQuality: number; vp9Crf: number; preset: string; motionBlur: number; dither: boolean; grain: string }> = {
+    draft: { crf: 26, videoToolboxQuality: 55, vp9Crf: 40, preset: 'veryfast', motionBlur: 1, dither: false, grain: 'aq-strength=2.0' },
+    standard: { crf: 18, videoToolboxQuality: 75, vp9Crf: 31, preset: 'medium', motionBlur: 1, dither: false, grain: 'aq-strength=1.0:subme=6:trellis=0' },
+    high: { crf: 15, videoToolboxQuality: 90, vp9Crf: 24, preset: 'slow', motionBlur: 4, dither: true, grain: 'subme=6:trellis=0' },
+    master: { crf: 11, videoToolboxQuality: 95, vp9Crf: 15, preset: 'slow', motionBlur: 8, dither: true, grain: 'subme=6:trellis=0' },
 }
 
 const DEFAULT_GIF_WIDTH = 960
@@ -271,7 +271,8 @@ export async function renderFilmVideo(
     const requestedHardware = options.h264Encoder === 'nvenc' || options.h264Encoder === 'videotoolbox'
     const encoder = codec === 'h264' && requestedHardware
         ? await resolveH264Encoder(options.h264Encoder, options.ffmpegPath, { ...size, fps }, {
-            crf: quality.crf, preset: quality.preset, signal: options.signal, requireH264Encoder: options.requireH264Encoder,
+            ...(options.h264Encoder === 'videotoolbox' ? { videoToolboxQuality: quality.videoToolboxQuality } : { crf: quality.crf, preset: quality.preset }),
+            signal: options.signal, requireH264Encoder: options.requireH264Encoder,
         }) : options.h264Encoder
     const hardware = encoder === 'nvenc' || encoder === 'videotoolbox'
     const request = options.backend ?? 'auto'
@@ -311,7 +312,8 @@ export async function renderFilmVideo(
         }, {
             width: size.width, height: size.height, fps, duration: (to - from) * 1000, outputPath,
             codec, h264Encoder: codec === 'h264' ? encoder ?? 'auto' : encoder, requireH264Encoder: options.requireH264Encoder,
-            crf: codec === 'vp9' ? quality.vp9Crf : quality.crf,
+            ...(encoder === 'videotoolbox' ? { videoToolboxQuality: quality.videoToolboxQuality }
+                : { crf: codec === 'vp9' ? quality.vp9Crf : quality.crf }),
             preset: quality.preset,
             // Flat color and fine lines keep their edges better with this tuning.
             tune: codec === 'h264' && !hardware ? filmEncoderSettings(options.quality).tune : undefined,

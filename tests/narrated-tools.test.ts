@@ -411,6 +411,53 @@ describe.skipIf(!ready)('the checks of the files of a film', () => {
     }, 120_000)
 })
 
+describe.skipIf(!ready)('local speech acceleration', () => {
+    it('restarts a partial Metal transcript on CPU and reuses the CPU model on later takes', () => {
+        const result = bare(['-c', `
+import speech
+from unittest.mock import patch
+
+loaded = []
+class Engine:
+    def __init__(self, device):
+        self.device = device
+        loaded.append(device)
+    def transcribe(self, audio, **options):
+        def stream():
+            yield self.device
+            if self.device == "mps":
+                raise RuntimeError("MPS does not support this operation")
+        return stream(), None
+
+with patch.object(speech.sys, "platform", "darwin"), patch.object(speech.platform, "machine", return_value="arm64"):
+    model = speech.SpeechModel(Engine, lambda: True, "cpu")
+    assert speech.segments(model, []) == ["cpu"]
+    assert speech.segments(model, []) == ["cpu"]
+    assert loaded == ["mps", "cpu"]
+`], { VIZMATIC_NARRATION_DEVICE: 'auto' })
+        expect(result.status, result.stderr).toBe(0)
+    })
+
+    it('honors an explicit device and preserves the existing device on other hosts', () => {
+        const result = bare(['-c', `
+import os, speech
+from unittest.mock import patch
+with patch.object(speech.sys, "platform", "linux"):
+    assert speech.SpeechModel(str, lambda: True, "cuda").device == "cuda"
+    os.environ["VIZMATIC_NARRATION_DEVICE"] = "cpu"
+    assert speech.SpeechModel(str, lambda: True, "cuda").device == "cpu"
+    os.environ["VIZMATIC_NARRATION_DEVICE"] = "mps"
+    try:
+        speech.SpeechModel(str, lambda: False, "cpu")
+    except RuntimeError as error:
+        assert "unavailable" in str(error)
+    else:
+        raise AssertionError("explicit MPS was ignored")
+`], { VIZMATIC_NARRATION_DEVICE: 'auto' })
+        expect(result.status, result.stderr).toBe(0)
+    })
+})
+
 describe.skipIf(!ready)('the voice step, without the voice model', () => {
     const takeKey = (text: string, voice = 'af_heart', speed = '1.12') => createHash('sha1').update(`${voice}|${speed}|${text}`).digest('hex').slice(0, 12)
     const script = {

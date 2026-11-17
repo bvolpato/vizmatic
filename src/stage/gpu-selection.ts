@@ -87,32 +87,38 @@ export function matchingGpuPixels(cpu: Uint8Array, gpu: Uint8Array, width = cpu.
 }
 
 export async function selectGpuRenderer(film: CompiledFilm, options: GpuExportOptions): Promise<GpuSelection> {
-    const source = gpuSourceOf(film)
+    if (options.signal?.aborted) throw new DOMException('The export was aborted', 'AbortError')
+    const { width, height, dither, subframes, shutterSpan, workers } = options
+    let count = 3
+    if (options.request === 'auto') {
+        // Time whole CPU worker batches to measure sustained throughput.
+        const budget = options.memoryBudget ?? Math.min(2 * 1024 ** 3, totalmem() * 0.25)
+        const capacity = Math.min(24, Math.max(3, workers * 2), Math.floor(budget / (width * height * 4 * 4)))
+        count = Math.floor(capacity / workers) * workers
+        if (count < 3) return { source: false, reason: 'GPU probe needs at least three frames and a whole CPU worker batch' }
+    }
     let gpu: GpuRasterizer | undefined
     let keep = false
     const started = performance.now()
     try {
-        gpu = await GpuRasterizer.create(options.signal, source)
-        const { width, height, dither, subframes, shutterSpan } = options
+        gpu = await GpuRasterizer.create(options.signal, gpuSourceOf(film))
+        const source = gpu.usesFilmSource
         const pool = new RasterPool(options.workers)
         const timesAt = (time: number) => Array.from({ length: subframes }, (_, index) => time + index / subframes * shutterSpan)
         const background = (value: string | null): readonly [number, number, number] => {
             const color = parseColor(value ?? '#000000'); return [color[0], color[1], color[2]]
         }
         try {
-            // Match planRender's budget and fill whole worker batches. A partial batch makes a
-            // many-core CPU look slower than its sustained throughput, especially at 4K.
-            const budget = options.memoryBudget ?? Math.min(2 * 1024 ** 3, totalmem() * 0.25)
-            const capacity = Math.min(24, options.workers * 2, Math.floor(budget / (width * height * 4 * 4)))
-            const count = options.request === 'gpu' ? 3 : Math.max(3, Math.floor(capacity / options.workers) * options.workers)
-            const moments = Array.from({ length: count }, (_, i) => options.from + (options.to - options.from) * (i + 0.5) / count)
+            const indices = Array.from({ length: count }, (_, i) => Math.floor(options.count * (i + 0.5) / count))
+            const frameTime = (index: number) => options.from + index / film.fps
+            const moments = indices.map(frameTime)
             const warmTimes = timesAt(moments[0])
             const warm = await sampleGpuFrames(film, warmTimes, options.signal)
             const warmJob = framesToJob(warm, width, background, height, dither)
             // Start every CPU worker before measuring; otherwise worker startup makes GPU look faster.
             await withAbort(Promise.all(Array.from({ length: options.workers }, () => pool.run(warmJob))), options.signal)
             await gpu.run(source ? { times: warmTimes, width, height, dither } : { frames: warm, width, height, dither })
-            let buildMs = 0
+            let buildMs = 0, prepareCpuMs = 0
             const frames: Frame[][] = []
             const jobs: ReturnType<typeof framesToJob>[] = []
             const cpuStart = performance.now()
@@ -124,6 +130,7 @@ export async function selectGpuRenderer(film: CompiledFilm, options: GpuExportOp
                 buildMs += performance.now() - before
                 frames.push(frame)
                 const job = framesToJob(frame, width, background, height, dither)
+                prepareCpuMs += performance.now() - before
                 jobs.push(job)
                 const rendered = pool.run(job)
                 rendered.catch(() => {})
@@ -139,13 +146,23 @@ export async function selectGpuRenderer(film: CompiledFilm, options: GpuExportOp
             if (!cpu.every((pixels, i) => matchingGpuPixels(pixels, gpuFrames[i], width))) {
                 throw new GpuUnavailableError('GPU sample pixels differ materially from the CPU renderer')
             }
-            const measured = `CPU ${(cpuMs / count).toFixed(1)} ms/frame, GPU ${(gpuMs / count).toFixed(1)} ms/frame`
+            let reuse = 0
             if (options.request === 'auto') {
-                if (jobs.some((job, index) => index > 0 && sameRasterJob(jobs[index - 1], job))) {
-                    return { source: false, reason: 'CPU reuses adjacent sampled frames' }
+                // An export can reuse only the preceding output frame. Two distant probe
+                // centers can differ even when each belongs to a long hold.
+                for (const [i, index] of indices.entries()) {
+                    if (!index) continue
+                    const previous = await sampleGpuFrames(film, timesAt(frameTime(index - 1)), options.signal)
+                    if (sameRasterJob(jobs[i], framesToJob(previous, width, background, height, dither))) reuse++
                 }
+            }
+            // The CPU still builds a raster job on a hold, but skips the worker's raster work.
+            const estimatedCpuMs = cpuMs - Math.max(0, cpuMs - prepareCpuMs) * reuse / count
+            const measured = `CPU ${(estimatedCpuMs / count).toFixed(1)} ms/frame, GPU ${(gpuMs / count).toFixed(1)} ms/frame`
+                + (options.request === 'auto' ? `; ${reuse}/${count} sampled frames reusable on CPU` : '')
+            if (options.request === 'auto') {
                 const probeMs = performance.now() - started
-                if (gpuMs >= cpuMs * 0.85 || (cpuMs - gpuMs) / count * options.count <= probeMs) {
+                if (gpuMs >= estimatedCpuMs * 0.85 || (estimatedCpuMs - gpuMs) / count * options.count <= probeMs) {
                     return { source: false, reason: `${measured}; CPU avoids GPU transfer/startup overhead` }
                 }
             }

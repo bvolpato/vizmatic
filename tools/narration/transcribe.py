@@ -15,6 +15,7 @@ import difflib
 import re
 
 import film
+import speech
 
 
 def words(text):
@@ -49,7 +50,6 @@ def differences(said, heard, forms):
 def main(found, only, _options):
     import numpy as np
     import soundfile as sf
-    from faster_whisper import WhisperModel
     from scipy.signal import resample_poly
 
     line = film.place(found.timing)
@@ -57,14 +57,14 @@ def main(found, only, _options):
     for name in only:
         line.beat(name.split("/")[0], 0)
     forms = spoken_forms(found.script.get("pronounce", {}))
-    model = WhisperModel("small.en", device="cpu", compute_type="int8")
+    model = speech.whisper()
     checked, wrong = 0, []
     for beat in line.beats:
         name = f"{beat.scene}/{beat.index}"
         if only and name not in only and beat.scene not in only:
             continue
         audio, rate = sf.read(found.root / "audio" / beat.take["wav"], dtype="float32")
-        segments, _ = model.transcribe(resample_poly(audio, 16000, rate).astype(np.float32), beam_size=5, language="en")
+        segments = speech.segments(model, resample_poly(audio, 16000, rate).astype(np.float32), beam_size=5, language="en")
         heard = " ".join(segment.text for segment in segments)
         differ = differences(beat.take["say"], heard, forms)
         checked += 1
