@@ -1,4 +1,4 @@
-/** Floating-point bloom shared by the browser and raster workers. Each instance keeps its own dither cache. */
+/** Floating-point bloom shared by the browser and raster workers. Each instance keeps its own scratch buffers. */
 export function createBloom() {
     // A run of 16 pixels of a row. The bloom decides for each span if it has work to do.
     const SPAN = 16
@@ -7,8 +7,9 @@ export function createBloom() {
 
     // One layer of the bloom: the mean color of each cell of factor by factor pixels, less the background.
     // The sums of the cells stay with the layer, so a coarser layer can add them in place of the pixels.
-    function downsample(src, words, w, factor, lw, lh, background, finer) {
-      const data = new Float32Array(lw * lh * 3), sums = new Int32Array(lw * lh * 3)
+    function downsample(src, words, w, layer, background) {
+      const { factor, lw, lh, data, sums, finer } = layer
+      sums.fill(0)
       const row = lw * 3
       if (finer) {
         // Whole cells of the finer layer tile each cell of this one. A sum of whole numbers is exact in any order.
@@ -56,7 +57,6 @@ export function createBloom() {
         data[i + 1] = Math.max(0, Math.fround(sums[i + 1] * norm) - bg)
         data[i + 2] = Math.max(0, Math.fround(sums[i + 2] * norm) - bb)
       }
-      return { data, sums, lw, lh, factor }
     }
 
     // Box blur in place, along the rows and then along the columns. Each running sum adds and takes away its
@@ -112,43 +112,23 @@ export function createBloom() {
       return bytes
     }
 
-    // Bloom: bright marks spill soft light. Blurred layers add on top of the sharp image.
-    //
-    // In the plain write, each expression keeps the order of the first version of this function, which looped over
-    // each pixel, layer and channel. So the bytes are the same. tests/stage-bloom.test.ts keeps that version and
-    // compares.
-    //
-    // The light is a smooth ramp over a few of the 256 levels of a channel. The plain write cuts each value down
-    // to a whole level, which draws a contour line where the ramp passes a level. With a dither, the write first
-    // adds the threshold of the pixel, which is between 0 and 1. Each pixel then goes to the level below or above
-    // in the right share, and a line becomes fine grain. What holds for each pixel and channel:
-    // - With no light, the value is the whole number of the byte, and a threshold below 1 leaves it there.
-    // - The byte is the byte of the plain write, or one level above it. The dithered blend is the same sum in
-    //   another order, so it is the plain value give or take 1e-9, and a threshold is 0.002 or more from 0 and 1.
-    // - Over the 256 thresholds, the mean of the byte is the value, give or take 1/512 of a level.
-    // - A pixel with alpha 0 gets no threshold, so it has no grain: a film with no page stays clean where nothing
-    //   is drawn.
-    function bloom(pixels, w, h, amount, background, dither) {
+    // A film reuses one size. Keep only that size, and rebuild the geometry when either dimension changes.
+    let scratch = null
+    function scratchOf(w, h) {
+      if (scratch && scratch.w === w && scratch.h === h) return scratch
       const layers = []
       // The spread follows output width, so a small preview and a 4K master look alike.
       const k = w / 1920
-      const words = LOW_BYTE_FIRST && pixels.byteOffset % 4 === 0 ? new Uint32Array(pixels.buffer, pixels.byteOffset, w * h) : null
       for (const [base, radius, weight] of [[4, 3, 0.55], [8, 4, 0.3], [16, 4, 0.15]]) {
         const factor = Math.max(1, Math.min(w, h, Math.round(base * k)))
         const lw = Math.max(1, Math.floor(w / factor)), lh = Math.max(1, Math.floor(h / factor))
         let finer = null
         for (const layer of layers) if (factor % layer.factor === 0) finer = layer
-        const layer = downsample(pixels, words, w, factor, lw, lh, background, finer)
-        layer.radius = radius
-        layer.weight = weight
+        const layer = { factor, lw, lh, finer, radius, weight, data: new Float32Array(lw * lh * 3), sums: new Int32Array(lw * lh * 3) }
         layers.push(layer)
       }
       const tmp = new Float32Array(layers.reduce((most, layer) => Math.max(most, layer.data.length), 0))
-      const sums = new Float64Array(w * 3)
-      for (const layer of layers) {
-        boxBlur(layer.data, tmp, sums, layer.lw, layer.lh, layer.radius)
-        boxBlur(layer.data, tmp, sums, layer.lw, layer.lh, layer.radius)
-      }
+      const sums = new Float64Array(layers[0].lw * 3)
 
       const spans = Math.ceil(w / SPAN)
       for (const layer of layers) {
@@ -172,41 +152,68 @@ export function createBloom() {
         layer.held = [-1, -1]
         layer.top = -1; layer.low = -1; layer.ty = 0; layer.sy = 0
       }
-      // Stretch one row of a layer into one of its two slots.
-      const stretch = (layer, index, slot) => {
-        const { data, x0, x1, tx, sx } = layer
-        const out = layer.rows[slot], most = layer.most[slot], base = index * layer.lw * 3
-        layer.held[slot] = index
-        for (let span = 0; span < spans; span++) {
-          const from = span * SPAN, to = Math.min(w, from + SPAN)
-          let top = 0, least = 0
-          for (let i = base + x0[from], end = base + x1[to - 1] + 3; i < end; i++) {
-            const v = data[i]
-            top = Math.max(top, v); least = Math.min(least, v)
-          }
-          // A value below 0 can come from the running sums of the blur, and it darkens a pixel. Such a span,
-          // or one with a value that is not a number, has no limit, so it is always computed.
-          most[span] = least >= 0 ? top : Infinity
-          if (top === 0 && least === 0) { out.fill(0, from * 3, to * 3); continue }
-          for (let x = from, o = from * 3; x < to; x++, o += 3) {
-            const a = base + x0[x], b = base + x1[x], t = tx[x], s = sx[x]
-            out[o] = data[a] * s + data[b] * t
-            out[o + 1] = data[a + 1] * s + data[b + 1] * t
-            out[o + 2] = data[a + 2] * s + data[b + 2] * t
-          }
+      const runs = new Int32Array(spans * 2), leasts = new Int16Array(spans), picks = new Int32Array(SPAN)
+      scratch = { w, h, layers, tmp, sums, spans, runs, leasts, picks }
+      return scratch
+    }
+
+    // Stretch one row of a layer into one of its two slots.
+    function stretch(layer, index, slot, w, spans) {
+      const { data, x0, x1, tx, sx } = layer
+      const out = layer.rows[slot], most = layer.most[slot], base = index * layer.lw * 3
+      layer.held[slot] = index
+      for (let span = 0; span < spans; span++) {
+        const from = span * SPAN, to = Math.min(w, from + SPAN)
+        let top = 0, least = 0
+        for (let i = base + x0[from], end = base + x1[to - 1] + 3; i < end; i++) {
+          const v = data[i]
+          top = Math.max(top, v); least = Math.min(least, v)
         }
+        // A value below 0 can come from the running sums of the blur, and it darkens a pixel. Such a span,
+        // or one with a value that is not a number, has no limit, so it is always computed.
+        most[span] = least >= 0 ? top : Infinity
+        if (top === 0 && least === 0) { out.fill(0, from * 3, to * 3); continue }
+        for (let x = from, o = from * 3; x < to; x++, o += 3) {
+          const a = base + x0[x], b = base + x1[x], t = tx[x], s = sx[x]
+          out[o] = data[a] * s + data[b] * t
+          out[o + 1] = data[a + 1] * s + data[b + 1] * t
+          out[o + 2] = data[a + 2] * s + data[b + 2] * t
+        }
+      }
+    }
+
+    // Bloom: bright marks spill soft light. Blurred layers add on top of the sharp image.
+    //
+    // In the plain write, each expression keeps the order of the first version of this function, which looped over
+    // each pixel, layer and channel. So the bytes are the same. tests/stage-bloom.test.ts keeps that version and
+    // compares.
+    //
+    // The light is a smooth ramp over a few of the 256 levels of a channel. The plain write cuts each value down
+    // to a whole level, which draws a contour line where the ramp passes a level. With a dither, the write first
+    // adds the threshold of the pixel, which is between 0 and 1. Each pixel then goes to the level below or above
+    // in the right share, and a line becomes fine grain. What holds for each pixel and channel:
+    // - With no light, the value is the whole number of the byte, and a threshold below 1 leaves it there.
+    // - The byte is the byte of the plain write, or one level above it. The dithered blend is the same sum in
+    //   another order, so it is the plain value give or take 1e-9, and a threshold is 0.002 or more from 0 and 1.
+    // - Over the 256 thresholds, the mean of the byte is the value, give or take 1/512 of a level.
+    // - A pixel with alpha 0 gets no threshold, so it has no grain: a film with no page stays clean where nothing
+    //   is drawn.
+    function bloom(pixels, w, h, amount, background, dither) {
+      const { layers, tmp, sums, spans, runs, picks } = scratchOf(w, h)
+      const words = LOW_BYTE_FIRST && pixels.byteOffset % 4 === 0 ? new Uint32Array(pixels.buffer, pixels.byteOffset, w * h) : null
+      for (const layer of layers) downsample(pixels, words, w, layer, background)
+      for (const layer of layers) {
+        boxBlur(layer.data, tmp, sums, layer.lw, layer.lh, layer.radius)
+        boxBlur(layer.data, tmp, sums, layer.lw, layer.lh, layer.radius)
+        layer.held[0] = -1; layer.held[1] = -1
       }
 
       const l0 = layers[0], l1 = layers[1], l2 = layers[2]
       const w0 = l0.weight, w1 = l1.weight, w2 = l2.weight
-      // The runs of pixels that a row computes, as pairs of a start and an end.
-      const runs = new Int32Array(spans * 2)
       // With a dither, for each run: -1 where the plain write changes a byte, so each pixel has work. For a dim
       // span, the least threshold byte that can lift a pixel of the span.
-      const leasts = dither ? new Int16Array(spans) : null
+      const leasts = dither ? scratch.leasts : null
       const grain = dither ? grainOf(w, h) : null
-      // The pixels of a dim span that have work.
-      const picks = new Int32Array(SPAN)
       const STEP = 1 / 256, HALF = 0.5 / 256, INV = 1 / 255, gain = amount * 2.4
       let count = 0
       for (let y = 0; y < h; y++) {
@@ -216,9 +223,9 @@ export function createBloom() {
           const y0 = Math.min(layer.lh - 1, Math.max(0, Math.floor(fy))), y1 = Math.min(layer.lh - 1, y0 + 1)
           layer.ty = Math.min(1, Math.max(0, fy - y0)); layer.sy = 1 - layer.ty
           let top = layer.held[0] === y0 ? 0 : layer.held[1] === y0 ? 1 : -1
-          if (top < 0) { top = layer.held[0] === y1 ? 1 : 0; stretch(layer, y0, top); moved = true }
+          if (top < 0) { top = layer.held[0] === y1 ? 1 : 0; stretch(layer, y0, top, w, spans); moved = true }
           let low = layer.held[0] === y1 ? 0 : layer.held[1] === y1 ? 1 : -1
-          if (low < 0) { low = 1 - top; stretch(layer, y1, low); moved = true }
+          if (low < 0) { low = 1 - top; stretch(layer, y1, low, w, spans); moved = true }
           layer.top = top; layer.low = low
         }
         if (moved) {

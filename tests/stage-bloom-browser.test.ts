@@ -321,6 +321,7 @@ it.runIf(process.env.VIZMATIC_BROWSER_TESTS === '1')('matches the CPU kernel on 
                         { width: 640, height: 360, background: '#183044', pattern: 'flat' },
                         { width: 1283, height: 722, background: '#183044' },
                         { width: 1283, height: 722, background: 'hsl(217, 37%, 9%)' },
+                        { width: 1440, height: 810, background: '#8090a0', pattern: 'noise' },
                         { width: 1920, height: 1080, amount: 0.14 },
                         { width: 2560, height: 1440, amount: 1.7 },
                         { width: 3840, height: 2160, amount: 0.6 },

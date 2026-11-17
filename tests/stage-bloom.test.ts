@@ -374,3 +374,35 @@ describe('dithered bloom', () => {
         expect(Buffer.compare(before, pixels)).toBe(0)
     })
 })
+
+describe('bloom scratch reuse', () => {
+    it.each([false, true])('keeps frame data separate across inputs, sizes, and dither changes (dither %s)', (dither) => {
+        const reused = build(BLOOM_SOURCE), other = build(BLOOM_SOURCE)
+        // Equal pixel counts with different dimensions must rebuild the layer geometry too.
+        for (const [w, h] of [[97, 57], [57, 97], [640, 360], [640, 359], [1920, 8], [333, 1], [97, 57]] as const) {
+            const pixels = new Uint8Array(w * h * 4 + 1).subarray(1)
+            const dark = new Uint8Array(w * h * 4)
+            for (let i = 0; i < dark.length; i += 4) dark.set([...page, 255], i)
+            const frames = [
+                [noise(w, h), 0.6, page, dither],
+                [marks(w, h), 0.8, [NaN, 12, 16], !dither],
+                [clearMarks(w, h), 0.14, [0, 0, 0], dither],
+                [dark, 0.6, page, !dither],
+                [marks(w, h), 1.7, [10.5, 12.25, 300], dither],
+                [noise(w, h), 0, page, !dither],
+            ] as const
+            for (const [source, amount, background, grain] of frames) {
+                // Reuse the unaligned input buffer, then give the same instance a fresh aligned buffer.
+                pixels.set(source)
+                const expected = source.slice()
+                build(BLOOM_SOURCE)(expected, w, h, amount, background, grain)
+                other(noise(16, 16), 16, 16, 0.6, page, !grain)
+                reused(pixels, w, h, amount, background, grain)
+                expect(Buffer.compare(pixels, expected)).toBe(0)
+                const aligned = source.slice()
+                reused(aligned, w, h, amount, background, grain)
+                expect(Buffer.compare(aligned, expected)).toBe(0)
+            }
+        }
+    })
+})

@@ -22,6 +22,7 @@ vec4 pixel(ivec2 p) {
 
 const DOWNSAMPLE = `${HEADER}
 uniform int factor;
+uniform bool raw;
 uniform vec3 background;
 void main() {
     ivec2 start = ivec2(gl_FragCoord.xy) * factor;
@@ -29,17 +30,34 @@ void main() {
     for (int y = 0; y < factor; ++y)
         for (int x = 0; x < factor; ++x)
             sum += pixel(start + ivec2(x, y)).rgb;
-    color = vec4(max(vec3(0.0), sum / float(factor * factor) - background), 0.0);
+    color = vec4(raw ? sum : max(vec3(0.0), sum / float(factor * factor) - background), 0.0);
+}`
+
+// Keep integer sums until every scale has been built. Clamping against the
+// background first would incorrectly spread light from dark cells.
+const REDUCE = `${HEADER}
+uniform int factor;
+void main() {
+    ivec2 start = ivec2(gl_FragCoord.xy) * factor;
+    vec3 sum = vec3(0.0);
+    for (int y = 0; y < factor; ++y)
+        for (int x = 0; x < factor; ++x)
+            sum += texelFetch(source, start + ivec2(x, y), 0).rgb;
+    color = vec4(sum, 0.0);
 }`
 
 const BLUR = `${HEADER}
 uniform ivec2 direction;
 uniform int radius;
+uniform int factor;
+uniform vec3 background;
 void main() {
     ivec2 p = ivec2(gl_FragCoord.xy), end = textureSize(source, 0) - 1;
     vec3 sum = vec3(0.0);
-    for (int k = -radius; k <= radius; ++k)
-        sum += texelFetch(source, clamp(p + k * direction, ivec2(0), end), 0).rgb;
+    for (int k = -radius; k <= radius; ++k) {
+        vec3 value = texelFetch(source, clamp(p + k * direction, ivec2(0), end), 0).rgb;
+        sum += factor == 0 ? value : max(vec3(0.0), value / float(factor * factor) - background);
+    }
     color = vec4(sum / float(2 * radius + 1), 0.0);
 }`
 
@@ -90,6 +108,7 @@ interface Surface {
 interface Size {
     source: WebGLTexture
     layers: { factor: number; radius: number; pair: [Surface, Surface] }[]
+    pyramid: boolean
     bytes: number
 }
 
@@ -124,8 +143,9 @@ class BloomRenderer {
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true)
         gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE)
         for (const [fragment, uniforms] of [
-            [DOWNSAMPLE, ['source', 'factor', 'background']],
-            [BLUR, ['source', 'direction', 'radius']],
+            [DOWNSAMPLE, ['source', 'factor', 'raw', 'background']],
+            [REDUCE, ['source', 'factor']],
+            [BLUR, ['source', 'direction', 'radius', 'factor', 'background']],
             [COMPOSITE, ['source', 'nearLight', 'middleLight', 'farLight', 'factors', 'gain', 'dither']],
         ] as const) this.programs.push(this.program(fragment, uniforms))
         if (gl.getError() !== gl.NO_ERROR) throw new Error('Bloom initialization failed')
@@ -216,6 +236,9 @@ class BloomRenderer {
         }
         const size: Size = {
             source: this.texture(width, height, false), bytes,
+            // A full-size float intermediate costs more than it saves for tiny
+            // previews. Nondivisible scales also keep the direct path.
+            pyramid: layers.some((layer, i) => layer.factor <= 256 && layers.slice(0, i).some(finer => finer.factor > 1 && layer.factor % finer.factor === 0)),
             layers: layers.map(layer => ({ ...layer, pair: [this.surface(layer.width, layer.height), this.surface(layer.width, layer.height)] })),
         }
         if (this.gl.getError() !== this.gl.NO_ERROR) throw new Error('Bloom target allocation failed')
@@ -246,21 +269,35 @@ class BloomRenderer {
         if (gl.drawingBufferWidth !== width || gl.drawingBufferHeight !== height) return false
         this.bind(size.source)
         gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, target)
-        const [downsample, blur, composite] = this.programs
+        const [downsample, reduce, blur, composite] = this.programs
+        gl.useProgram(downsample.value)
+        gl.uniform1i(downsample.uniforms.raw, size.pyramid ? 1 : 0)
+        gl.uniform3f(downsample.uniforms.background, background[0], background[1], background[2])
+        // Reuse unblurred sums only when whole cells tile the coarser scale.
+        // Odd output sizes can have nondivisible factors and need a direct read.
+        for (let i = 0; i < size.layers.length; i++) {
+            const layer = size.layers[i]
+            let finer: Size['layers'][number] | undefined
+            // RGBA32F represents every possible byte sum exactly through 256² cells.
+            for (let j = 0; size.pyramid && j < i; j++) if (layer.factor <= 256 && layer.factor % size.layers[j].factor === 0) finer = size.layers[j]
+            const program = finer ? reduce : downsample
+            gl.useProgram(program.value)
+            this.bind(finer ? finer.pair[0].texture : size.source)
+            gl.uniform1i(program.uniforms.factor, finer ? layer.factor / finer.factor : layer.factor)
+            this.pass(layer.pair[0])
+        }
+        gl.useProgram(blur.value)
+        gl.uniform3f(blur.uniforms.background, background[0], background[1], background[2])
         for (const layer of size.layers) {
             const [a, b] = layer.pair
-            gl.useProgram(downsample.value)
-            this.bind(size.source)
-            gl.uniform1i(downsample.uniforms.factor, layer.factor)
-            gl.uniform3f(downsample.uniforms.background, background[0], background[1], background[2])
-            this.pass(a)
-            gl.useProgram(blur.value)
             gl.uniform1i(blur.uniforms.radius, layer.radius)
             for (let repeat = 0; repeat < 2; repeat++) {
                 this.bind(a.texture)
+                gl.uniform1i(blur.uniforms.factor, size.pyramid && repeat === 0 ? layer.factor : 0)
                 gl.uniform2i(blur.uniforms.direction, 1, 0)
                 this.pass(b)
                 this.bind(b.texture)
+                gl.uniform1i(blur.uniforms.factor, 0)
                 gl.uniform2i(blur.uniforms.direction, 0, 1)
                 this.pass(a)
             }
