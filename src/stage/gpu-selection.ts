@@ -4,6 +4,7 @@ import { RasterPool, framesToJob, sameRasterJob } from './raster'
 import { parseColor } from './color'
 import { isSuspend, type CompiledFilm } from './stage'
 import type { Frame } from './display'
+import { totalmem } from 'node:os'
 
 export interface GpuExportOptions {
     request: 'auto' | 'gpu'
@@ -99,8 +100,11 @@ export async function selectGpuRenderer(film: CompiledFilm, options: GpuExportOp
             const color = parseColor(value ?? '#000000'); return [color[0], color[1], color[2]]
         }
         try {
-            const count = options.request === 'gpu' ? 3 : Math.max(3, Math.min(24, options.workers * 2,
-                Math.floor((options.memoryBudget ?? 512 * 1024 ** 2) / (width * height * 4 * 4))))
+            // Match planRender's budget and fill whole worker batches. A partial batch makes a
+            // many-core CPU look slower than its sustained throughput, especially at 4K.
+            const budget = options.memoryBudget ?? Math.min(2 * 1024 ** 3, totalmem() * 0.25)
+            const capacity = Math.min(24, options.workers * 2, Math.floor(budget / (width * height * 4 * 4)))
+            const count = options.request === 'gpu' ? 3 : Math.max(3, Math.floor(capacity / options.workers) * options.workers)
             const moments = Array.from({ length: count }, (_, i) => options.from + (options.to - options.from) * (i + 0.5) / count)
             const warmTimes = timesAt(moments[0])
             const warm = await sampleGpuFrames(film, warmTimes, options.signal)
