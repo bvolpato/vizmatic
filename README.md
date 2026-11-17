@@ -70,6 +70,10 @@ npx vizmatic film intro.ts --look midnight,paper --quality high --out dist
 
 Scaffold a working project with `npx vizmatic new intro --template explainer`. Built-in templates are `explainer`, `equation`, `architecture`, `chart`, `deck`, and `narrated`.
 
+MP4 and WebM exports automatically compare CPU and GPU rendering for longer, demanding HD films when Chrome, Edge, or Chromium is installed locally. The comparison includes frame transfer and startup cost, and checks sampled pixels against the CPU renderer. Short exports and CI use the CPU. Use `--backend cpu` for reproducible software rendering or `--backend gpu` to require hardware rendering. Set `VIZMATIC_BROWSER_EXECUTABLE_PATH` if the browser is outside the usual locations.
+
+For NVIDIA hardware encoding, use `--encoder nvenc`; FFmpeg must provide `h264_nvenc` and a working NVIDIA driver. A CUDA toolkit installation is not required. Drawing uses the browser's graphics backend, while NVENC encodes the video. Automatic film exports retain `libx264` animation and grain settings; hardware encoders have different quality scales, so inspect fine lines and dark gradients before delivery. `--json` reports the selected renderer, encoder, GPU, and selection reason.
+
 <table>
   <tr>
     <td width="50%" align="center">

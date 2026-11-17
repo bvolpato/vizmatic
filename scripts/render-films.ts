@@ -313,7 +313,7 @@ async function main(): Promise<void> {
         if (!isFilm(module.default)) throw new Error(`${entry.id} must export a film as its default export.`)
         const film = await compileFilm(module.default, { look: entry.look })
         if (!videosOnly) {
-            const poster = await renderFilmFrame(film, entry.posterTime, join(OUT, `${entry.id}.png`), { workers: 1 })
+            const poster = await renderFilmFrame(film, entry.posterTime, join(OUT, `${entry.id}.png`), { workers: 1, backend: 'cpu' })
             console.log(`poster ${entry.id} ${poster.width}x${poster.height}`)
         }
         if (postersOnly) continue
@@ -325,7 +325,7 @@ async function main(): Promise<void> {
             }
         }
         const started = performance.now()
-        const video = await renderFilmVideo(film, outputMp4, { quality, workers, dither: CATALOG_DITHER, h264Encoder: 'libx264' })
+        const video = await renderFilmVideo(film, outputMp4, { quality, workers, dither: CATALOG_DITHER, backend: 'cpu', h264Encoder: 'libx264' })
         if (cacheDir) await saveCachedFilm(cacheDir, entry.id, cacheKey, outputMp4)
         const seconds = (performance.now() - started) / 1000
         console.log(`video ${entry.id} ${video.frameCount} frames ${(video.bytes / 1e6).toFixed(1)} MB in ${seconds.toFixed(0)}s (${(video.frameCount / seconds).toFixed(0)} fps)`)

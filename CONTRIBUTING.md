@@ -69,8 +69,10 @@ A maintainer can also start a deploy by hand, for example for a fix of the docs 
 
 ```bash
 gh workflow run pages.yml -f ref=main      # Deploy the site of main.
-gh workflow run pages.yml -f ref=v0.8.1    # Deploy the site of one tag.
+gh workflow run pages.yml -f ref=main -F deploy=false  # Validate rendering and caches without publishing.
 ```
+
+The `ref` input also accepts release tags containing the sharded catalog renderer. Older tags such as `v0.8.3` are rejected before building.
 
 Do not add `--ref` to these commands. The workflow must start on `main`, which is the default, because the `github-pages` environment accepts a deployment from `main` only. The runs are on the [page of the Pages workflow](https://github.com/bvolpato/vizmatic/actions/workflows/pages.yml), which also has a "Run workflow" button.
 
@@ -99,6 +101,23 @@ node --import tsx src/cli.ts film examples/films/euler-circle.ts --frame 3,8 --w
 ```
 
 Open the stills and review them at full size. The check finds clipped and crossed text, but it does not judge whether the film explains its idea.
+
+### Export performance
+
+Build the package, then compare the same range and quality on an idle machine:
+
+```bash
+pnpm build
+pnpm benchmark:export examples/films/lorenz.ts --from 33 --to 39 --quality master --backend cpu
+pnpm benchmark:export examples/films/lorenz.ts --from 33 --to 39 --quality master --backend gpu
+pnpm benchmark:export examples/films/lorenz.ts --from 33 --to 39 --quality master --backend auto
+```
+
+The report includes wall time, renderer selection, encoder, frame construction, rasterization, bloom, and encoder waits. Automatic selection keeps CPU if adjacent samples are identical or projected GPU savings cannot cover the full elapsed probe. Probing costs time even when CPU wins, so compare total wall time for both complex motion blur and ordinary exports. See the [exporting guide](docs/guides/exporting.md#speed) for the selection thresholds.
+
+`--encoder nvenc` probes NVIDIA hardware with the requested output dimensions and settings. It uses NVENC CQ, not x264 CRF, so numerical quality settings are not equivalent. The default retains x264 animation/grain tuning. No CUDA toolkit is required. CI catalog rendering explicitly uses `backend: 'cpu'` and `h264Encoder: 'libx264'`.
+
+The Pages workflow builds once at the selected commit and renders four balanced CPU shards. Cache keys include CPU renderer inputs, film dependencies, TypeScript configuration, assets, and the encoder toolchain; cached MP4s also have verified content digests. Changes confined to the excluded Canvas/GPU implementation files do not invalidate CPU movies. Lockfile and TypeScript configuration changes still invalidate conservatively. Assembly requires every film to be cached and fails on missing or corrupt output. Refs predating shard support are rejected before rendering.
 
 ### Browser performance
 

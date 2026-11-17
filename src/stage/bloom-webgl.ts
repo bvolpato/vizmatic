@@ -49,6 +49,7 @@ uniform sampler2D middleLight;
 uniform sampler2D farLight;
 uniform vec3 factors;
 uniform float gain;
+uniform bool dither;
 // Explicit interpolation preserves the kernel's cell centers and dropped edge
 // cells, without depending on float-linear filtering or its subtexel precision.
 vec3 light(sampler2D layer, vec2 p, float factor) {
@@ -68,7 +69,7 @@ void main() {
                + light(middleLight, vec2(p), factors.y) * 0.30
                + light(farLight, vec2(p), factors.z) * 0.15) * gain;
     float noise = fract(52.9829189 * fract(dot(vec2(p), vec2(0.06711056, 0.00583715))));
-    float threshold = original.a == 0.0 ? 0.0 : (floor(noise * 256.0) + 0.5) / 256.0;
+    float threshold = !dither || original.a == 0.0 ? 0.0 : (floor(noise * 256.0) + 0.5) / 256.0;
     vec3 rgb = floor(original.rgb + min(vec3(255.0), glow) * (255.0 - original.rgb) / 255.0 + threshold);
     float alpha = original.a / 255.0;
     color = vec4(rgb / 255.0 * alpha, alpha);
@@ -125,7 +126,7 @@ class BloomRenderer {
         for (const [fragment, uniforms] of [
             [DOWNSAMPLE, ['source', 'factor', 'background']],
             [BLUR, ['source', 'direction', 'radius']],
-            [COMPOSITE, ['source', 'nearLight', 'middleLight', 'farLight', 'factors', 'gain']],
+            [COMPOSITE, ['source', 'nearLight', 'middleLight', 'farLight', 'factors', 'gain', 'dither']],
         ] as const) this.programs.push(this.program(fragment, uniforms))
         if (gl.getError() !== gl.NO_ERROR) throw new Error('Bloom initialization failed')
     }
@@ -234,7 +235,7 @@ class BloomRenderer {
         gl.drawArrays(gl.TRIANGLES, 0, 3)
     }
 
-    paint(target: HTMLCanvasElement, main: CanvasRenderingContext2D, amount: number, background: readonly number[]): boolean {
+    paint(target: HTMLCanvasElement, main: CanvasRenderingContext2D, amount: number, background: readonly number[], dither: boolean): boolean {
         const gl = this.gl, { width, height } = target
         if (gl.isContextLost()) return false
         const size = this.size(width, height)
@@ -272,6 +273,7 @@ class BloomRenderer {
         gl.uniform1i(composite.uniforms.farLight, 3)
         gl.uniform3f(composite.uniforms.factors, size.layers[0].factor, size.layers[1].factor, size.layers[2].factor)
         gl.uniform1f(composite.uniforms.gain, amount * 2.4)
+        gl.uniform1i(composite.uniforms.dither, dither ? 1 : 0)
         gl.bindFramebuffer(gl.FRAMEBUFFER, null)
         gl.viewport(0, 0, width, height)
         gl.drawArrays(gl.TRIANGLES, 0, 3)
@@ -325,10 +327,10 @@ export function supportsWebGLBloom(target: HTMLCanvasElement): boolean {
 }
 
 /** Private fast path. False leaves the target intact for paintCanvasBloom's CPU fallback. */
-export function paintWebGLBloom(target: HTMLCanvasElement, main: CanvasRenderingContext2D, amount: number, background: readonly number[]): boolean {
+export function paintWebGLBloom(target: HTMLCanvasElement, main: CanvasRenderingContext2D, amount: number, background: readonly number[], dither = true): boolean {
     if (!Number.isFinite(amount) || amount < 0 || !background.slice(0, 3).every(Number.isFinite) || !supportsWebGLBloom(target)) return false
     try {
-        return renderer!.paint(target, main, amount, background)
+        return renderer!.paint(target, main, amount, background, dither)
     } catch {
         renderer?.dispose()
         renderer = null

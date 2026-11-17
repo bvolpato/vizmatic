@@ -1,0 +1,156 @@
+import { GpuRasterizer, GpuUnavailableError } from './gpu-raster'
+import { gpuSourceOf } from './gpu-source'
+import { RasterPool, framesToJob, sameRasterJob } from './raster'
+import { parseColor } from './color'
+import { isSuspend, type CompiledFilm } from './stage'
+import type { Frame } from './display'
+
+export interface GpuExportOptions {
+    request: 'auto' | 'gpu'
+    width: number
+    height: number
+    from: number
+    to: number
+    count: number
+    subframes: number
+    shutterSpan: number
+    dither: boolean
+    workers: number
+    memoryBudget?: number
+    signal?: AbortSignal
+}
+
+export interface GpuSelection {
+    gpu?: GpuRasterizer
+    source: boolean
+    reason: string
+}
+
+function withAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+    if (!signal) return promise
+    if (signal.aborted) {
+        promise.catch(() => {})
+        return Promise.reject(new DOMException('The export was aborted', 'AbortError'))
+    }
+    return new Promise((resolve, reject) => {
+        const cleanup = () => signal.removeEventListener('abort', onAbort)
+        const onAbort = () => {
+            cleanup()
+            reject(new DOMException('The export was aborted', 'AbortError'))
+        }
+        signal.addEventListener('abort', onAbort, { once: true })
+        promise.then(
+            value => { cleanup(); resolve(value) },
+            error => { cleanup(); reject(error) },
+        )
+    })
+}
+
+export async function sampleGpuFrames(film: CompiledFilm, times: readonly number[], signal?: AbortSignal): Promise<Frame[]> {
+    const frames: Frame[] = []
+    for (const time of times) for (;;) {
+        if (signal?.aborted) throw new DOMException('The export was aborted', 'AbortError')
+        try { frames.push(film.frame(time)); break } catch (error) {
+            if (!isSuspend(error)) throw error
+            await withAbort(error.promise, signal)
+        }
+    }
+    return frames
+}
+
+/** Approximate parity safeguard: tolerate antialiasing differences while checking local color bias. */
+export function matchingGpuPixels(cpu: Uint8Array, gpu: Uint8Array, width = cpu.length / 4): boolean {
+    if (!cpu.length || cpu.length !== gpu.length || cpu.length % 4
+        || !Number.isSafeInteger(width) || width < 1 || (cpu.length / 4) % width) return false
+    const pixels = cpu.length / 4, height = pixels / width
+    let total = 0, different = 0, alpha = 0
+    for (let top = 0; top < height; top += 64) for (let left = 0; left < width; left += 64) {
+        const right = Math.min(left + 64, width), bottom = Math.min(top + 64, height)
+        const signed = [0, 0, 0]
+        for (let y = top; y < bottom; y++) for (let x = left; x < right; x++) {
+            const i = (y * width + x) * 4
+            let peak = 0
+            for (let channel = 0; channel < 3; channel++) {
+                const delta = cpu[i + channel] - gpu[i + channel]
+                const magnitude = Math.abs(delta)
+                signed[channel] += delta
+                total += magnitude; peak = Math.max(peak, magnitude)
+            }
+            if (peak > 48) different++
+            if (Math.abs(cpu[i + 3] - gpu[i + 3]) > 8) alpha++
+        }
+        const tilePixels = (right - left) * (bottom - top)
+        if (signed.some(sum => Math.abs(sum) > tilePixels * 2.5)) return false
+    }
+    return total <= pixels * 3 * 2.5 && different <= pixels * 0.004 && alpha <= pixels * 0.001
+}
+
+export async function selectGpuRenderer(film: CompiledFilm, options: GpuExportOptions): Promise<GpuSelection> {
+    const source = gpuSourceOf(film)
+    let gpu: GpuRasterizer | undefined
+    let keep = false
+    const started = performance.now()
+    try {
+        gpu = await GpuRasterizer.create(options.signal, source)
+        const { width, height, dither, subframes, shutterSpan } = options
+        const pool = new RasterPool(options.workers)
+        const timesAt = (time: number) => Array.from({ length: subframes }, (_, index) => time + index / subframes * shutterSpan)
+        const background = (value: string | null): readonly [number, number, number] => {
+            const color = parseColor(value ?? '#000000'); return [color[0], color[1], color[2]]
+        }
+        try {
+            const count = options.request === 'gpu' ? 3 : Math.max(3, Math.min(24, options.workers * 2,
+                Math.floor((options.memoryBudget ?? 512 * 1024 ** 2) / (width * height * 4 * 4))))
+            const moments = Array.from({ length: count }, (_, i) => options.from + (options.to - options.from) * (i + 0.5) / count)
+            const warmTimes = timesAt(moments[0])
+            const warm = await sampleGpuFrames(film, warmTimes, options.signal)
+            const warmJob = framesToJob(warm, width, background, height, dither)
+            // Start every CPU worker before measuring; otherwise worker startup makes GPU look faster.
+            await withAbort(Promise.all(Array.from({ length: options.workers }, () => pool.run(warmJob))), options.signal)
+            await gpu.run(source ? { times: warmTimes, width, height, dither } : { frames: warm, width, height, dither })
+            let buildMs = 0
+            const frames: Frame[][] = []
+            const jobs: ReturnType<typeof framesToJob>[] = []
+            const cpuStart = performance.now()
+            const cpuPromises: Promise<Uint8Array>[] = []
+            for (const moment of moments) {
+                if (options.signal?.aborted) throw new DOMException('The export was aborted', 'AbortError')
+                const before = performance.now()
+                const frame = await sampleGpuFrames(film, timesAt(moment), options.signal)
+                buildMs += performance.now() - before
+                frames.push(frame)
+                const job = framesToJob(frame, width, background, height, dither)
+                jobs.push(job)
+                const rendered = pool.run(job)
+                rendered.catch(() => {})
+                cpuPromises.push(rendered)
+            }
+            const cpu = await withAbort(Promise.all(cpuPromises), options.signal)
+            const cpuMs = performance.now() - cpuStart
+            const gpuStart = performance.now()
+            const gpuFrames = await Promise.all(moments.map((moment, index) => gpu!.run(source
+                ? { times: timesAt(moment), width, height, dither }
+                : { frames: frames[index], width, height, dither })))
+            const gpuMs = performance.now() - gpuStart + (source ? 0 : buildMs)
+            if (!cpu.every((pixels, i) => matchingGpuPixels(pixels, gpuFrames[i], width))) {
+                throw new GpuUnavailableError('GPU sample pixels differ materially from the CPU renderer')
+            }
+            const measured = `CPU ${(cpuMs / count).toFixed(1)} ms/frame, GPU ${(gpuMs / count).toFixed(1)} ms/frame`
+            if (options.request === 'auto') {
+                if (jobs.some((job, index) => index > 0 && sameRasterJob(jobs[index - 1], job))) {
+                    return { source: false, reason: 'CPU reuses adjacent sampled frames' }
+                }
+                const probeMs = performance.now() - started
+                if (gpuMs >= cpuMs * 0.85 || (cpuMs - gpuMs) / count * options.count <= probeMs) {
+                    return { source: false, reason: `${measured}; CPU avoids GPU transfer/startup overhead` }
+                }
+            }
+            keep = true
+            gpu.rasterMs = gpu.bloomMs = gpu.readbackMs = 0
+            return { gpu, source: !!source, reason: `${options.request === 'gpu' ? 'GPU requested; ' : ''}${measured}` }
+        } finally { await pool.close() }
+    } catch (error) {
+        if (options.request === 'gpu' || !(error instanceof GpuUnavailableError)) throw error
+        return { source: false, reason: error.message }
+    } finally { if (!keep) await gpu?.close() }
+}

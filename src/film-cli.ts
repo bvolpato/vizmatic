@@ -2,7 +2,7 @@ import { existsSync } from 'fs'
 import { cp, mkdir, rename, stat, writeFile } from 'fs/promises'
 import { basename, dirname, extname, join, relative, resolve } from 'path'
 import { fileURLToPath } from 'url'
-import { captionsToVtt, posterTime, renderFilmFrame, renderFilmGif, renderFilmSheet, renderFilmSvg, renderFilmVideo, type Quality } from './stage/export'
+import { captionsToVtt, posterTime, renderFilmFrame, renderFilmGif, renderFilmSheet, renderFilmSvg, renderFilmVideo, type Quality, type RenderBackend, type H264EncoderRequest } from './stage/export'
 import { checkFilm, type FilmCheckOptions, type FilmCheckReport } from './stage/check'
 import { LOOKS, type LookName } from './stage/look'
 import { FILM_TEMPLATES } from './stage/templates'
@@ -10,6 +10,7 @@ import { FILM_OBJECTS } from './stage/catalog'
 import { isFilm, type CompiledFilm, type FilmDefinition } from './stage/stage'
 import * as stageApi from './stage/index'
 import type { VideoFrameInfo } from './video'
+import { rememberGpuSource } from './stage/gpu-source'
 
 export type FilmFormat = 'mp4' | 'webm' | 'gif' | 'png' | 'svg'
 
@@ -39,6 +40,8 @@ export interface FilmArgs {
     poster: boolean
     formats: FilmFormat[]
     workers?: number
+    backend?: RenderBackend
+    encoder?: H264EncoderRequest
     /** The name of the output files and of the manifest, in place of the name of the film file. For one film only. */
     name?: string
     audioPath?: string
@@ -68,6 +71,10 @@ export interface FilmOutputRecord {
     workers?: number
     renderSeconds?: number
     renderFps?: number
+    backend?: 'cpu' | 'gpu'
+    backendReason?: string
+    gpuDevice?: string
+    encoder?: string
 }
 
 export interface FilmManifestEntry {
@@ -142,6 +149,18 @@ export function parseFilmArgs(argv: readonly string[]): FilmArgs {
             case '--dither': args.dither = true; break
             case '--no-dither': args.dither = false; break
             case '--workers': args.workers = positiveInteger(requireValue(argv, i++, arg), arg); break
+            case '--backend': {
+                const value = requireValue(argv, i++, arg) as RenderBackend
+                if (!['auto', 'cpu', 'gpu'].includes(value)) throw new Error('--backend must be auto, cpu or gpu')
+                args.backend = value
+                break
+            }
+            case '--encoder': {
+                const value = requireValue(argv, i++, arg) as H264EncoderRequest
+                if (!['auto', 'libx264', 'nvenc', 'videotoolbox'].includes(value)) throw new Error('--encoder must be auto, libx264, nvenc or videotoolbox')
+                args.encoder = value
+                break
+            }
             case '--audio': args.audioPath = requireValue(argv, i++, arg); break
             case '--name': {
                 const value = requireValue(argv, i++, arg)
@@ -359,15 +378,20 @@ async function renderOneLook(
             say(`rendered ${shown(gif.outputPath)} (${gif.frameCount} frames at ${gif.width}x${gif.height}, ${formatBytes(gif.bytes)}, ${seconds.toFixed(1)}s)`)
             continue
         }
-        const video = await renderFilmVideo(compiled, path, { ...common, codec: format === 'webm' ? 'vp9' : 'h264', onProgress })
+        const video = await renderFilmVideo(compiled, path, {
+            ...common, codec: format === 'webm' ? 'vp9' : 'h264', onProgress, backend: args.backend,
+            ...(format === 'mp4' ? { h264Encoder: args.encoder, requireH264Encoder: args.encoder !== undefined && args.encoder !== 'auto' } : {}),
+        })
         const seconds = progress.done()
         outputs.push({
             format, path: shown(video.outputPath), look, width: video.width, height: video.height, bytes: video.bytes,
             frameCount: video.frameCount, fps: video.fps, duration: video.duration / 1000, codec: video.codec,
             quality: args.quality, motionBlur: video.motionBlur, workers: video.workers,
+            backend: video.backend, backendReason: video.backendReason, gpuDevice: video.gpuDevice, encoder: video.h264Encoder ?? 'libvpx-vp9',
             renderSeconds: Math.round(seconds * 100) / 100, renderFps: Math.round((video.frameCount / seconds) * 10) / 10,
         })
         say(`rendered ${shown(video.outputPath)} (${video.frameCount} frames at ${video.width}x${video.height}, ${formatBytes(video.bytes)}, ${(video.frameCount / seconds).toFixed(1)} render fps)`)
+        say(`  ${video.backend} renderer, ${video.h264Encoder ?? 'libvpx-vp9'} encoder: ${video.backendReason}`)
     }
     return outputs
 }
@@ -400,6 +424,7 @@ export async function runFilmCommand(args: FilmArgs, files: readonly string[], s
                     ...(args.fps ? { fps: args.fps } : {}),
                     ...(args.background !== undefined ? { background: args.background } : {}),
                 })
+                rememberGpuSource(compiled, file)
                 first ??= compiled
                 outputs.push(...await renderOneLook(compiled, name, args.looks.length > 1 ? look! : '', args, controller.signal, say))
                 if (compiled.captions.length > 0 && !captionsPath && args.formats.some((format) => format === 'mp4' || format === 'webm')) {

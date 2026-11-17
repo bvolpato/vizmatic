@@ -19,4 +19,9 @@ await build({
     define: { __VIZMATIC_ASSET_PATH__: JSON.stringify('../../assets/') },
     logLevel: 'warning',
 })
+await build({
+    entryPoints: { 'gpu-renderer': 'src/stage/gpu-runtime.ts' },
+    bundle: true, format: 'esm', target: 'es2022', platform: 'browser', outdir: out, minify: true,
+    logLevel: 'warning',
+})
 console.log(`Built the browser engine into ${out}`)

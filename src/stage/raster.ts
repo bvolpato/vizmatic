@@ -202,6 +202,8 @@ export interface ExportStats {
     rasterMs: number
     averageMs: number
     bloomMs: number
+    /** GPU exports: asynchronous pixel readback, including outstanding graphics work. */
+    readbackMs?: number
     /** The export loop waits for the next frame in order. */
     frameWaitMs: number
     /** The export loop waits for the encoder to take a frame. */

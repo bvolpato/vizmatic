@@ -153,6 +153,8 @@ npx vizmatic film intro.ts --out dist/films --look midnight,paper --quality high
 | `--columns <n>` | Tiles in a row of a contact sheet. |
 | `--poster` | Also write a poster frame. |
 | `--workers <n>` | Rasterizer threads. |
+| `--backend auto\|cpu\|gpu` | Movie renderer. Auto compares local GPU speed and sampled pixels for longer, demanding HD exports; CI uses CPU. GPU requires installed Chrome, Edge, or Chromium. |
+| `--encoder auto\|libx264\|nvenc\|videotoolbox` | MP4 encoder. Auto preserves x264 film tuning. An explicit hardware encoder must pass a real encode probe. |
 | `--audio <file>` | Add a sound track. |
 | `--name <name>` | Name the output files, in place of the name of the film file. For one film. |
 | `--background <color\|none>` | Replace the background. |

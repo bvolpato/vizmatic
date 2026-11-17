@@ -13,6 +13,8 @@
  *   --repeat       Runs for each worker count. The summary line gives the fastest. Defaults to 1.
  *   --look         The look of the film. Light looks have no bloom.
  *   --width        Output width in pixels.
+ *   --backend      auto, cpu or gpu. Defaults to auto.
+ *   --encoder      auto, libx264, nvenc or videotoolbox. Defaults to auto.
  *   --keep         A folder that keeps the MP4 of each run. By default each MP4 is deleted.
  *   --ffmpeg       The FFmpeg program. A script that reads its input and drops it shows the speed with no encoder.
  */
@@ -21,7 +23,8 @@ import { loadavg, tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { loadFilmDefinition } from '../src/film-cli'
-import { renderFilmVideo, type Quality } from '../src/stage/export'
+import { renderFilmVideo, type Quality, type RenderBackend, type H264EncoderRequest } from '../src/stage/export'
+import { rememberGpuSource } from '../src/stage/gpu-source'
 import type { LookName } from '../src/stage/look'
 import { onExportStats, type ExportStats } from '../src/stage/raster'
 
@@ -58,6 +61,7 @@ async function main(): Promise<void> {
     const look = option('look') as LookName | undefined
     // The film compiles itself, so a film from another folder uses the engine that it imports.
     const film = await definition.compile(look ? { look } : {})
+    rememberGpuSource(film, resolve(file))
     const from = numberOption('from') ?? 0
     const to = Math.min(film.duration, numberOption('to') ?? from + 10)
     const width = numberOption('width')
@@ -74,18 +78,25 @@ async function main(): Promise<void> {
                 stats = undefined
                 const load = loadavg()[0]!
                 const started = performance.now()
-                const video = await renderFilmVideo(film, join(directory, `bench-${workers ?? 'default'}-${run}.mp4`), { quality, workers, from, to, width, ffmpegPath })
+                const video = await renderFilmVideo(film, join(directory, `bench-${workers ?? 'default'}-${run}.mp4`), {
+                    quality, workers, from, to, width, ffmpegPath,
+                    backend: option('backend') as RenderBackend | undefined,
+                    h264Encoder: option('encoder') as H264EncoderRequest | undefined,
+                    requireH264Encoder: option('encoder') !== undefined && option('encoder') !== 'auto',
+                })
                 const elapsed = performance.now() - started
                 const fps = video.frameCount / (elapsed / 1000)
                 if (!best || fps > best.fps) best = { fps, workers: video.workers }
                 console.log(`\nrun ${run} of ${repeat}: ${video.workers} workers, ${video.width}x${video.height}, motion blur ${video.motionBlur}, load ${load.toFixed(1)}`)
                 console.log(`  ${fps.toFixed(1)} frames per second: ${video.frameCount} frames in ${seconds(elapsed)}`)
+                console.log(`  ${video.backend} renderer, ${video.h264Encoder} encoder: ${video.backendReason}`)
                 if (!stats) continue
                 const s: ExportStats = stats
                 const worked = s.computed
                 console.log(`  frames: ${s.computed} computed, ${s.reused} reused from the frame before`)
                 console.log(`  main thread: ${seconds(s.mainMs)} (${each(s.mainMs, video.frameCount)} a frame)`)
-                console.log(`  workers, added over ${s.workers}: raster ${seconds(s.rasterMs)} (${each(s.rasterMs, worked)} a computed frame), motion blur average ${seconds(s.averageMs)} (${each(s.averageMs, worked)}), bloom ${seconds(s.bloomMs)} (${each(s.bloomMs, worked)})`)
+                console.log(`  ${video.backend === 'gpu' ? 'GPU submission' : `workers, added over ${s.workers}`}: raster ${seconds(s.rasterMs)} (${each(s.rasterMs, worked)} a computed frame), motion blur average ${seconds(s.averageMs)} (${each(s.averageMs, worked)}), bloom ${seconds(s.bloomMs)} (${each(s.bloomMs, worked)})`)
+                if (s.readbackMs !== undefined) console.log(`  GPU readback, including outstanding graphics work: ${seconds(s.readbackMs)} (${each(s.readbackMs, worked)} a frame)`)
                 console.log(`  export loop: waits for frames ${seconds(s.frameWaitMs)}, waits for the encoder ${seconds(s.encoderWaitMs)}, encoder finish ${seconds(s.encoderFinishMs)}`)
             }
             if (best && repeat > 1) console.log(`\nbest of ${repeat} with ${best.workers} workers: ${best.fps.toFixed(1)} frames per second`)

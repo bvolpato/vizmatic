@@ -5,6 +5,7 @@ import { join, resolve } from 'path'
 import { decode as decodePng } from 'fast-png'
 import { afterEach, describe, expect, it } from 'vitest'
 import { FILM_TEMPLATES } from '../src/stage/templates'
+import { parseFilmArgs } from '../src/film-cli'
 
 const hasFfmpeg = spawnSync('ffmpeg', ['-version'], { encoding: 'utf8' }).status === 0
 const hasFfprobe = spawnSync('ffprobe', ['-version'], { encoding: 'utf8' }).status === 0
@@ -43,6 +44,11 @@ export default film({ title: 'Short', fps: 10 }, (s) => {
 `
 
 describe('vizmatic film', () => {
+    it('validates renderer and encoder choices before starting an export', () => {
+        expect(parseFilmArgs(['intro.ts', '--backend', 'gpu', '--encoder', 'nvenc'])).toMatchObject({ backend: 'gpu', encoder: 'nvenc' })
+        expect(() => parseFilmArgs(['intro.ts', '--backend', 'cuda'])).toThrow('--backend must be auto, cpu or gpu')
+        expect(() => parseFilmArgs(['intro.ts', '--encoder', 'cuda'])).toThrow('--encoder must be auto, libx264, nvenc or videotoolbox')
+    })
     it.skipIf(!hasFfmpeg).each(['narration', 'narrated'])('renders intact synthetic %s captions into WebVTT and MP4', async (caller) => {
         const directory = await tempDirectory()
         const samples = [
@@ -76,6 +82,7 @@ describe('vizmatic film', () => {
         const report = JSON.parse(result.stdout)
         expect(report).toMatchObject({ schemaVersion: 1, command: 'film', ok: true })
         const entry = report.films[0]
+        expect(entry.outputs.find((output: { format: string }) => output.format === 'mp4')).toMatchObject({ backend: 'cpu', encoder: 'libx264' })
         expect(entry).toMatchObject({ name: 'short', title: 'Short', width: 1920, height: 1080, fps: 10, chapters: [{ title: 'Opening', time: 0 }] })
         expect(entry.outputs.map((output: { format: string; look: string }) => `${output.look}.${output.format}`).sort()).toEqual([
             'midnight.gif', 'midnight.mp4', 'midnight.png', 'midnight.svg', 'midnight.webm',

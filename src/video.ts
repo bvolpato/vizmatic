@@ -27,7 +27,8 @@ export interface VideoFrameInfo {
 }
 
 export type VideoCodec = 'h264' | 'vp9'
-export type H264Encoder = 'libx264' | 'videotoolbox'
+export type H264Encoder = 'libx264' | 'videotoolbox' | 'nvenc'
+export type H264EncoderRequest = H264Encoder | 'auto'
 
 export interface RgbaVideoOptions {
     width: number
@@ -46,18 +47,32 @@ export interface RgbaVideoOptions {
     ffmpegPath?: string
     /** H.264 writes MP4. VP9 writes WebM. */
     codec?: VideoCodec
-    /** Prefer Apple's hardware encoder for standard-quality H.264. The default is libx264. */
-    h264Encoder?: H264Encoder
-    /** Fail before painting if the requested encoder cannot encode this format. */
+    /**
+     * The default is libx264. Auto probes local hardware for standard-quality output, except in CI.
+     * Auto preserves custom CRF, x264 parameters and tuning by selecting software.
+     * NVENC uses NVIDIA's dedicated video encoder; RGBA drawing and color conversion are unchanged.
+     */
+    h264Encoder?: H264EncoderRequest
+    /** Fail before painting if an explicit encoder cannot encode these settings. Auto permits software. */
     requireH264Encoder?: boolean
+    /**
+     * x264 speed preset, default fast. NVENC maps ultrafast/superfast/veryfast/faster/fast/medium
+     * to p1/p2/p3/p4/p5/p6, and slow/slower/veryslow/placebo to p7, with high-quality tuning.
+     * These preserve the speed/quality preference, not identical compression or image quality.
+     */
     preset?: string
-    /** Encoder tuning for H.264, such as "animation" for flat color and line art. */
+    /** x264 tuning, such as "animation" or "grain". NVENC falls back to software to preserve it. */
     tune?: string
     /**
      * More settings for the H.264 encoder, as x264 writes them: `name=value` pairs with a colon between them,
      * such as "aq-strength=1.0:trellis=0". They come after the preset and the tune, so they replace a value of those.
      */
     x264Params?: string
+    /**
+     * Default 18 for H.264, 30 for VP9. Explicit NVENC maps 1..51 to VBR CQ of the same number,
+     * without a bitrate cap. CQ and CRF are not equivalent quality scales. CRF 0 keeps software
+     * lossless encoding, since NVENC CQ 0 means automatic quality, not lossless.
+     */
     crf?: number
     threads?: number
     /** Title in the file's metadata. MP4 only. */
@@ -378,6 +393,19 @@ async function loopbackPair(): Promise<{ ours: Socket; theirs: Socket } | undefi
 const ffmpegOptions = new Map<string, Promise<boolean>>()
 
 type H264Format = { width: number; height: number; fps: number }
+type H264SelectionOptions = Pick<RgbaVideoOptions, 'preset' | 'crf' | 'tune' | 'x264Params' | 'signal' | 'requireH264Encoder'>
+
+const NVENC_PRESETS: Readonly<Record<string, string>> = {
+    ultrafast: 'p1', superfast: 'p2', veryfast: 'p3', faster: 'p4', fast: 'p5', medium: 'p6',
+    slow: 'p7', slower: 'p7', veryslow: 'p7', placebo: 'p7',
+}
+
+function nvencArgs(options: H264SelectionOptions): string[] {
+    // FFmpeg 6.1's nvenc_h264.c defines p1..p7, hq and VBR CQ (0 is automatic, 1..51 is quality).
+    // https://github.com/FFmpeg/FFmpeg/blob/n6.1/libavcodec/nvenc_h264.c
+    return ['-c:v', 'h264_nvenc', '-preset', NVENC_PRESETS[options.preset ?? 'fast']!, '-tune', 'hq',
+        '-profile:v', 'high', '-rc', 'vbr', '-cq', String(options.crf ?? 18), '-b:v', '0', '-g', '250']
+}
 
 function videoToolboxArgs({ width, height, fps }: H264Format): string[] {
     const args = ['-c:v', 'h264_videotoolbox', '-allow_sw', '0', '-profile:v', 'high', '-q:v', '75', '-g', '250']
@@ -425,38 +453,91 @@ async function verifyHardwareFrames(ffmpeg: string, path: string, count: number,
         let missing = 0
         while (missing < count && (seen[Math.floor(missing / 8)]! & (1 << (missing % 8)))) missing++
         const detail = missing < count ? `; missing frame ${missing}` : ''
-        throw new Error(`VideoToolbox packet timing mismatch: expected ${count} frames at ${fps} fps, found ${packets}${detail}`)
+        throw new Error(`Hardware H.264 packet timing mismatch: expected ${count} frames at ${fps} fps, found ${packets}${detail}`)
     }
 }
 
-const hardwareProbes = new Map<string, Promise<boolean>>()
+const hardwareProbes = new Set<string>()
+const pendingHardwareProbes = new Map<string, Promise<boolean>>()
 
-/** Check that FFmpeg can encode a frame with the requested hardware and format. */
-export async function resolveH264Encoder(
-    requested: H264Encoder = 'libx264',
-    ffmpegPath = 'ffmpeg',
-    format: H264Format = { width: 1920, height: 1080, fps: 30 },
-): Promise<H264Encoder> {
-    if (requested === 'libx264') return requested
-    if (requested !== 'videotoolbox') throw new Error('h264Encoder must be libx264 or videotoolbox')
+async function probeH264Encoder(
+    encoder: Exclude<H264Encoder, 'libx264'>,
+    ffmpegPath: string,
+    format: H264Format,
+    options: H264SelectionOptions,
+): Promise<boolean> {
     const { width, height, fps } = format
-    if (![width, height].every(value => Number.isSafeInteger(value) && value > 0 && value % 2 === 0)
-        || !Number.isInteger(fps) || fps < 1 || fps > 120) throw new Error('Invalid H.264 probe dimensions or FPS')
-    const key = JSON.stringify([ffmpegPath, width, height, fps])
-    let probe = hardwareProbes.get(key)
+    const args = ['-nostdin', '-v', 'error', '-abort_on', 'empty_output', '-f', 'lavfi', '-i', `color=size=${width}x${height}:rate=${fps},format=rgba`,
+        '-frames:v', '1', '-vf', COLOR_FILTER,
+        ...(encoder === 'nvenc' ? nvencArgs(options) : videoToolboxArgs(format)),
+        '-pix_fmt', 'yuv420p', ...COLOR_TAGS, '-f', 'null', '-']
+    const key = JSON.stringify([ffmpegPath, args])
+    if (hardwareProbes.has(key)) return true
+    // A cancellable caller owns its probe so aborting it cannot interrupt another export.
+    let probe = options.signal ? undefined : pendingHardwareProbes.get(key)
     if (!probe) {
-        probe = new Promise<boolean>((done) => {
-            const args = ['-nostdin', '-v', 'error', '-f', 'lavfi', '-i', `color=size=${width}x${height}:rate=${fps}`,
-                '-frames:v', '1', ...videoToolboxArgs(format), '-pix_fmt', 'yuv420p', '-f', 'null', '-']
-            const child = execFile(ffmpegPath, args, { timeout: 15000, killSignal: 'SIGKILL', maxBuffer: 65536 }, error => {
-                if (error) hardwareProbes.delete(key)
-                done(!error)
+        probe = new Promise<boolean>((done, fail) => {
+            const child = execFile(ffmpegPath, args, {
+                timeout: 15000, killSignal: 'SIGKILL', maxBuffer: 65536, signal: options.signal,
+            }, error => {
+                if (options.signal?.aborted) fail(abortError())
+                else {
+                    if (!error) hardwareProbes.add(key)
+                    done(!error)
+                }
             })
             child.stdin?.end()
         })
-        hardwareProbes.set(key, probe)
+        if (!options.signal) pendingHardwareProbes.set(key, probe)
     }
-    return await probe ? requested : 'libx264'
+    try {
+        return await probe
+    } finally {
+        // Busy devices, timeouts and driver failures must be retryable in the same process.
+        if (pendingHardwareProbes.get(key) === probe) pendingHardwareProbes.delete(key)
+    }
+}
+
+/**
+ * Resolve to an actual encoder after encoding one frame with the output format and settings.
+ * Auto prefers VideoToolbox on macOS and NVENC elsewhere, with a software fallback. Any nonempty
+ * CI or GITHUB_ACTIONS environment variable disables automatic hardware selection. Explicit requests
+ * still probe in CI. Custom x264 tuning/parameters and nondefault CRF keep auto on software.
+ */
+export async function resolveH264Encoder(
+    requested: H264EncoderRequest = 'libx264',
+    ffmpegPath = 'ffmpeg',
+    format: H264Format = { width: 1920, height: 1080, fps: 30 },
+    options: H264SelectionOptions = {},
+): Promise<H264Encoder> {
+    if (options.signal?.aborted) throw abortError()
+    if (requested === 'libx264') return requested
+    if (requested !== 'videotoolbox' && requested !== 'nvenc' && requested !== 'auto')
+        throw new Error('h264Encoder must be libx264, videotoolbox, nvenc or auto')
+    const { width, height, fps } = format
+    if (![width, height].every(value => Number.isSafeInteger(value) && value > 0 && value % 2 === 0)
+        || !Number.isInteger(fps) || fps < 1 || fps > 120) throw new Error('Invalid H.264 probe dimensions or FPS')
+    const crf = options.crf ?? 18
+    const preset = options.preset ?? 'fast'
+    if (!Number.isInteger(crf) || crf < 0 || crf > 51) throw new Error('crf must be an integer between 0 and 51')
+    if (requested === 'auto' && (process.env.CI || process.env.GITHUB_ACTIONS || crf !== 18
+        || options.tune !== undefined || options.x264Params !== undefined)) return 'libx264'
+
+    const candidates: Exclude<H264Encoder, 'libx264'>[] = requested === 'auto'
+        ? (process.platform === 'darwin' ? ['videotoolbox', 'nvenc'] : ['nvenc'])
+        : [requested]
+    for (const encoder of candidates) {
+        const supported = options.x264Params === undefined && (encoder === 'nvenc'
+            ? options.tune === undefined && crf > 0 && Object.hasOwn(NVENC_PRESETS, preset)
+            : crf === 18 && (options.tune === undefined || options.tune === 'animation'))
+        if (!supported) continue
+        const available = await probeH264Encoder(encoder, ffmpegPath, format, options)
+        if (options.signal?.aborted) throw abortError()
+        if (available) return encoder
+    }
+    if (options.requireH264Encoder && requested !== 'auto')
+        throw new Error(`Requested H.264 encoder ${requested} is unavailable for these settings`)
+    return 'libx264'
 }
 
 function hasFfmpegOption(ffmpegPath: string, component: string, option: string): Promise<boolean> {
@@ -569,12 +650,7 @@ export async function renderRgbaVideo(
     if (codec !== 'h264' && (options.h264Encoder !== undefined || options.requireH264Encoder))
         throw new Error('h264Encoder applies only to H.264 output')
     const requested = options.h264Encoder ?? 'libx264'
-    const useSoftwareSettings = crf !== 18 || options.x264Params !== undefined || (options.tune !== undefined && options.tune !== 'animation')
-    const h264Encoder = requested === 'videotoolbox' && useSoftwareSettings
-        ? 'libx264'
-        : await withAbort(resolveH264Encoder(requested, ffmpegPath, { width, height, fps }), options.signal)
-    if (options.requireH264Encoder && requested !== h264Encoder)
-        throw new Error(`Requested H.264 encoder ${requested} is unavailable for these settings`)
+    const h264Encoder = await resolveH264Encoder(requested, ffmpegPath, { width, height, fps }, options)
 
     const outputPath = resolve(options.outputPath)
     const outputDirectory = dirname(outputPath)
@@ -636,6 +712,8 @@ export async function renderRgbaVideo(
         args.push('-c:v', 'libvpx-vp9', '-crf', String(crf), '-b:v', '0', '-deadline', 'good', '-cpu-used', '2', '-row-mt', '1', '-threads:v', String(threads))
     } else if (h264Encoder === 'videotoolbox') {
         args.push(...videoToolboxArgs({ width, height, fps }))
+    } else if (h264Encoder === 'nvenc') {
+        args.push(...nvencArgs(options))
     } else {
         args.push('-c:v', 'libx264', '-preset', preset)
         if (options.tune) args.push('-tune', options.tune)
@@ -790,7 +868,7 @@ export async function renderRgbaVideo(
         if (exit.error) throw new Error(`Unable to start FFmpeg: ${exit.error.message}`, { cause: exit.error })
         if (exit.code !== 0) throw describeExit(exit.code, exit.signal, stderr)
 
-        if (h264Encoder === 'videotoolbox') await verifyHardwareFrames(ffmpegPath, tempPath, schedule.count, fps, options.signal)
+        if (h264Encoder !== 'libx264') await verifyHardwareFrames(ffmpegPath, tempPath, schedule.count, fps, options.signal)
         const outputStat = await stat(tempPath)
         // The temp file is private while it is incomplete. The finished video is a normal file.
         await chmod(tempPath, 0o644)

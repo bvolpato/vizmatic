@@ -18,18 +18,19 @@ export function paintCanvasBloom(
     bloom: number,
     background: string | null,
     existing: CanvasBloom | null = null,
+    dither = true,
 ): CanvasBloom {
     const state = existing ?? { background, color: parseColor(background ?? '#000000'), paint: createBloom() }
     if (state.background !== background) {
         state.background = background
         state.color = parseColor(background ?? '#000000')
     }
-    if (paintWebGLBloom(target, main, bloom, state.color)) return state
+    if (paintWebGLBloom(target, main, bloom, state.color, dither)) return state
     const { width, height } = target
     const image = main.getImageData(0, 0, width, height)
     // ImageData uses clamped bytes, which round. The shared kernel needs truncating bytes for its dither.
     const pixels = new Uint8Array(image.data.buffer, image.data.byteOffset, image.data.byteLength)
-    state.paint(pixels, width, height, bloom, state.color, true)
+    state.paint(pixels, width, height, bloom, state.color, dither)
     main.putImageData(image, 0, 0)
     return state
 }

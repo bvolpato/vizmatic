@@ -3,21 +3,26 @@ import { totalmem } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { encode as encodePng } from 'fast-png'
 import * as gifenc from 'gifenc'
-import { renderRgbaVideo, type H264Encoder, type RgbaVideoOutput, type VideoCodec, type VideoFrameInfo } from '../video'
+import { renderRgbaVideo, resolveH264Encoder, type H264EncoderRequest, type RgbaVideoOutput, type VideoCodec, type VideoFrameInfo } from '../video'
 import { parseColor } from './color'
 import { frameToSvg, type Frame } from './display'
-import { RasterPool, defaultPoolSize, framesToJob, reportExportStats, sameRasterJob, type RasterJob } from './raster'
+import { RasterPool, defaultPoolSize, framesToJob, reportExportStats, sameRasterJob, type ExportStats, type RasterJob } from './raster'
+import type { GpuRasterizer } from './gpu-raster'
 import { film as defineFilm, isFilm, isSuspend, type CompiledFilm, type CompileOverrides, type FilmDefinition } from './stage'
 import { text } from './text'
 
 export type Quality = 'draft' | 'standard' | 'high' | 'master'
-export type { H264Encoder, VideoCodec } from '../video'
+export type { H264Encoder, H264EncoderRequest, VideoCodec } from '../video'
+
+export type RenderBackend = 'auto' | 'cpu' | 'gpu'
 
 export interface FilmRenderOptions extends CompileOverrides {
     /** Output width in pixels. Defaults to the film's logical width. */
     width?: number
     quality?: Quality
-    h264Encoder?: H264Encoder
+    h264Encoder?: H264EncoderRequest
+    /** Auto measures local hardware before choosing. CI always defaults to CPU rendering. */
+    backend?: RenderBackend
     requireH264Encoder?: boolean
     /**
      * Dither the bloom, so that soft light on a dark look has no contour lines. Without this option, a movie
@@ -51,6 +56,9 @@ export interface FilmVideoOutput extends RgbaVideoOutput {
     workers: number
     motionBlur: number
     codec: VideoCodec
+    backend: 'cpu' | 'gpu'
+    backendReason: string
+    gpuDevice?: string
 }
 
 export interface FilmGifOutput {
@@ -256,15 +264,41 @@ export async function renderFilmVideo(
     const codec = options.codec ?? 'h264'
     const { from, to } = timeRange(compiled, options)
     const plan = planRender(size.width, size.height, motionBlur, options)
-    const pool = new RasterPool(plan.workers)
+    const count = Math.max(1, Math.round((to - from) * fps))
+    const dither = options.dither ?? quality.dither
+    const grain = dither && compiled.bloom > 0 && compiled.look?.dark === true
+    // Explicit hardware encoding opts into its quality scale. Auto retains x264 animation/grain tuning.
+    const requestedHardware = options.h264Encoder === 'nvenc' || options.h264Encoder === 'videotoolbox'
+    const encoder = codec === 'h264' && requestedHardware
+        ? await resolveH264Encoder(options.h264Encoder, options.ffmpegPath, { ...size, fps }, {
+            crf: quality.crf, preset: quality.preset, signal: options.signal, requireH264Encoder: options.requireH264Encoder,
+        }) : options.h264Encoder
+    const hardware = encoder === 'nvenc' || encoder === 'videotoolbox'
+    const request = options.backend ?? 'auto'
+    if (!['auto', 'cpu', 'gpu'].includes(request)) throw new Error('backend must be auto, cpu or gpu')
+    const ci = !!(process.env.CI || process.env.GITHUB_ACTIONS)
+    if (ci && request === 'gpu') throw new Error('GPU rendering is disabled in CI. Use backend: cpu or auto.')
+    let gpu: GpuRasterizer | undefined
+    let source = false
+    const demanding = motionBlur > 1 || size.width * size.height >= 3840 * 2160 || plan.workers < 8
+    let backendReason = ci ? 'CI uses CPU rendering' : request === 'cpu' ? 'CPU requested' : 'CPU avoids GPU probing for a short, small, or inexpensive export'
+    if (!ci && request !== 'cpu' && (request === 'gpu' || (demanding && count >= 300 && size.width * size.height >= 1280 * 720))) {
+        const { selectGpuRenderer } = await import('./gpu-selection')
+        const selection = await selectGpuRenderer(compiled, {
+            request, ...size, from, to, count, subframes: motionBlur, shutterSpan: shutter / fps, dither,
+            workers: plan.workers, memoryBudget: options.memoryBudget, signal: options.signal,
+        })
+        gpu = selection.gpu; source = selection.source; backendReason = selection.reason
+    }
+    const pool = gpu ? undefined : new RasterPool(plan.workers)
     try {
-        const count = Math.max(1, Math.round((to - from) * fps))
-        const dither = options.dither ?? quality.dither
-        const next = frameStream(compiled, pool, (index) => from + index / fps, size, count, plan.readAhead, motionBlur, shutter / fps, dither)
-        // Only a dark look has bloom, so only its film has the grain of the dither. A film object with no look
-        // counts as a film with no bloom.
-        const grain = dither && compiled.bloom > 0 && compiled.look?.dark === true
-        const stats = pool.stats
+        const stats: ExportStats = pool?.stats ?? {
+            workers: 0, computed: 0, reused: 0, mainMs: 0, rasterMs: 0, averageMs: 0, bloomMs: 0,
+            frameWaitMs: 0, encoderWaitMs: 0, encoderFinishMs: 0,
+        }
+        const next = gpu
+            ? gpuFrameStream(compiled, gpu, source, size, count, from, motionBlur, shutter / fps, dither, stats)
+            : frameStream(compiled, pool!, (index) => from + index / fps, size, count, plan.readAhead, motionBlur, shutter / fps, dither)
         // When the export loop took the last frame. From then, it waits for the encoder.
         let handed = 0
         const output = await renderRgbaVideo(async (info) => {
@@ -276,12 +310,12 @@ export async function renderFilmVideo(
             return pixels
         }, {
             width: size.width, height: size.height, fps, duration: (to - from) * 1000, outputPath,
-            codec, h264Encoder: options.h264Encoder, requireH264Encoder: options.requireH264Encoder,
+            codec, h264Encoder: codec === 'h264' ? encoder ?? 'auto' : encoder, requireH264Encoder: options.requireH264Encoder,
             crf: codec === 'vp9' ? quality.vp9Crf : quality.crf,
             preset: quality.preset,
             // Flat color and fine lines keep their edges better with this tuning.
-            tune: codec === 'h264' ? filmEncoderSettings(options.quality).tune : undefined,
-            x264Params: codec === 'h264' && grain ? quality.grain : undefined,
+            tune: codec === 'h264' && !hardware ? filmEncoderSettings(options.quality).tune : undefined,
+            x264Params: codec === 'h264' && grain && !hardware ? quality.grain : undefined,
             threads: options.threads ?? 6,
             audioPath: options.audioPath,
             audioOffset: from > 0 ? from : undefined,
@@ -294,10 +328,41 @@ export async function renderFilmVideo(
             onProgress: options.onProgress,
         })
         stats.encoderFinishMs = performance.now() - handed
+        if (gpu) { stats.rasterMs = gpu.rasterMs; stats.bloomMs = gpu.bloomMs; stats.readbackMs = gpu.readbackMs }
         reportExportStats(stats)
-        return { ...output, title: compiled.title, workers: pool.size, motionBlur, codec }
+        return { ...output, title: compiled.title, workers: pool?.size ?? 0, motionBlur, codec,
+            backend: gpu ? 'gpu' : 'cpu', backendReason, ...(gpu ? { gpuDevice: gpu.device } : {}) }
     } finally {
-        await pool.close()
+        await pool?.close()
+        await gpu?.close()
+    }
+}
+
+/** Keep GPU readback and delivery overlapped without retaining a film's worth of raw frames. */
+function gpuFrameStream(
+    film: CompiledFilm, gpu: GpuRasterizer, source: boolean, size: { width: number; height: number },
+    count: number, from: number, subframes: number, shutterSpan: number, dither: boolean, stats: ExportStats,
+): (index: number) => Promise<Uint8Array> {
+    const pending = new Map<number, Promise<Uint8Array>>()
+    const submit = async (index: number) => {
+        const started = performance.now()
+        const times = Array.from({ length: subframes }, (_, sub) => from + index / film.fps + sub / subframes * shutterSpan)
+        const frames: Frame[] = []
+        if (!source) for (const time of times) frames.push(await frameAt(film, time))
+        const pixels = gpu.run(source ? { ...size, times, dither } : { ...size, frames, dither })
+        stats.mainMs += performance.now() - started
+        stats.computed++
+        return pixels
+    }
+    return async index => {
+        for (let ahead = index; ahead < Math.min(count, index + 3); ahead++) if (!pending.has(ahead)) {
+            const pixels = submit(ahead)
+            pixels.catch(() => {})
+            pending.set(ahead, pixels)
+        }
+        const pixels = await pending.get(index)!
+        pending.delete(index)
+        return pixels
     }
 }
 

@@ -51,6 +51,8 @@ npm install vizmatic
 
 For interactive authoring, `npx vizmatic preview intro.ts` opens a live timeline player that reloads on save, and [Studio](https://bvolpato.github.io/vizmatic/studio.html) provides a browser editor with object tracks that writes film source. Agents should edit source directly.
 
+For movie performance, keep `--backend auto`: demanding local HD exports compare CPU/GPU speed and sampled pixels, while short exports and CI use CPU. `--backend gpu` requires installed Chrome, Edge, or Chromium and hardware acceleration; `--backend cpu` forces software rendering. `--encoder nvenc` explicitly requests NVIDIA H.264 encoding. Automatic film encoding retains x264 animation/grain tuning, because hardware CQ and software CRF are different quality scales. Inspect dark gradients and fine lines after changing encoders, and report the actual renderer/encoder from `--json`; GPU availability alone does not prove a speedup.
+
 ### Engine and timing traps
 
 - **Build nodes inside `film(..., (s) => { ... })`**: bundled fonts and TeX load while the callback runs, so calling `text()` or `tex()` at module top level fails on load.

@@ -143,7 +143,7 @@ const GPU_PROBE = `(() => {
     const canvases = Array.from({ length: 24 }, () => document.createElement('canvas'));
     const states = new Array(canvases.length).fill(null);
     globalThis.loseBloomContext = () => extension.call(gl, 'WEBGL_lose_context').loseContext();
-    globalThis.bloomProbe = ({ width, height, background = '#0b0c10', amount = 0.6, pattern = 'marks', slot = 0 }) => {
+    globalThis.bloomProbe = ({ width, height, background = '#0b0c10', amount = 0.6, pattern = 'marks', slot = 0, dither = true }) => {
         const { paintCanvasBloom, createBloom, parseColor } = globalThis.testEngine;
         const canvas = canvases[slot];
         if (canvas.width !== width) canvas.width = width;
@@ -182,7 +182,7 @@ const GPU_PROBE = `(() => {
         ctx.putImageData(input, 0, 0);
         const source = read.call(ctx, 0, 0, width, height);
         const expected = new Uint8Array(source.data);
-        createBloom()(expected, width, height, amount, parseColor(background ?? '#000000'), true);
+        createBloom()(expected, width, height, amount, parseColor(background ?? '#000000'), dither);
         // putImageData, like drawImage, crosses the canvas premultiplied storage
         // boundary. Compare both displayed outputs, including alpha-zero RGB.
         const reference = document.createElement('canvas'); reference.width = width; reference.height = height;
@@ -190,7 +190,7 @@ const GPU_PROBE = `(() => {
         referenceCtx.putImageData(new ImageData(new Uint8ClampedArray(expected), width, height), 0, 0);
         const wanted = read.call(referenceCtx, 0, 0, width, height).data;
         const beforeReads = reads, beforeAllocations = allocations;
-        states[slot] = paintCanvasBloom(canvas, ctx, amount, background, states[slot]);
+        states[slot] = paintCanvasBloom(canvas, ctx, amount, background, states[slot], dither);
         const actual = read.call(ctx, 0, 0, width, height).data;
         const firstReads = reads - beforeReads;
         const warmAllocations = allocations;
@@ -199,11 +199,11 @@ const GPU_PROBE = `(() => {
         // after the first WebGL drawImage, so check stability after that transfer.
         ctx.putImageData(input, 0, 0);
         const secondSource = read.call(ctx, 0, 0, width, height).data;
-        states[slot] = paintCanvasBloom(canvas, ctx, amount, background, states[slot]);
+        states[slot] = paintCanvasBloom(canvas, ctx, amount, background, states[slot], dither);
         const again = read.call(ctx, 0, 0, width, height).data;
         ctx.putImageData(input, 0, 0);
         const thirdSource = read.call(ctx, 0, 0, width, height).data;
-        states[slot] = paintCanvasBloom(canvas, ctx, amount, background, states[slot]);
+        states[slot] = paintCanvasBloom(canvas, ctx, amount, background, states[slot], dither);
         const third = read.call(ctx, 0, 0, width, height).data;
         let max = 0, maxOpaque = 0, maxPremultiplied = 0, alphaChanged = 0, unstable = 0;
         let error = 0, signedError = 0, expectedLight = 0, actualLight = 0, changed = 0, clearChanged = 0;
@@ -242,6 +242,7 @@ interface Probe {
     amount?: number
     pattern?: 'flat' | 'noise' | 'marks'
     slot?: number
+    dither?: boolean
 }
 
 interface Parity {
@@ -315,6 +316,8 @@ it.runIf(process.env.VIZMATIC_BROWSER_TESTS === '1')('matches the CPU kernel on 
                 if (failure === 'none') {
                     const cases: Probe[] = [
                         { width: 640, height: 360 },
+                        { width: 640, height: 360, dither: false },
+                        { width: 640, height: 360, background: null, dither: false },
                         { width: 640, height: 360, background: '#183044', pattern: 'flat' },
                         { width: 1283, height: 722, background: '#183044' },
                         { width: 1283, height: 722, background: 'hsl(217, 37%, 9%)' },
