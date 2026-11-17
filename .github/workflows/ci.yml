@@ -63,6 +63,7 @@ jobs:
           tests/narrated.test.ts
           tests/narration-hold.test.ts
           tests/video.test.ts
+          tests/video-encoder.test.ts
           tests/video-socket.test.ts
           tests/avc-splice.test.ts
           tests/media-excerpt.test.ts
