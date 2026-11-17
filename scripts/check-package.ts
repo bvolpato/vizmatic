@@ -8,11 +8,11 @@ interface PackResult {
     entryCount?: number
 }
 
-// Includes scientific plotting tools and the runnable film catalog, excluding model tests.
+// Includes scientific plotting, the film catalog, and three private GPU bundles; excludes model tests.
 const limits = {
     size: 7_750_000,
     unpackedSize: 22_500_000,
-    entryCount: 270,
+    entryCount: 273,
 }
 
 // Inspect the existing build. npm also runs prepare for a dry run unless suppressed.
