@@ -89,7 +89,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: pages-package-${{ needs.prepare.outputs.sha }}
           path: dist
@@ -149,7 +149,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: pages-package-${{ needs.prepare.outputs.sha }}
           path: dist
@@ -157,7 +157,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           pattern: pages-films-${{ needs.prepare.outputs.sha }}-*
           path: .cache/films
