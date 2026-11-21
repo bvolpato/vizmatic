@@ -115,7 +115,7 @@ export default film(
   (s) => {
     const kit = sceneKit({ size: 38, source: { y: -420 } })
     const title = kit.heading('Eight GPUs, one ring, bounded transfer')
-    const modelNote = kit.source('Ideal ring, equal shards. Phi = tensor size. Latency and topology still matter.')
+    const modelNote = kit.source('Ideal ring, equal shards. Φ = tensor size. Latency and topology still matter.')
     s.add(title, modelNote)
 
     const stageArea = new Box(
@@ -208,7 +208,7 @@ export default film(
         max: 9,
         ticks: [0, 3, 6, 9],
         showValues: true,
-        format: (v) => `${v.toFixed(v % 1 === 0 ? 0 : 2)}x Phi`,
+        format: (v) => `${v.toFixed(v % 1 === 0 ? 0 : 2)}× Φ`,
       },
     )
     place(hubLoadChart, ch1ChartBox, 'center')
@@ -216,7 +216,7 @@ export default film(
     const bottleneckCard = infoBox({
       title: 'One hub receives N tensor volumes',
       rows: [
-        { label: 'inbound at hub', value: '8 x Phi gradients', tone: 'red', meter: 0.96 },
+        { label: 'inbound at hub', value: '8 × Φ gradients', tone: 'red', meter: 0.96 },
         { label: 'assumption', value: 'one shared hub NIC', tone: 'orange' },
       ],
       accent: 'red',
@@ -248,7 +248,7 @@ export default film(
           starGraph.send(`P${i}`, 'PS', {
             color: 'red',
             duration: 0.95,
-            ...(i === 0 ? { value: '8 Phi in' } : {}),
+            ...(i === 0 ? { value: '8 Φ in' } : {}),
           }),
         ),
       ),
@@ -341,7 +341,7 @@ export default film(
     place(gatherHopCounter, rightMidSlot, 'center')
 
     const shardCard = infoBox({
-      title: 'Tensor sliced into 8 equal shards (Phi / 8)',
+      title: 'Tensor sliced into 8 equal shards (Φ / 8)',
       rows: [
         { label: 'each hop', value: '1 shard sent + 1 received', tone: 'blue' },
         { label: 'ideal ring', value: '8 concurrent sends', tone: 'teal' },
@@ -356,7 +356,7 @@ export default film(
       title: 'After 7 hops: each GPU holds 1 global sum',
       rows: [
         { label: 'GPU i owns', value: 'sum of shard (i+1) mod 8', tone: 'teal' },
-        { label: 'sent per GPU', value: '7/8 Phi', tone: 'blue', meter: 0.875 },
+        { label: 'sent per GPU', value: '7/8 Φ', tone: 'blue', meter: 0.875 },
       ],
       accent: 'teal',
       size: 27,
@@ -464,7 +464,7 @@ export default film(
         labelSize: 27,
         domain: [0, 9],
         ticks: [0, 2, 4, 6, 8],
-        xLabel: 'Ring sent / hub received (Phi)',
+        xLabel: 'Ring sent / hub received (Φ)',
       },
     )
     place(scalingChart, ch4ChartSlot, 'center')

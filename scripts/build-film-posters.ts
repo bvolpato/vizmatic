@@ -5,16 +5,18 @@
  *
  *   npx tsx scripts/build-film-posters.ts --force
  */
-import { execFile } from 'node:child_process'
+import { execFile, spawnSync } from 'node:child_process'
 import { access, copyFile, mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
-import { compileFilm, isFilm, resolveLook, type FilmDefinition } from '../src/stage/index'
+import { compileFilm, isFilm, resolveLook, type CompileOverrides, type FilmDefinition } from '../src/stage/index'
 import { renderFilmFrame } from '../src/stage/export'
+import { defaultPoolSize, RasterPool } from '../src/stage/raster'
 import { loadFilmCatalog } from './site-content'
 
 export const POSTER_DIR = 'docs/assets/site/posters'
+const POSTER_WIDTH = 960
 const THEMES = [
     { name: 'dark', look: 'midnight', background: '#0c0b09' },
     { name: 'light', look: 'paper', background: '#f7f3ea' },
@@ -22,17 +24,30 @@ const THEMES = [
 
 const exists = (path: string) => access(path).then(() => true, () => false)
 const execFileAsync = promisify(execFile)
+let webpEncoder: 'ffmpeg' | 'cwebp' | null = null
+
+function pickWebpEncoder(): 'ffmpeg' | 'cwebp' {
+    if (webpEncoder) return webpEncoder
+    const probe = spawnSync('ffmpeg', ['-hide_banner', '-h', 'encoder=libwebp'], { encoding: 'utf8' })
+    webpEncoder = probe.stdout?.includes('Supported pixel formats:') ? 'ffmpeg' : 'cwebp'
+    return webpEncoder
+}
 
 export async function encodeFilmPoster(png: string, webp: string): Promise<void> {
-    await execFileAsync('ffmpeg', [
-        '-v', 'error', '-nostdin', '-y', '-i', png, '-frames:v', '1',
-        '-c:v', 'libwebp', '-lossless', '1', '-compression_level', '6', '-pix_fmt', 'bgra', webp,
-    ])
+    if (pickWebpEncoder() === 'ffmpeg') {
+        await execFileAsync('ffmpeg', [
+            '-v', 'error', '-nostdin', '-y', '-i', png, '-frames:v', '1',
+            '-c:v', 'libwebp', '-lossless', '1', '-compression_level', '6', '-pix_fmt', 'bgra', webp,
+        ])
+    } else {
+        await execFileAsync('cwebp', ['-quiet', '-lossless', '-z', '6', png, '-o', webp])
+    }
 }
 
 export async function buildFilmPosters(force = false): Promise<number> {
     await mkdir(POSTER_DIR, { recursive: true })
     const scratch = await mkdtemp(join(tmpdir(), 'vizmatic-posters-'))
+    const pool = new RasterPool(Math.min(4, defaultPoolSize()))
     let written = 0
     try {
         for (const film of await loadFilmCatalog()) {
@@ -44,25 +59,38 @@ export async function buildFilmPosters(force = false): Promise<number> {
             if (pending.length === 0) continue
             const module = await import(resolve('examples/films', `${film.id}.ts`)) as { default?: FilmDefinition }
             if (!isFilm(module.default)) continue
+            const fixedLook = Boolean(film.look && film.look !== 'midnight')
+            let fixedWebp: string | null = null
             for (const theme of pending) {
-                // Gallery previews share the page palette; film pages retain their authored looks.
-                const base = resolveLook(theme.look)
-                const compiled = await compileFilm(
-                    module.default,
-                    {
+                if (fixedLook && fixedWebp) {
+                    await copyFile(fixedWebp, theme.target)
+                    written++
+                    continue
+                }
+                // Preserve each film's authored palette (blueprint, chalk, paper, neon) so posters
+                // match hover previews in both themes; midnight films adopt the active site ground.
+                let overrides: CompileOverrides
+                if (fixedLook) {
+                    overrides = { look: film.look as CompileOverrides['look'] }
+                } else {
+                    const base = resolveLook(theme.look)
+                    overrides = {
                         look: { ...base, background: theme.background, colors: { ...base.colors, bg: theme.background } },
                         background: theme.background,
-                    },
-                )
+                    }
+                }
+                const compiled = await compileFilm(module.default, overrides)
                 const png = join(scratch, `${film.id}-${theme.name}.png`)
-                await renderFilmFrame(compiled, film.posterTime ?? compiled.duration * 0.66, png, { width: 1440 })
+                await renderFilmFrame(compiled, film.posterTime ?? compiled.duration * 0.66, png, { width: POSTER_WIDTH, pool })
                 const webp = join(scratch, `${film.id}-${theme.name}.webp`)
                 await encodeFilmPoster(png, webp)
+                if (fixedLook) fixedWebp = webp
                 await copyFile(webp, theme.target)
                 written++
             }
         }
     } finally {
+        await pool.close()
         await rm(scratch, { recursive: true, force: true })
     }
     return written

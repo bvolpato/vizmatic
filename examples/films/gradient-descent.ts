@@ -292,10 +292,12 @@ export default film({
     s.add(stage)
     s.add(backing, rule)
     s.chapter('The landscape')
+    s.caption('A two-basin loss surface: one deeper valley on the right, a shallower local minimum on the left.', 3.4)
     s.play(rise.to(1, { ease: smoother }), azimuth.to(-0.15, { ease: smoother }), write(title), { duration: 3.2 })
     s.wait(0.4)
 
     s.chapter('The rule')
+    s.caption('Each update steps strictly opposite the local gradient by a fixed step size η.', 6.6)
     s.play(showA.to(1), arrowAlpha.to(1), write(rule1), fadeIn(etaNote), azimuth.to(0.1, { ease: linear }), { duration: 1.6 })
     s.play(fadeIn([stepLabel, stepRead, lossLabelA, lossReadA, chartLabel, chartAxes, chartTick0, chartTick1, chart]), azimuth.to(0.2, { ease: linear }), { duration: 0.9 })
     for (let i = 1; i <= 4; i++) {
@@ -304,16 +306,19 @@ export default film({
     }
 
     s.chapter('Let it run')
+    s.caption('Start A rolls off the ridge and settles into the deeper minimum on the right.', 8.4)
     s.play(arrowAlpha.to(0), { duration: 0.5 })
     s.play(stepA.to(STEPS, { ease: linear }), azimuth.to(1.15, { ease: smoother }), { duration: 8 })
     s.wait(0.8)
 
     s.chapter('A close neighbor')
+    s.caption('Start B begins just 0.12 away, tracks A down the ridge, then tips into the opposite basin.', 9.6)
     s.play(showB.to(1), fadeIn([lossLabelB, lossReadB]), azimuth.to(0.75, { ease: smoother }), { duration: 1.4 })
     s.play(stepB.to(STEPS, { ease: linear }), azimuth.to(-0.25, { ease: smoother }), { duration: 8.5 })
     s.wait(0.6)
 
     s.chapter('From above')
+    s.caption('Same rule, same step size, starts 0.12 apart: different basins and different answers.', 7.2)
     s.play(elevation.to(1.32, { ease: smoother }), azimuth.to(0.05, { ease: smoother }), fadeIn(outcome, { shift: [0, 10] }), { duration: 3.6 })
     s.wait(4.4)
 })

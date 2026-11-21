@@ -308,16 +308,19 @@ export default film({
     // ── Timeline ────────────────────────────────────────────────────────────
 
     s.chapter('A metric arrives')
+    s.caption('A metric arrives, one point each hour.', 6.2)
     s.at(0, () => s.play(write(title), fadeIn([chart, unit, days, method], { duration: 1 }), delay(fadeIn(arrives, { duration: 0.5 }), 0.7)))
     s.play(now.to(NOW, { ease: linear }), { duration: 6.6 })
 
     s.chapter('What comes next?')
+    s.caption('What comes next?', 3.2)
     s.play(fadeOut(arrives, { duration: 0.4 }))
     s.play(fadeIn(question, { duration: 0.5 }))
     s.wait(2.6)
     s.play(fadeOut(question, { duration: 0.4 }))
 
     s.chapter('One line')
+    s.caption('Past errors, resampled at random, fan out into a thousand possible futures.', 7.2)
     s.add(names)
     s.play(fadeIn(one, { duration: 0.4 }), middle.to(1, { duration: 1.5 }), fade(nameMedian!, 1, { duration: 0.6 }))
     s.wait(1.2)
@@ -327,6 +330,7 @@ export default film({
     s.wait(1.2)
 
     s.chapter('A range')
+    s.caption(`The forecast becomes a range: one band holds half the paths, the wider band holds ${ofTen(PROMISE)}.`, 5.4)
     s.play(fadeOut(possible, { duration: 0.3 }), delay(fadeIn(range, { duration: 0.4 }), 0.25), ...futures.map((path) => fade(path, 0.1, { duration: 0.8 })), fade(median, 1, { duration: 0.8 }))
     s.play(dark.to(1), fade(nameDark!, 1), { duration: 1.3 })
     s.wait(0.6)
@@ -334,6 +338,7 @@ export default film({
     s.wait(1.6)
 
     s.chapter('The truth arrives')
+    s.caption('As actual observations arrive, each point lands inside or outside the wide band.', 10.6)
     s.play(fadeOut(range, { duration: 0.3 }), delay(fadeIn(truth, { duration: 0.4 }), 0.25), ...futures.map((path) => fade(path, 0, { duration: 0.6 })), fadeIn(tally, { duration: 0.6 }))
     s.play(now.to(NOW + AHEAD, { ease: linear }), { duration: 7.4 })
     s.play(over.to(1), { duration: 0.6 })
@@ -341,6 +346,7 @@ export default film({
     s.wait(2)
 
     s.chapter('A thousand runs')
+    s.caption('Across 1,000 series, a calibrated forecaster hits its promised coverage rate.', 6.0)
     // A cut: the forecast leaves, and the base line of the bars arrives as it goes.
     s.play(fadeOut([truth, chart, days, unit, names, expected, seen], { duration: 0.5 }), delay(fadeIn(luck, { duration: 0.4 }), 0.35), delay(fadeIn([runs, axisName, runCount], { duration: 0.5 }), 0.4))
     s.play(runs.fillUp({ ease: linear }), { duration: 3 })

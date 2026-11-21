@@ -495,7 +495,7 @@ export default film({
     const issueAt = (run: Run, who: Name, n: number) => changesOf(run, who, 'sends').find((each) => 'accept' in each.value && each.value.accept.n === n)!.at
     // The film shows other majorities when a viewer has read that a value is chosen.
     const pairsAt = chosen.at + 2.6
-    const lines: Turn[] = ([
+    const captionTexts = [
         [0, 'Five acceptors must choose one value.'],
         [round1.at, 'Phase 1. A promise: accept no lower number.'],
         [issueAt(first, 'p', round1.n), 'Phase 2. A majority promised: p sends accept.'],
@@ -509,7 +509,12 @@ export default film({
         [RACE + refusals[0]!.ends, 'Each prepare blocks the accept of the other.'],
         [RACE + refusals[refusals.length - 1]!.ends, '“A distinguished proposer must be selected.”'],
         [RACE + raced.at + 1.2, 'In every run, at most one value is chosen.'],
-    ] as const).map(([at, words]) => ({ at, show: place(label(words), caption, 'left') }))
+    ] as const
+    const lines: Turn[] = captionTexts.map(([at, words]) => ({ at, show: place(label(words), caption, 'left') }))
+    captionTexts.forEach(([at, words], index) => {
+        const nextAt = index + 1 < captionTexts.length ? captionTexts[index + 1]![0] : END
+        s.at(at, () => s.caption(words, Math.max(0.5, nextAt - at - 0.1)))
+    })
 
     // ── The timeline. The machines come first, so that each message is drawn over them. ──
 

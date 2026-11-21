@@ -526,10 +526,16 @@ export async function renderFilmGif(film: FilmDefinition | CompiledFilm, outputP
 }
 
 /** Render one moment to a PNG. */
-export async function renderFilmFrame(film: FilmDefinition | CompiledFilm, time: number, outputPath: string, options: FilmRenderOptions = {}): Promise<{ width: number; height: number; outputPath: string }> {
+export async function renderFilmFrame(
+    film: FilmDefinition | CompiledFilm,
+    time: number,
+    outputPath: string,
+    options: FilmRenderOptions & { pool?: RasterPool } = {},
+): Promise<{ width: number; height: number; outputPath: string }> {
     const compiled = await resolveFilm(film, options)
     const { width, height } = outputSize(compiled, options.width)
-    const pool = new RasterPool(1)
+    const ownsPool = !options.pool
+    const pool = options.pool ?? new RasterPool(1)
     try {
         const frame = await frameAt(compiled, time)
         // A still is for a look at the picture, so it has the dither unless the export turns it off.
@@ -539,7 +545,7 @@ export async function renderFilmFrame(film: FilmDefinition | CompiledFilm, time:
         await writeFile(path, encodePng({ width, height, data: pixels, depth: 8, channels: 4 }))
         return { width, height, outputPath: path }
     } finally {
-        await pool.close()
+        if (ownsPool) await pool.close()
     }
 }
 

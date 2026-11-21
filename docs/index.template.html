@@ -9,7 +9,7 @@
   {{SITE_NAV}}
   <main id="main-content" tabindex="-1">
     <section class="hero" aria-labelledby="hero-title">
-      <vz-film class="hero-film" src="{{HERO_FILM}}" start="0.6" autoplay loop nocontrols label="Lit curves gather into the word vizmatic and let go again"></vz-film>
+      <vz-film class="hero-film" src="{{HERO_FILM}}" start="1.7" autoplay loop nocontrols label="Lit curves gather into the word vizmatic and let go again"></vz-film>
       <div class="hero-scrim"></div>
       <div class="hero-copy">
         <h1 id="hero-title">Moving pictures of ideas, <em>written as code.</em></h1>
@@ -49,17 +49,18 @@
       <div class="lab" data-lab>
         <div class="lab-stage"><canvas data-lab-canvas width="1280" height="800" role="img" aria-label="Interactive plot driven by the controls beside it"></canvas><noscript><p class="film-note">This laboratory needs JavaScript.</p></noscript></div>
         <div class="lab-panel">
-          <div class="lab-tabs" role="tablist" aria-label="Choose a live experiment"><button type="button" role="tab" aria-selected="true" data-lab-tab="matrix">Linear maps</button><button type="button" role="tab" aria-selected="false" data-lab-tab="fourier">Fourier terms</button></div>
+          <div class="lab-tabs" role="tablist" aria-label="Choose a live experiment"><button type="button" role="tab" aria-selected="true" data-lab-tab="matrix">Linear maps</button><button type="button" role="tab" aria-selected="false" data-lab-tab="descent">Gradient descent</button></div>
           <div data-lab-pane="matrix">
             <div class="lab-readout" aria-live="off"><span class="lab-matrix"><span class="i" data-m="a">1.00</span><span class="j" data-m="b">0.00</span><span class="i" data-m="c">0.00</span><span class="j" data-m="d">1.00</span></span></div>
             <p class="lab-hint" style="margin-top:14px">Drag the tips of the two arrows on the plane. They are the columns of the matrix, and the whole grid follows them.</p>
             <div class="lab-presets" role="group" aria-label="Matrix presets" style="margin-top:14px"><button type="button" data-lab-preset="1,0,0,1">Identity</button><button type="button" data-lab-preset="0,-1,1,0">Rotate</button><button type="button" data-lab-preset="1,1,0,1">Shear</button><button type="button" data-lab-preset="1,0,0,-1">Flip</button><button type="button" data-lab-preset="2,1,1,2">Stretch</button><button type="button" data-lab-preset="1,2,0.5,1">Collapse</button></div>
             <div style="margin-top:18px"><div class="lab-stat"><span>determinant</span><b data-lab-det>1.00</b></div><div class="lab-stat"><span>trace</span><b data-lab-trace>2.00</b></div></div>
           </div>
-          <div data-lab-pane="fourier" hidden>
-            <label class="lab-slider">Terms in the sum <output data-lab-terms-out>3</output><input type="range" min="1" max="40" value="3" data-lab-terms></label>
-            <label class="lab-slider" style="margin-top:14px">Shape <select data-lab-shape style="height:34px;background:transparent;border:1px solid var(--border-strong);border-radius:3px;padding:0 8px"><option value="square">Square wave</option><option value="saw">Sawtooth</option><option value="triangle">Triangle</option></select></label>
-            <p class="lab-hint" style="margin-top:14px">Move the slider. The curve is recomputed from its partial sum on every frame.</p>
+          <div data-lab-pane="descent" hidden>
+            <label class="lab-slider">Step size η <output data-lab-eta-out>0.28</output><input type="range" min="0.05" max="0.90" step="0.01" value="0.28" data-lab-eta></label>
+            <p class="lab-hint" style="margin-top:14px">Click or drag anywhere on the loss surface. Real gradient descent runs from your start point, with a twin 0.14 away to reveal the ridge between basins.</p>
+            <div class="lab-presets" role="group" aria-label="Descent presets" style="margin-top:14px"><button type="button" data-lab-descent="0.75,1.50,0.28">Ridge split</button><button type="button" data-lab-descent="-2.1,1.6,0.24">Local trap</button><button type="button" data-lab-descent="2.2,1.9,0.22">Global min</button><button type="button" data-lab-descent="1.1,1.2,0.82">Overshoot</button></div>
+            <div style="margin-top:18px"><div class="lab-stat"><span>start (x, y)</span><b data-lab-start>0.75, 1.50</b></div><div class="lab-stat"><span>final loss</span><b data-lab-loss>0.384</b></div><div class="lab-stat"><span>outcome</span><b data-lab-outcome>Basin split</b></div></div>
           </div>
         </div>
       </div>

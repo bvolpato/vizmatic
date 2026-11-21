@@ -229,7 +229,7 @@ export default film(
       weight: 600,
       color: 'teal',
     })
-    const ch3Tag = text('Chapter 3: Stretch along the axes (Sigma)', {
+    const ch3Tag = text('Chapter 3: Stretch along the axes (Σ)', {
       size: 28,
       weight: 600,
       color: 'yellow',
@@ -393,15 +393,15 @@ export default film(
       size: 27,
       color: 'dim',
     })
-    const matCaptionVt = text('Target factor: rotation V^T', {
+    const matCaptionVt = text('Target factor: rotation Vᵀ', {
       size: 27,
       color: 'teal',
     })
-    const matCaptionSigma = text('Target factor: Sigma = diag(2.10, 1.20, 0.55)', {
+    const matCaptionSigma = text('Target factor: Σ = diag(2.10, 1.20, 0.55)', {
       size: 27,
       color: 'yellow',
     })
-    const matCaptionA = text('Target composite: A = U Sigma V^T', {
+    const matCaptionA = text('Target composite: A = U Σ Vᵀ', {
       size: 27,
       color: 'orange',
     })
@@ -424,9 +424,9 @@ export default film(
     const svdCard = infoBox({
       title: 'Target singular values',
       rows: [
-        { label: 'sigma_1 (blue)', value: '2.10  major stretch', tone: 'blue' },
-        { label: 'sigma_2 (teal)', value: '1.20  mid stretch', tone: 'teal' },
-        { label: 'sigma_3 (gold)', value: '0.55  minor axis', tone: 'yellow' },
+        { label: 'σ₁ (blue)', value: '2.10  major stretch', tone: 'blue' },
+        { label: 'σ₂ (teal)', value: '1.20  mid stretch', tone: 'teal' },
+        { label: 'σ₃ (gold)', value: '0.55  minor axis', tone: 'yellow' },
       ],
       accent: 'blue',
       size: 27,
@@ -434,11 +434,11 @@ export default film(
     place(svdCard, cardBox, 'center')
 
     const rankCard = infoBox({
-      title: 'Rank collapse: sigma_3 -> 0.00',
+      title: 'Rank collapse: σ₃ → 0.00',
       rows: [
         { label: 'final axes', value: '2 of 3  (rank 2)', tone: 'orange' },
         { label: 'image of sphere', value: '2D ellipse disc', tone: 'yellow' },
-        { label: '3D volume det(A)', value: '1.39 -> 0.00', tone: 'red' },
+        { label: '3D volume det(A)', value: '1.39 → 0.00', tone: 'red' },
       ],
       accent: 'orange',
       size: 27,
@@ -526,9 +526,9 @@ export default film(
     // =========================================================================
     // Chapter 3: Stretch along the axes (Sigma)
     // =========================================================================
-    s.chapter('Stretch along the axes: Sigma')
+    s.chapter('Stretch along the axes: Σ')
     s.caption(
-      'Sigma scales the aligned x, y, and z axes by (2.10, 1.20, 0.55) into a triaxial ellipsoid.',
+      'Σ scales the aligned x, y, and z axes by (2.10, 1.20, 0.55) into a triaxial ellipsoid.',
       9.8,
     )
 
@@ -554,7 +554,7 @@ export default film(
     // =========================================================================
     s.chapter('Second rotation: U, and rank collapse')
     s.caption(
-      'U rotates the ellipsoid into A x; driving sigma_3 to zero collapses 3D volume onto a 2D ellipse.',
+      'U rotates the ellipsoid into A x; driving σ₃ to zero collapses 3D volume onto a 2D ellipse.',
       12.4,
     )
 

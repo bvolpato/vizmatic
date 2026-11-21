@@ -250,18 +250,21 @@ export default film({
     s.add(firstField, markerA)
     s.add(backing, rule)
     s.chapter('The grid')
+    s.caption('A holomorphic map bends a square grid globally, yet preserves every 90° crossing locally.', 5.2)
     s.play(reveal.to(1, { ease: smooth }), write(title), { duration: 2.4 })
     s.play(write(eqIdentity), markerAAlpha.to(1), fadeIn([angleLabel, angleRead, scaleLabel, scaleRead, turnLabel, turnRead]), { duration: 1.2 })
     s.play(fadeIn(note, { shift: [0, 8] }), write(deriv), { duration: 1.2 })
     s.wait(0.8)
 
     s.chapter('Square it')
+    s.caption('Under w = z², rays double their angles and grid cells stretch, while the crossing angle stays 90.00°.', 9.0)
     s.play(morphMatching(eqIdentity, eqPower), fadeIn([pLabel, pRead]), { duration: 1 })
     s.play(p.to(2, { ease: smoother }), { duration: 7 })
     s.play(morphMatching(eqPower, eqSquare), { duration: 0.9 })
     s.wait(0.6)
 
     s.chapter('Look closer')
+    s.caption('Zooming in at z₀ reveals why: a complex derivative acts locally as pure rotation plus uniform scale.', 7.8)
     const w0 = power(Z0, 2)
     const target = toStageA(w0)
     s.update(s.camera, (camera) => {
@@ -275,6 +278,7 @@ export default film({
     s.play(zoom.to(1, { ease: smoother }), focusX.to(0, { ease: smoother }), focusY.to(0, { ease: smoother }), fade(title, 1), { duration: 2.4 })
 
     s.chapter('A different map')
+    s.caption('A Möbius transformation curls the entire upper half-plane into the unit disk, still keeping every crossing orthogonal.', 14.8)
     s.add(secondField, markerB, pointsB)
     backing.zIndex(5)
     s.play(firstAlpha.to(0), markerAAlpha.to(0), fadeOut([eqSquare, pLabel, pRead, note, deriv]), { duration: 0.8 })

@@ -245,20 +245,24 @@ export default film({
     const total = balls[BALLS - 1]!.land
     s.add(rule)
     s.chapter('The board')
+    s.caption('Twelve rows of pegs: each bounce is an independent fair coin flip left or right.', 3.8)
     s.play(write(title), fadeIn(board, { lag: 0.008 }), { duration: 2.2 })
     s.play(draw(bins, { lag: 0.02 }), fadeIn(ticks, { lag: 0.04 }), { duration: 1.2 })
     s.add(action)
     s.play(fadeIn([flipLabel, flipRead, rightRead]), { duration: 0.6 })
 
     s.chapter('One ball')
+    s.caption('Follow a single ball: its final bin simply counts how many times it bounced right.', 8.2)
     s.play(time.to(DEMO_END - 1.2, { ease: linear }), { duration: DEMO_END - 1.2 })
     s.play(fadeIn([countLabel, countRead, statLabelA, statReadA, statLabelB, statReadB]), time.to(DEMO_END, { ease: linear }), { duration: 1.2 })
 
     s.chapter('A downpour')
+    s.caption('Nine hundred balls accumulate while the empirical mean and standard deviation converge toward theory.', 14.2)
     s.play(time.to(total + 0.2, { ease: linear }), { duration: 14.2 })
     s.wait(0.5)
 
     s.chapter('The exact answer')
+    s.caption('Exact binomial probabilities match the histogram heights across every bin.', 2.4)
     s.play(
         fadeOut([flipLabel, flipRead, rightRead], { duration: 0.6 }),
         fadeIn(expected, { duration: 1.2 }),
@@ -268,6 +272,7 @@ export default film({
     s.wait(1)
 
     s.chapter('The bell')
+    s.caption('Sum enough independent effects and the Gaussian bell emerges automatically.', 6.2)
     s.play(draw(gaussian), morphMatching(eqExact, eqGauss), { duration: 2.4 })
     s.play(fadeIn(caption, { shift: [0, 8] }), { duration: 1 })
     s.wait(3.4)
