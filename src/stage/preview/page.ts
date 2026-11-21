@@ -22,6 +22,8 @@ header .spacer { flex: 1; }
 header .state { color: var(--dim); white-space: nowrap; }
 header .state[data-kind="busy"] { color: var(--accent); }
 header .state[data-kind="error"] { color: var(--err); }
+header .perf { color: var(--faint); font-variant-numeric: tabular-nums; white-space: nowrap; border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; font-size: 11px; }
+header .perf[data-live="true"] { color: var(--ink); border-color: #2f5b4f; }
 main { position: relative; display: grid; place-items: center; min-height: 0; padding: 18px; overflow: hidden; }
 .frame { position: relative; line-height: 0; box-shadow: 0 0 0 1px var(--line); }
 canvas { display: block; width: 100%; height: 100%; }
@@ -55,6 +57,7 @@ kbd { font: inherit; color: var(--dim); }
   <span class="title" id="title">Loading</span>
   <span class="file">${safeName}</span>
   <span class="spacer"></span>
+  <span class="perf" id="perf" hidden></span>
   <span class="state" id="state">Compiling</span>
 </header>
 <main id="main">
@@ -81,7 +84,31 @@ import { FilmPlayer, checkFilm, isFilm, LOOKS } from '/stage/stage.js'
 const el = (id) => document.getElementById(id)
 const params = new URLSearchParams(location.search)
 const remembered = { time: Number(params.get('t')) || 0, playing: false, look: params.get('look') || '' }
-const state = { player: null, film: null, definition: null, report: null, version: 0, loading: 0 }
+const state = { player: null, film: null, definition: null, report: null, version: 0, loading: 0, fpsFrames: 0, fpsSince: 0 }
+
+function updatePerf(playing) {
+  const badge = el('perf')
+  if (!state.film) { badge.hidden = true; return }
+  const mode = state.film.look?.dark && state.film.bloom > 0 ? 'WebGL2' : '2D GPU'
+  badge.hidden = false
+  badge.dataset.live = playing ? 'true' : 'false'
+  if (!playing) {
+    state.fpsFrames = 0
+    state.fpsSince = 0
+    badge.textContent = state.film.width + '×' + state.film.height + ' · ' + mode
+    return
+  }
+  const now = performance.now()
+  if (!state.fpsSince) { state.fpsSince = now; state.fpsFrames = 0; return }
+  state.fpsFrames += 1
+  const elapsed = now - state.fpsSince
+  if (elapsed >= 400) {
+    const fps = Math.round((state.fpsFrames * 1000) / elapsed)
+    badge.textContent = fps + ' fps · ' + mode
+    state.fpsFrames = 0
+    state.fpsSince = now
+  }
+}
 
 for (const name of Object.keys(LOOKS)) el('look').append(new Option(name, name))
 el('look').prepend(new Option('Film default', ''))
@@ -182,6 +209,7 @@ function drawIssues() {
 
 function onTime(time) {
   const film = state.film
+  if (state.player?.isPlaying) updatePerf(true)
   el('time').textContent = clock(time) + ' / ' + clock(film.duration)
   el('playhead').style.left = (time / film.duration) * 100 + '%'
   el('timeline').setAttribute('aria-valuenow', time.toFixed(2))
@@ -238,8 +266,9 @@ async function compile() {
       loop: el('loop').checked,
       speed: Number(el('speed').value),
       onTime,
-      onState: ({ playing }) => { el('toggle').textContent = playing ? 'Pause' : 'Play' },
+      onState: ({ playing }) => { el('toggle').textContent = playing ? 'Pause' : 'Play'; updatePerf(playing) },
     })
+    updatePerf(false)
     sizeFrame()
     state.player.seek(Math.min(film.duration, remembered.time))
     if (remembered.playing) state.player.play()

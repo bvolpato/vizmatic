@@ -1,11 +1,13 @@
 import type { Bounds } from '../geometry'
-import type { Anim, AnimOptions } from '../anim'
+import { fadeIn, fadeOut, par, write, type Anim, type AnimOptions } from '../anim'
+import { easeOutCubic } from '../ease'
 import { Node, ownLabels } from '../node'
-import { rect } from '../shapes'
+import { line, rect } from '../shapes'
 import { text, type TextNode, type TextOptions } from '../text'
 import type { ColorInput } from '../color'
 import { oneNode } from '../layout'
 import { reveal, sampleAt, staggered, stepAt } from './util'
+import { Counter, counter, countUp } from './verbs'
 
 export interface CardOptions {
     /** Outer width, in pixels. Defaults to 420. */
@@ -180,4 +182,202 @@ export class Card extends Node {
 /** A box with a title, a picture, and a caption, such as `card({ title: 'Logs', figure: pictogram('logs'), caption: 'one line per event' })`. */
 export function card(options: CardOptions = {}): Card {
     return new Card(options)
+}
+
+export interface TitleCardOptions {
+    /** Optional short eyebrow label rendered above the headline. */
+    eyebrow?: string
+    /** Optional supporting line rendered below the glowing accent rule. */
+    subtitle?: string
+    /** Accent color for the eyebrow and glowing divider bar. Defaults to 'blue'. */
+    accent?: ColorInput
+    /** Headline font size. Auto-scales down if the title exceeds `width`. Defaults to 92. */
+    size?: number
+    /** Maximum text width in stage pixels. Defaults to 1480. */
+    width?: number
+    /** Headline font family. Defaults to 'serif'. */
+    font?: TextOptions['font']
+}
+
+/**
+ * A broadcast-quality opening or section title card with eyebrow, serif headline,
+ * glowing accent rule, and subtitle. Animate with `.enter()` and `.exit()`.
+ */
+export class TitleCardNode extends Node {
+    readonly eyebrow: TextNode | null
+    readonly heading: TextNode
+    readonly rule: Node
+    readonly subtitle: TextNode | null
+
+    constructor(title: string, options: TitleCardOptions = {}) {
+        super()
+        const maxWidth = options.width ?? 1480
+        const accent = options.accent ?? 'blue'
+        const baseSize = options.size ?? 92
+        const font = options.font ?? 'serif'
+
+        let heading = text(title, { size: baseSize, font, color: 'ink' })
+        if (advance(heading) > maxWidth) {
+            const fitted = Math.max(40, Math.floor(baseSize * (maxWidth / advance(heading))))
+            heading = text(title, { size: fitted, font, color: 'ink' })
+        }
+        const headingSize = heading.bounds().height || baseSize
+
+        const eyebrow = options.eyebrow
+            ? text(options.eyebrow.toUpperCase(), { size: 24, font: 'mono', weight: 600, color: accent })
+            : null
+        const ruleHalf = Math.min(260, Math.max(120, Math.round(advance(heading) * 0.24)))
+        const rule = line([-ruleHalf, 0], [ruleHalf, 0], { stroke: accent, width: 4, glow: 10 })
+        const subtitle = options.subtitle
+            ? text(options.subtitle, { size: 34, font: 'sans', color: 'dim', maxWidth, align: 'center' })
+            : null
+
+        const eyebrowY = -(headingSize * 0.72 + 34)
+        const ruleY = headingSize * 0.62 + 26
+        const subtitleY = ruleY + 48
+
+        if (eyebrow) this.add(eyebrow.at(0, eyebrowY))
+        this.add(heading.at(0, 0))
+        this.add(rule.at(0, ruleY))
+        if (subtitle) this.add(subtitle.at(0, subtitleY))
+
+        this.eyebrow = eyebrow
+        this.heading = heading
+        this.rule = rule
+        this.subtitle = subtitle
+        ownLabels(this, { name: 'titleCard', labels: [eyebrow, heading, subtitle] })
+    }
+
+    /** Reveal the eyebrow, handwrite or settle the headline, trace the accent rule, and bring in the subtitle. */
+    enter(options: AnimOptions = {}): Anim {
+        const duration = options.duration ?? 1.25
+        return {
+            label: 'titleCard.enter', duration, ease: options.ease,
+            schedule: (ctx) => {
+                reveal(this, ctx.t0, ctx.stage)
+                const span = ctx.t1 - ctx.t0
+                if (this.eyebrow) {
+                    fadeIn(this.eyebrow, { shift: [0, 12], duration: span * 0.45, ease: easeOutCubic })
+                        .schedule({ ...ctx, t0: ctx.t0, t1: ctx.t0 + span * 0.45, ease: easeOutCubic })
+                }
+                write(this.heading, { duration: span * 0.72, lag: 0.14 })
+                    .schedule({ ...ctx, t0: ctx.t0 + span * 0.08, t1: ctx.t0 + span * 0.8 })
+                stepAt(this.rule, 'trimTo', 0, ctx.t0)
+                this.rule.tween('trimTo', 1, ctx.t0 + span * 0.35, ctx.t0 + span * 0.85, easeOutCubic)
+                if (this.subtitle) {
+                    const start = ctx.t0 + span * 0.48
+                    stepAt(this.subtitle, 'opacity', 0, ctx.t0)
+                    fadeIn(this.subtitle, { shift: [0, 14], duration: ctx.t1 - start, ease: easeOutCubic })
+                        .schedule({ ...ctx, t0: start, t1: ctx.t1, ease: easeOutCubic })
+                }
+            },
+        }
+    }
+
+    /** Smoothly lift and fade out the title card. */
+    exit(options: AnimOptions = {}): Anim {
+        return fadeOut(this, { duration: options.duration ?? 0.55, shift: [0, -20], ease: options.ease })
+    }
+}
+
+/** Instant cinematic opening or chapter title card with `.enter()` and `.exit()`. */
+export function titleCard(title: string, options: TitleCardOptions = {}): TitleCardNode {
+    return new TitleCardNode(title, options)
+}
+
+export interface MetricTileOptions {
+    /** Short metric label shown above the value. */
+    label: string
+    /** Target numeric value shown when the tile settles. */
+    value: number
+    /** Starting value animated from during `.enter()`. Defaults to 0. */
+    from?: number
+    prefix?: string
+    suffix?: string
+    digits?: number
+    /** Optional delta or context line beneath the readout (e.g. '-62% p99'). */
+    delta?: string
+    /** Accent color for the top highlight bar, value tint, and border. Defaults to 'blue'. */
+    color?: ColorInput
+    /** Outer width in pixels. Defaults to 380. */
+    width?: number
+    /** Outer height in pixels. Defaults to 220. */
+    height?: number
+}
+
+/**
+ * Animated KPI tile with glowing accent strip, crisp label, live `Counter`, and optional delta line.
+ * `.enter()` traces the frame and counts up from `from` to `value`; `.countTo(next)` animates updates.
+ */
+export class MetricTile extends Node {
+    readonly frame: Node
+    readonly accentBar: Node
+    readonly labelNode: TextNode
+    readonly counter: Counter
+    readonly deltaNode: TextNode | null
+    readonly targetValue: number
+
+    constructor(options: MetricTileOptions) {
+        super()
+        const width = options.width ?? 380
+        const height = options.height ?? 220
+        const color = options.color ?? 'blue'
+        const from = options.from ?? 0
+        this.targetValue = options.value
+
+        this.frame = rect(width, height, { radius: 18, fill: 'surface', stroke: color, width: 2.5 })
+        const barW = Math.max(80, width - 72)
+        this.accentBar = line([-barW / 2, -height / 2 + 18], [barW / 2, -height / 2 + 18], { stroke: color, width: 4, glow: 8 })
+        this.labelNode = text(options.label.toUpperCase(), { size: 22, font: 'mono', weight: 600, color: 'dim' })
+        this.counter = counter(from, {
+            size: 62, weight: 700, color: 'ink', prefix: options.prefix, suffix: options.suffix, digits: options.digits ?? 0,
+        })
+        this.deltaNode = options.delta
+            ? text(options.delta, { size: 24, font: 'mono', color })
+            : null
+
+        this.add(this.frame)
+        this.add(this.accentBar)
+        this.add(this.labelNode.at(0, -height / 2 + 54))
+        this.add(this.counter.at(0, options.delta ? 4 : 18))
+        if (this.deltaNode) this.add(this.deltaNode.at(0, height / 2 - 38))
+        ownLabels(this, { name: 'metricTile', labels: [this.labelNode, this.deltaNode] })
+    }
+
+    /** Trace the tile frame, glow the top strip, and count the readout up to its target value. */
+    enter(options: AnimOptions = {}): Anim {
+        const duration = options.duration ?? 1.0
+        return {
+            label: 'metricTile.enter', duration, ease: options.ease,
+            schedule: (ctx) => {
+                reveal(this, ctx.t0, ctx.stage)
+                const span = ctx.t1 - ctx.t0
+                const fillTarget = sampleAt(this.frame, 'fillOpacity', ctx.t0)
+                stepAt(this.frame, 'trimTo', 0, ctx.t0)
+                stepAt(this.frame, 'fillOpacity', 0, ctx.t0)
+                this.frame.tween('trimTo', 1, ctx.t0, ctx.t0 + span * 0.55, easeOutCubic)
+                this.frame.tween('fillOpacity', fillTarget, ctx.t0 + span * 0.15, ctx.t0 + span * 0.65, easeOutCubic)
+                stepAt(this.accentBar, 'trimTo', 0, ctx.t0)
+                this.accentBar.tween('trimTo', 1, ctx.t0 + span * 0.12, ctx.t0 + span * 0.65, easeOutCubic)
+                const body = [this.labelNode, this.counter, ...(this.deltaNode ? [this.deltaNode] : [])]
+                for (const part of body) {
+                    const targetOpacity = sampleAt(part, 'opacity', ctx.t0)
+                    stepAt(part, 'opacity', 0, ctx.t0)
+                    part.tween('opacity', targetOpacity, ctx.t0 + span * 0.18, ctx.t0 + span * 0.55, easeOutCubic)
+                }
+                countUp(this.counter, this.targetValue, { duration: span * 0.82, ease: options.ease ?? easeOutCubic })
+                    .schedule({ ...ctx, t0: ctx.t0 + span * 0.18, t1: ctx.t1, ease: options.ease ?? easeOutCubic })
+            },
+        }
+    }
+
+    /** Animate the metric readout to a new numeric value. */
+    countTo(next: number, options: AnimOptions = {}): Anim {
+        return par(countUp(this.counter, next, options))
+    }
+}
+
+/** Animated KPI tile with built-in counter, glowing accent bar, `.enter()`, and `.countTo()`. */
+export function metricTile(options: MetricTileOptions): MetricTile {
+    return new MetricTile(options)
 }

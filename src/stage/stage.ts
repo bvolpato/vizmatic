@@ -5,8 +5,10 @@ import { resolveLook, type Look, type LookName } from './look'
 import { Node, mountTree, type StageImage } from './node'
 import { isImageAsset, resolveLegacyImage, validateStageImage, ImageAssetError, type ImageAsset } from './image'
 import { clock } from './track'
-import { Value, type Anim } from './anim'
+import { fadeOut, stagger, Value, type Anim, type Target } from './anim'
+import { focusOn, resetCamera, type FocusOptions } from './camera'
 import type { FontFamily } from './font'
+import type { Vec } from './geometry'
 import { settleLights, type Light, type MorphRecord } from './light'
 import { Block, nodesFor, oneNode, type LayoutItem } from './layout'
 
@@ -231,6 +233,45 @@ export class Stage {
         this.ending = Math.max(this.ending, t1)
         clock.now = t1
         return this
+    }
+
+    /** Stagger an animation across items and advance the timeline past it. */
+    stagger<T>(items: readonly T[], build: (item: T, index: number) => Anim, options: { lag?: number; duration?: number; ease?: Ease } = {}): this {
+        return this.play(stagger(items, build, options), options.ease ? { ease: options.ease } : {})
+    }
+
+    /** Smoothly pan and zoom the stage camera to focus on a node, block, box, or [x, y] point. */
+    focus(target: Parameters<typeof focusOn>[1], options?: FocusOptions): this {
+        return this.play(focusOn(this, target, options))
+    }
+
+    /** Smoothly return the stage camera to the full-frame home view. */
+    resetView(options?: { duration?: number; ease?: Ease }): this {
+        return this.play(resetCamera(this, options))
+    }
+
+    /**
+     * Smoothly fade out every currently visible top-level node on the stage, optionally keeping named nodes.
+     * Useful for transitioning between acts without manually tracking every element.
+     */
+    clear(options: { keep?: Target; duration?: number; shift?: Vec; ease?: Ease } = {}): this {
+        this.claim()
+        clock.now = this.time
+        const keepRoots = new Set<Node>()
+        if (options.keep !== undefined) {
+            for (const node of nodesFor('s.clear', options.keep, 'keep')) {
+                let top: Node | null = node
+                while (top && top.parent && top.parent !== this.root) top = top.parent
+                if (top) keepRoots.add(top)
+            }
+        }
+        const outgoing = this.root.children.filter((child) => !keepRoots.has(child) && child.get('visible') && child.get('opacity') > 0.002)
+        if (outgoing.length === 0) return this
+        return this.play(fadeOut(outgoing, {
+            duration: options.duration ?? 0.55,
+            shift: options.shift ?? [0, -18],
+            ease: options.ease,
+        }))
     }
 
     /** Hold on the current picture. */

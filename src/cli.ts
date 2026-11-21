@@ -229,7 +229,7 @@ const framesNeedingGlobalReact = new WeakSet<object>()
 
 function usageText() {
     return `Films:
-  vizmatic new <name> [--template explainer|equation|architecture|chart|deck|narrated] [--force]
+  vizmatic new <name> [--template explainer|equation|architecture|chart|deck|story|narrated] [--force]
   vizmatic narrated <build|voice|mix|check|stills|sheet|beats|transcribe|sync|lag|probe|resound|draft> <folder> [options of the step] [--dry-run]
   vizmatic preview <file> [--port <n>] [--open]
   vizmatic check <file> [--look midnight,paper] [--motion] [--content-top <px>] [--text-margin <px>] [--text-gap <part>] [--text-size <px>] [--empty-space <part>] [--empty-seconds <s>] [--reading-speed <n>] [--stepped] [--json]

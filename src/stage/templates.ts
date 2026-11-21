@@ -188,11 +188,68 @@ export default film({ title: 'Quarterly review' }, (s) => {
 })
 `
 
+const story = `import { breathe, connector, draw, film, flowStream, metricTile, namedBox, place, popIn, row, sceneKit, slideIn, titleCard } from 'vizmatic/stage'
+
+// A three-act product and metrics story built with high-level choreography helpers.
+const { area, heading, source } = sceneKit({ size: 36 })
+
+export default film({ title: 'Zero-copy pipeline launch' }, (s) => {
+    // Act 1: Cinematic opening title card
+    s.chapter('Opening')
+    const opener = titleCard('Zero-Copy Pipelines', {
+        eyebrow: 'Release 2.0',
+        subtitle: 'Hardware-accelerated frames from vector stage to MP4',
+        accent: 'teal',
+    })
+    s.play(opener.enter())
+    s.wait(1.0)
+    s.clear()
+
+    // Act 2: Architecture flow with animated signal streams and camera focus
+    s.chapter('Pipeline')
+    const title = heading('Every stage stays on the GPU')
+    const foot = source('Measured on 1080p60 dark bloom scenes with hardware H.264')
+    s.play(slideIn(title, { from: 'left', distance: 28 }), slideIn(foot, { from: 'bottom', distance: 16 }))
+
+    const stages = [
+        namedBox('Vector Stage', { width: 320, height: 120, color: 'blue', sub: '2D paths + SDF' }),
+        namedBox('WebGL2 Bloom', { width: 320, height: 120, color: 'teal', sub: 'Float32 direct' }),
+        namedBox('Media Engine', { width: 320, height: 120, color: 'yellow', sub: 'H.264 hardware' }),
+    ]
+    place(row(stages, { gap: 130 }), area)
+    s.stagger(stages, (node) => popIn(node), { lag: 0.18 })
+
+    const edges = [
+        connector(stages[0]!, stages[1]!, { label: 'texSubImage2D', labelSize: 18 }),
+        connector(stages[1]!, stages[2]!, { label: 'VideoFrame', labelSize: 18 }),
+    ]
+    s.stagger(edges, (edge) => draw(edge), { lag: 0.2 })
+    s.play(flowStream(edges[0]!, { count: 3, color: 'teal' }), flowStream(edges[1]!, { count: 3, color: 'yellow' }))
+
+    s.focus(stages[1]!, { zoom: 1.45, duration: 0.9 })
+    s.play(breathe(stages[1]!, { scale: 1.05, duration: 1.0 }))
+    s.resetView({ duration: 0.8 })
+    s.clear({ keep: [title, foot] })
+
+    // Act 3: Animated KPI summary tiles
+    s.chapter('Results')
+    const tiles = [
+        metricTile({ label: 'Export speed', value: 32.1, digits: 1, suffix: ' fps', delta: '2.1x faster', color: 'teal' }),
+        metricTile({ label: 'GPU 4x blur', value: 25.1, digits: 1, suffix: ' fps', delta: '2.6x total', color: 'blue' }),
+        metricTile({ label: 'Browser hero', value: 60, suffix: ' fps', delta: 'Direct WebGL2', color: 'yellow' }),
+    ]
+    place(row(tiles, { gap: 64 }), area)
+    s.stagger(tiles, (tile) => tile.enter(), { lag: 0.22 })
+    s.wait(1.5)
+})
+`
+
 export const FILM_TEMPLATES: readonly FilmTemplate[] = [
     { name: 'explainer', description: 'A graph, a moving value, and an equation, in three chapters.', source: explainer },
     { name: 'equation', description: 'A step-by-step derivation that morphs glyph by glyph.', source: equation },
     { name: 'architecture', description: 'Services with live detail, and packets traveling along the edges.', source: architecture },
     { name: 'chart', description: 'Bars that grow in order, with the takeaway as the title.', source: chart },
     { name: 'deck', description: 'A stepped presentation with one chapter per slide.', source: deck },
+    { name: 'story', description: 'A three-act launch story with title card, signal streams, camera focus, and animated KPI tiles.', source: story },
     { name: 'narrated', description: 'A folder for a film that follows a recorded voice: a script, two scenes, and the build.', folder: 'narrated' },
 ]
