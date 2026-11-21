@@ -70,6 +70,9 @@ describe('safe scene rasterization', () => {
         const path = await directory()
         const result = await renderSceneFrame({ ...base, source: '<Board width={width} height={height}><CanvasItem x={4} y={4} width={140} height={70}><Box label="Native" fontSize={18}/></CanvasItem><svg width={16} height={16}><circle cx={8} cy={8} r={5} fill={c.info}/></svg></Board>', outputPath: join(path, 'components.png') })
         expect(result.bytes).toBeGreaterThan(100)
+        // Fractional nested SVG dimensions produced by scaled density tokens (such as Sparkline at dense density) must succeed.
+        const dense = await renderSceneFrame({ ...base, source: '<div style={{display:"flex",padding:8}}><Sparkline values={[1, 3, 2, 5]} /></div>', outputPath: join(path, 'dense-sparkline.png') })
+        expect(dense.bytes).toBeGreaterThan(100)
     })
 
     it('scales fixed SVG coordinates and nested layout rasters without changing logical scene globals', async () => {
@@ -160,7 +163,12 @@ describe('safe scene rasterization', () => {
         const pngSpy = vi.spyOn(Object.getPrototypeOf(rendered), 'asPng')
         await renderSceneVideo({ ...base, outputPath: join(path, 'native.mp4') })
         expect(pngSpy).not.toHaveBeenCalled()
-        await renderSceneVideo({ ...base, source: '<div style={{display:"flex"}}><svg width={160} height={90}><rect width={80} height={40} fill="#ff0000"/></svg></div>', outputPath: join(path, 'nested.mp4') })
+        // Static nested SVG scene deduplicates identical consecutive frames.
+        await renderSceneVideo({ ...base, source: '<div style={{display:"flex"}}><svg width={160} height={90}><rect width={80} height={40} fill="#ff0000"/></svg></div>', outputPath: join(path, 'nested-static.mp4') })
+        expect(pngSpy).toHaveBeenCalledTimes(1)
+        pngSpy.mockClear()
+        // Animated nested SVG scene encodes one nested PNG per unique frame, never the root frame.
+        await renderSceneVideo({ ...base, source: '<div style={{display:"flex"}}><svg width={160} height={90}><rect width={40 + frame * 10} height={40} fill="#ff0000"/></svg></div>', outputPath: join(path, 'nested.mp4') })
         expect(pngSpy).toHaveBeenCalledTimes(4)
     })
 

@@ -249,15 +249,37 @@ export function routeOrthogonalGraph(
     const routes = new Map<number, RoutingPoint[]>()
     const failures: RoutingFailure[] = []
     const byId = new Map(nodes.map((node) => [node.id, node]))
+    const nodeIndex = new Map(nodes.map((node, index) => [node.id, index]))
+    const rawObstacles: RoutingObstacle[] = [...nodes.map((node) => box(node, 0)), ...extraObstacles]
     const obstacles = [...nodes.map((node) => box(node, clearance)), ...extraObstacles.map((obstacle) => ({
         left: obstacle.left - clearance, right: obstacle.right + clearance,
         top: obstacle.top - clearance, bottom: obstacle.bottom + clearance,
     }))]
     const routeKey = (edge: RoutingEdge) => [edge.from, edge.to].sort().join('\u0000')
-    const counts = new Map<string, number>()
-    for (const edge of edges) counts.set(routeKey(edge), (counts.get(routeKey(edge)) ?? 0) + 1)
-    const occurrences = new Map<string, number>()
-    const previous = new Map<string, RoutingPoint[][]>()
+    const sideSlotKey = (nodeId: string, side: GraphPortSide) => `${nodeId}\u0000${side}`
+    const sideCounts = new Map<string, number>()
+    const resolvedDefaults = edges.map((edge) => {
+        const from = byId.get(edge.from)
+        const to = byId.get(edge.to)
+        if (!from || !to) return null
+        const selfLoop = from === to
+        const fromPort = from.ports?.find((candidate) => candidate.id === edge.fromPort)
+        const toPort = to.ports?.find((candidate) => candidate.id === edge.toPort)
+        const fromSide = fromPort?.side ?? edge.fromSide ?? (selfLoop ? 'right' : preferredSide(from, to))
+        const toSide = toPort?.side ?? edge.toSide ?? (selfLoop ? 'top' : preferredSide(to, from))
+        if (!fromPort) {
+            const key = sideSlotKey(from.id, fromSide)
+            sideCounts.set(key, (sideCounts.get(key) ?? 0) + 1)
+        }
+        if (!toPort) {
+            const key = sideSlotKey(to.id, toSide)
+            sideCounts.set(key, (sideCounts.get(key) ?? 0) + 1)
+        }
+        return { fromSide, toSide, hasFromPort: Boolean(fromPort), hasToPort: Boolean(toPort) }
+    })
+    const sideOccurrences = new Map<string, number>()
+    const previousByPair = new Map<string, RoutingPoint[][]>()
+    const allPreviousRoutes: RoutingPoint[][] = []
     const budget = { remaining: MAX_TOTAL_SEARCH_STATES }
     edges.forEach((edge, index) => {
         if (index >= MAX_ROUTED_EDGES) {
@@ -274,14 +296,23 @@ export function routeOrthogonalGraph(
         }
         const from = byId.get(edge.from)!
         const to = byId.get(edge.to)!
+        const fromIdx = nodeIndex.get(from.id) ?? -1
+        const toIdx = nodeIndex.get(to.id) ?? -1
+        const defaults = resolvedDefaults[index]!
+        const fromSideKey = sideSlotKey(from.id, defaults.fromSide)
+        const toSideKey = sideSlotKey(to.id, defaults.toSide)
+        const fromOrdinal = defaults.hasFromPort ? 0 : (sideOccurrences.get(fromSideKey) ?? 0)
+        if (!defaults.hasFromPort) sideOccurrences.set(fromSideKey, fromOrdinal + 1)
+        const toOrdinal = defaults.hasToPort ? 0 : (sideOccurrences.get(toSideKey) ?? 0)
+        if (!defaults.hasToPort) sideOccurrences.set(toSideKey, toOrdinal + 1)
+        const fromCount = defaults.hasFromPort ? 1 : (sideCounts.get(fromSideKey) ?? 1)
+        const toCount = defaults.hasToPort ? 1 : (sideCounts.get(toSideKey) ?? 1)
         const key = routeKey(edge)
-        const ordinal = occurrences.get(key) ?? 0
-        occurrences.set(key, ordinal + 1)
-        const count = counts.get(key) ?? 1
-        const source = endpoint(from, to, edge.fromPort, edge.fromSide, from === to, false, ordinal, count, gap)
-        const target = endpoint(to, from, edge.toPort, edge.toSide, from === to, true, ordinal, count, gap)
+        const source = endpoint(from, to, edge.fromPort, edge.fromSide, from === to, false, fromOrdinal, fromCount, gap)
+        const target = endpoint(to, from, edge.toPort, edge.toSide, from === to, true, toOrdinal, toCount, gap)
         const sourceSides = source.explicit ? [source.side] : [source.side, ...sides.filter((side) => side !== source.side)]
         const targetSides = target.explicit ? [target.side] : [target.side, ...sides.filter((side) => side !== target.side)]
+        const pairRoutes = previousByPair.get(key) ?? []
         let failure = 'no obstacle-free route exists inside the canvas'
         for (const sourceSide of sourceSides) {
             for (const targetSide of targetSides) {
@@ -291,15 +322,37 @@ export function routeOrthogonalGraph(
                     failure = 'a self-loop requires distinct endpoint anchors'
                     continue
                 }
+                // Direct straight connection between adjacent facing nodes when the gap is smaller than 2 * clearance.
+                const directHoriz = Math.abs(start.y - end.y) < EPSILON
+                    && ((sourceSide === 'right' && targetSide === 'left' && end.x > start.x && end.x - start.x < clearance * 2)
+                        || (sourceSide === 'left' && targetSide === 'right' && start.x > end.x && start.x - end.x < clearance * 2))
+                const directVert = Math.abs(start.x - end.x) < EPSILON
+                    && ((sourceSide === 'bottom' && targetSide === 'top' && end.y > start.y && end.y - start.y < clearance * 2)
+                        || (sourceSide === 'top' && targetSide === 'bottom' && start.y > end.y && start.y - end.y < clearance * 2))
+                if ((directHoriz || directVert)
+                    && !rawObstacles.some((obstacle, obstacleIndex) =>
+                        obstacleIndex !== fromIdx && obstacleIndex !== toIdx && routingSegmentBlocked(start, end, obstacle))) {
+                    const directPoints = simplify([start, end])
+                    const repeated = pairRoutes.some((route) => route.length === directPoints.length && (
+                        route.every((point, position) => point.x === directPoints[position].x && point.y === directPoints[position].y)
+                        || route.every((point, position) => point.x === directPoints[directPoints.length - 1 - position].x && point.y === directPoints[directPoints.length - 1 - position].y)
+                    ))
+                    if (!repeated && directPoints.length >= 2) {
+                        routes.set(index, directPoints)
+                        previousByPair.set(key, [...pairRoutes, directPoints])
+                        allPreviousRoutes.push(directPoints)
+                        return
+                    }
+                }
                 const leadStart = outward(start, sourceSide, clearance)
                 const leadEnd = outward(end, targetSide, clearance)
                 if (obstacles.some((obstacle, obstacleIndex) =>
-                    (obstacleIndex !== nodes.indexOf(from) && routingSegmentBlocked(start, leadStart, obstacle))
-                    || (obstacleIndex !== nodes.indexOf(to) && routingSegmentBlocked(leadEnd, end, obstacle)))) {
+                    (obstacleIndex !== fromIdx && routingSegmentBlocked(start, leadStart, obstacle))
+                    || (obstacleIndex !== toIdx && routingSegmentBlocked(leadEnd, end, obstacle)))) {
                     failure = 'another obstacle blocks an endpoint exit'
                     continue
                 }
-                const result = findPath(leadStart, leadEnd, obstacles, width, height, previous.get(key) ?? [], Math.max(1, gap), budget)
+                const result = findPath(leadStart, leadEnd, obstacles, width, height, allPreviousRoutes, Math.max(1, gap), budget)
                 if (!result.points) {
                     failure = result.reason!
                     if (/routing (grid|search|budget)/.test(failure)) {
@@ -310,7 +363,7 @@ export function routeOrthogonalGraph(
                 }
                 const points = simplify([start, ...result.points, end])
                 if (points.length < 2) continue
-                const repeated = (previous.get(key) ?? []).some((route) => route.length === points.length && (
+                const repeated = pairRoutes.some((route) => route.length === points.length && (
                     route.every((point, position) => point.x === points[position].x && point.y === points[position].y)
                     || route.every((point, position) => point.x === points[points.length - 1 - position].x && point.y === points[points.length - 1 - position].y)
                 ))
@@ -319,7 +372,8 @@ export function routeOrthogonalGraph(
                     continue
                 }
                 routes.set(index, points)
-                previous.set(key, [...(previous.get(key) ?? []), points])
+                previousByPair.set(key, [...pairRoutes, points])
+                allPreviousRoutes.push(points)
                 return
             }
         }
@@ -435,7 +489,15 @@ export function roundedPolylinePath(points: readonly RoutingPoint[], radius: num
         const before = { x: corner.x + (previous.x - corner.x) * r / inLength, y: corner.y + (previous.y - corner.y) * r / inLength }
         const after = { x: corner.x + (next.x - corner.x) * r / outLength, y: corner.y + (next.y - corner.y) * r / outLength }
         d += ` L ${fmt(before.x)} ${fmt(before.y)} Q ${fmt(corner.x)} ${fmt(corner.y)}, ${fmt(after.x)} ${fmt(after.y)}`
-        samples.push(before, corner, after)
+        samples.push(before)
+        for (const t of [0.25, 0.5, 0.75]) {
+            const u = 1 - t
+            samples.push({
+                x: u * u * before.x + 2 * u * t * corner.x + t * t * after.x,
+                y: u * u * before.y + 2 * u * t * corner.y + t * t * after.y,
+            })
+        }
+        samples.push(after)
     }
     return { d, samples }
 }

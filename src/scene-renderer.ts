@@ -6,7 +6,6 @@ import { fileURLToPath } from 'node:url'
 import { createHash, randomUUID } from 'node:crypto'
 import { brotliDecompressSync } from 'node:zlib'
 import { Resvg } from '@resvg/resvg-js'
-import * as primitives from './primitives'
 import { satori, type Font } from './satori'
 import { withRenderContext } from './renderContext'
 import { prepareAccessibleSvg, addSvgAccessibility } from './svg-accessibility'
@@ -14,10 +13,16 @@ import { renderRgbaVideo } from './video'
 import { prepareScene, type PreparedScene } from './scene-runtime'
 import {
     normalizeSceneTime, sceneSha256, SCENE_LIMITS, SCENE_RUNTIME_VERSION,
-    type SceneElement, type SceneFrameRequest, type SceneJson, type SceneRequest,
+    type SceneFrameRequest, type SceneJson, type SceneRequest,
 } from './scene-contract'
-import { SCENE_COMPONENT_NAMES, SCENE_DOM_TAGS } from './scene-components'
-import { isValidSceneStyleProperty, validateResolvedSceneResources } from './scene-graph'
+import { validateResolvedSceneResources } from './scene-graph'
+import {
+    createRasterBudget,
+    resolveNestedSvgSize,
+    sceneGraphToReact,
+    serializeSceneSvg,
+    type RasterBudget,
+} from './scene-host'
 import { getThemeColors } from './theme'
 
 interface SceneRasterOptions {
@@ -134,85 +139,11 @@ async function loadSceneAssets(): Promise<SceneAssets> {
     }
 }
 
-const trustedComponents: Record<string, React.ElementType | undefined> = Object.fromEntries(SCENE_COMPONENT_NAMES.map((name) => [name, primitives[name]]))
-const svgTags = new Set<string>(SCENE_DOM_TAGS.filter((name) => !['div', 'span', 'p', 'strong', 'em', 'b', 'i', 'br'].includes(name)))
-interface RasterBudget { pixels: number; count: number; nodes: number; svgBytes: number }
-
-function isElement(value: SceneJson): value is SceneJson & SceneElement {
-    return Boolean(value && !Array.isArray(value) && typeof value === 'object' && value.kind === 'vizmatic.element')
-}
-
-const xml = (value: string | number): string => String(value).replace(/[&<>"']/g, (character) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;',
-})[character]!)
-
-function svgAttribute(name: string): string {
-    if (name === 'className') return 'class'
-    if (name === 'xlinkHref') return 'href'
-    if (/^(?:viewBox|preserveAspectRatio|gradientUnits|gradientTransform|patternUnits|patternContentUnits|patternTransform|markerWidth|markerHeight|markerUnits|refX|refY|textLength|lengthAdjust|clipPathUnits)$/.test(name)) return name
-    return name.replace(/[A-Z]/g, (character) => `-${character.toLowerCase()}`)
-}
-
-function serializeSvg(node: ReactNode, budget: RasterBudget, depth = 0): string {
-    if (++budget.nodes > SCENE_LIMITS.nodes * 16) throw new Error('Resolved scene exceeds its host element budget.')
-    if (depth > SCENE_LIMITS.depth * 2) throw new Error('Resolved SVG exceeds its depth limit.')
-    const emit = (chunk: string): string => {
-        budget.svgBytes += Buffer.byteLength(chunk)
-        if (budget.svgBytes > SCENE_LIMITS.graphBytes * 4) throw new Error('Resolved SVG exceeds its serialized byte budget.')
-        return chunk
-    }
-    if (node === null || node === undefined || typeof node === 'boolean') return ''
-    if (typeof node === 'string' || typeof node === 'number') return emit(xml(node))
-    if (Array.isArray(node)) return node.map((child) => serializeSvg(child, budget, depth + 1)).join('')
-    if (!React.isValidElement<Record<string, unknown>>(node)) throw new Error('Invalid resolved SVG child.')
-    if (node.type === React.Fragment) return serializeSvg(node.props.children as ReactNode, budget, depth + 1)
-    if (node.type === primitives.SvgMathText) {
-        const { text, x, y, fill, fontSize = 13, fontFamily = 'JetBrains Mono', fontWeight = 700, textAnchor = 'middle', dominantBaseline = 'middle', opacity = 1 } = node.props
-        return serializeSvg(React.createElement('text', { x, y, fill, fontSize, fontFamily, fontWeight, textAnchor, dominantBaseline, opacity }, String(text)), budget, depth + 1)
-    }
-    if (typeof node.type === 'function') {
-        return serializeSvg((node.type as (props: Record<string, unknown>) => ReactNode)(node.props), budget, depth + 1)
-    }
-    if (typeof node.type !== 'string' || !svgTags.has(node.type)) throw new Error('Only SVG components may be placed inside an SVG scene.')
-    validateResolvedSceneResources(node.props)
-    const attributes = Object.entries(node.props).filter(([key, value]) => key !== 'children' && key !== 'key' && value !== undefined && value !== null)
-        .map(([key, value]) => {
-            if (key === 'style' && typeof value === 'object') {
-                if (Array.isArray(value)) throw new Error('Unsupported SVG style attribute.')
-                const style = Object.entries(value as Record<string, unknown>)
-                    .filter(([, item]) => item !== undefined && item !== null)
-                    .map(([property, item]) => {
-                        if (!isValidSceneStyleProperty(property) || typeof item === 'object' || typeof item === 'function' || /[;{}]/.test(String(item))) {
-                            throw new Error(`Scene style property ${JSON.stringify(property)} is not allowed.`)
-                        }
-                        return `${svgAttribute(property)}:${String(item)}`
-                    }).join(';')
-                return ` style="${xml(style)}"`
-            }
-            if (!/^[A-Za-z_][\w:.-]*$/.test(key) || typeof value === 'object' || typeof value === 'function') throw new Error('Unsupported SVG attribute.')
-            return ` ${svgAttribute(key)}="${xml(String(value))}"`
-        }).join('')
-    return emit(`<${node.type}${attributes}>`) + serializeSvg(node.props.children as ReactNode, budget, depth + 1) + emit(`</${node.type}>`)
-}
-
-function graphToReact(value: SceneJson, theme: ReturnType<typeof getThemeColors>): ReactNode {
-    if (Array.isArray(value)) return value.map((child) => graphToReact(child, theme))
-    if (!isElement(value)) return value as ReactNode
-    const convertProp = (prop: SceneJson): unknown => {
-        if (isElement(prop)) return graphToReact(prop, theme)
-        if (Array.isArray(prop)) return prop.map(convertProp)
-        if (prop && typeof prop === 'object') return Object.fromEntries(Object.entries(prop).map(([key, item]) => [key, convertProp(item)]))
-        return prop
-    }
-    const props = Object.fromEntries(Object.entries(value.props).map(([name, prop]) => [name, convertProp(prop)]))
-    const component = trustedComponents[value.type]
-    if (component) props.c ??= theme
-    return React.createElement((component ?? value.type) as React.ElementType, props, ...value.children.map((child) => graphToReact(child, theme)))
-}
+const utf8ByteLength = (chunk: string) => Buffer.byteLength(chunk)
 
 function renderSvgImage(element: ReactElement<Record<string, unknown>>, assets: SceneAssets, width: number, height: number, budget: RasterBudget, outputScale = 1, includePng = true): { pixels: Uint8Array; png?: Uint8Array } {
     const root = React.cloneElement(element, { xmlns: 'http://www.w3.org/2000/svg', width, height })
-    const svg = serializeSvg(root, budget)
+    const svg = serializeSceneSvg(root, budget, utf8ByteLength)
     const image = new Resvg(svg, {
         font: { loadSystemFonts: false, fontFiles: assets.fontFiles, defaultFontFamily: 'Inter' },
         background: 'rgba(0,0,0,0)',
@@ -227,18 +158,16 @@ function rasterizeNestedSvg(node: ReactNode, assets: SceneAssets, defaultWidth: 
     if (Array.isArray(node)) return node.map((child) => rasterizeNestedSvg(child, assets, defaultWidth, defaultHeight, budget))
     if (!React.isValidElement<Record<string, unknown>>(node)) return node
     if (node.type === 'svg') {
-        const width = typeof node.props.width === 'number' ? node.props.width : defaultWidth
-        const height = typeof node.props.height === 'number' ? node.props.height : defaultHeight
-        if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1
-            || width > SCENE_LIMITS.canvasEdge || height > SCENE_LIMITS.canvasEdge || width * height > SCENE_LIMITS.canvasPixels) {
-            throw new Error('Nested SVG dimensions exceed the scene canvas limits.')
-        }
-        budget.pixels += width * height
+        const { width, height, rasterWidth, rasterHeight } = resolveNestedSvgSize(node.props.width, node.props.height, defaultWidth, defaultHeight)
+        budget.pixels += rasterWidth * rasterHeight
         budget.count += 1
         if (budget.pixels > defaultWidth * defaultHeight * 4 || budget.count > 16) {
             throw new Error('Nested SVG rasterization exceeds the per-frame pixel or image budget.')
         }
-        const { png } = renderSvgImage(node, assets, width, height, budget)
+        const svgElement = node.props.viewBox == null && (rasterWidth !== width || rasterHeight !== height)
+            ? React.cloneElement(node, { viewBox: `0 0 ${width} ${height}` })
+            : node
+        const { png } = renderSvgImage(svgElement, assets, rasterWidth, rasterHeight, budget)
         return React.createElement('img', { width, height, src: `data:image/png;base64,${Buffer.from(png!).toString('base64')}`,
             style: { display: 'flex', flexShrink: 0, ...(node.props.style as React.CSSProperties | undefined) } })
     }
@@ -249,25 +178,30 @@ function rasterizeNestedSvg(node: ReactNode, assets: SceneAssets, defaultWidth: 
     return React.cloneElement(node, {}, rasterizeNestedSvg(node.props.children as ReactNode, assets, defaultWidth, defaultHeight, budget))
 }
 
-async function renderPreparedFrame(prepared: PreparedScene, assets: SceneAssets, time: number, outputScale: number, includePng: boolean): Promise<{ png?: Uint8Array; pixels: Uint8Array }> {
-    const evaluated = await prepared.evaluate(time)
+async function renderEvaluatedGraph(
+    graph: SceneJson,
+    prepared: PreparedScene,
+    assets: SceneAssets,
+    outputScale: number,
+    includePng: boolean,
+    accessible: boolean,
+): Promise<{ png?: Uint8Array; pixels: Uint8Array }> {
     const { width, height, theme } = prepared.request
     const c = getThemeColors(theme)
-    let element = graphToReact(evaluated.graph, c)
+    let element = sceneGraphToReact(graph, c)
     if (React.isValidElement<Record<string, unknown>>(element) && element.type === 'svg') {
         // A native SVG scene does not pass through Satori, which drops <text>.
         // The exact same pinned-font rasterizer is used by PNG preview and MP4.
-        const image = renderSvgImage(React.cloneElement(element, {
+        return renderSvgImage(React.cloneElement(element, {
             children: [React.createElement('rect', { key: '__scene_background', width, height, fill: c.bg }), element.props.children],
-        }), assets, width, height, { pixels: 0, count: 0, nodes: 0, svgBytes: 0 }, outputScale, includePng)
-        return image
+        }), assets, width, height, createRasterBudget(), outputScale, includePng)
     }
     element = React.createElement('div', { style: { display: 'flex', position: 'relative', width, height, backgroundColor: c.bg, fontFamily: 'Inter', color: c.textPrimary } }, element)
     return withRenderContext({ background: 'theme' }, async () => {
-        element = rasterizeNestedSvg(element, assets, width, height, { pixels: 0, count: 0, nodes: 0, svgBytes: 0 })
-        const accessible = prepareAccessibleSvg(element)
+        element = rasterizeNestedSvg(element, assets, width, height, createRasterBudget())
+        const preparedSvg = accessible ? prepareAccessibleSvg(element) : null
         const layoutNodes: Parameters<typeof addSvgAccessibility>[2] = []
-        const rendered = await satori(accessible.element as ReactElement, {
+        const rendered = await satori((preparedSvg ? preparedSvg.element : element) as ReactElement, {
             width, height, fonts: assets.fonts,
             loadAdditionalAsset: async (code, segment) => {
                 if (code !== 'emoji') return []
@@ -277,15 +211,20 @@ async function renderPreparedFrame(prepared: PreparedScene, assets: SceneAssets,
                 if (!svg) throw new Error('A scene glyph is not available in the pinned offline font and emoji assets.')
                 return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`
             },
-            onNodeDetected: (node) => layoutNodes.push(node),
+            onNodeDetected: preparedSvg ? (node) => layoutNodes.push(node) : undefined,
         })
-        const svg = addSvgAccessibility(rendered, accessible.graphs, layoutNodes)
+        const svg = preparedSvg ? addSvgAccessibility(rendered, preparedSvg.graphs, layoutNodes) : rendered
         const image = new Resvg(svg, { background: c.bg, font: { loadSystemFonts: false, fontFiles: assets.fontFiles },
             ...(outputScale !== 1 ? { fitTo: { mode: 'width' as const, value: width * outputScale } } : {}),
         }).render()
         if (image.width !== width * outputScale || image.height !== height * outputScale) throw new Error('Layout frame does not match scaled scene dimensions.')
         return { pixels: image.pixels, ...(includePng ? { png: image.asPng() } : {}) }
     })
+}
+
+async function renderPreparedFrame(prepared: PreparedScene, assets: SceneAssets, time: number, outputScale: number, includePng: boolean): Promise<{ png?: Uint8Array; pixels: Uint8Array }> {
+    const evaluated = await prepared.evaluate(time)
+    return renderEvaluatedGraph(evaluated.graph, prepared, assets, outputScale, includePng, true)
 }
 
 async function outputMetadata(prepared: PreparedScene, assets: SceneAssets, settings: SceneOutputSettings, outputPath: string, bytes: number, kind: 'png' | 'mp4', time?: number): Promise<SceneRenderOutput> {
@@ -337,8 +276,24 @@ export async function renderSceneVideo(options: RenderSceneVideoOptions): Promis
     const settings = outputSettings(prepared, options.outputScale, options.previewFps)
     const assets = await sceneAssets()
     const { duration } = prepared.request
-    const output = await renderRgbaVideo(async (frame) => (await renderPreparedFrame(prepared, assets, frame.time / 1_000, settings.outputScale, false)).pixels, {
-        width: settings.width, height: settings.height, duration: duration * 1_000, fps: settings.fps, outputPath: options.outputPath, signal: options.signal,
+    let lastGraph: string | undefined
+    let lastPixels: Uint8Array | undefined
+    let lastRepeat = false
+    const output = await renderRgbaVideo(async (frame) => {
+        const evaluated = await prepared.evaluate(frame.time / 1_000)
+        const serialized = JSON.stringify(evaluated.graph)
+        if (serialized === lastGraph && lastPixels) {
+            lastRepeat = true
+            return lastPixels
+        }
+        lastRepeat = false
+        lastGraph = serialized
+        lastPixels = (await renderEvaluatedGraph(evaluated.graph, prepared, assets, settings.outputScale, false, false)).pixels
+        return lastPixels
+    }, {
+        width: settings.width, height: settings.height, duration: duration * 1_000, fps: settings.fps,
+        outputPath: options.outputPath, signal: options.signal,
+        frameIsRepeat: () => lastRepeat,
     })
     return { ...await outputMetadata(prepared, assets, settings, options.outputPath, output.bytes, 'mp4'), encodedDuration: output.duration / 1_000 }
 }

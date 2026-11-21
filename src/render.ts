@@ -18,7 +18,7 @@ import { dirname, join } from 'path'
 import { existsSync } from 'fs'
 import { fileURLToPath } from 'url'
 import { brotliDecompressSync } from 'zlib'
-import type { ReactNode } from 'react'
+import React, { type ReactNode } from 'react'
 import { wrapWithWatermark, type WatermarkInput } from './brand'
 import { detectBackgroundColor, detectContentBounds, detectLayoutOverflow, detectOverflow, type CropRegion, type OverflowResult } from './autocrop'
 import { withRenderContext, type RenderBackground } from './renderContext'
@@ -307,8 +307,53 @@ export async function getFonts(): Promise<FontData[]> {
  */
 function sanitizeSvg(svg: string): string {
     return svg
-        .replace(/width="0"/g, 'width="1"')
-        .replace(/height="0"/g, 'height="1"')
+        .replace(/(?<=\s)width="0"/g, 'width="1"')
+        .replace(/(?<=\s)height="0"/g, 'height="1"')
+}
+
+function pixelView(buffer: Uint8Array): Uint8Array {
+    return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength)
+}
+
+function prefixSvgIds(markup: string, prefix: string): string {
+    return markup
+        .replace(/\bid="([^"]+)"/g, (_m, id: string) => `id="${prefix}${id}"`)
+        .replace(/\burl\(#([^)]+)\)/g, (_m, id: string) => `url(#${prefix}${id})`)
+        .replace(/(\b(?:xlink:)?href="#)([^"]+)"/g, (_m, attr: string, id: string) => `${attr}${prefix}${id}"`)
+}
+
+async function overlayWatermarkSvg(
+    svg: string,
+    width: number,
+    height: number,
+    offsetX: number,
+    offsetY: number,
+    theme: 'dark' | 'light',
+    watermark: WatermarkInput,
+    fonts: FontData[],
+): Promise<string> {
+    const overlay = wrapWithWatermark(
+        React.createElement('div', { style: { width, height, display: 'flex' } }),
+        width,
+        height,
+        theme,
+        watermark,
+    )
+    const wmSvg = sanitizeSvg(await satori(overlay, {
+        width,
+        height,
+        fonts,
+        loadAdditionalAsset,
+    }))
+    const openEnd = wmSvg.indexOf('>')
+    const closeStart = wmSvg.lastIndexOf('</svg>')
+    if (openEnd < 0 || closeStart <= openEnd) return svg
+    const inner = prefixSvgIds(wmSvg.slice(openEnd + 1, closeStart), 'vizwm_')
+    const wrapped = offsetX !== 0 || offsetY !== 0
+        ? `<g transform="translate(${offsetX} ${offsetY})">${inner}</g>`
+        : `<g>${inner}</g>`
+    const targetClose = svg.lastIndexOf('</svg>')
+    return targetClose < 0 ? svg : `${svg.slice(0, targetClose)}${wrapped}${svg.slice(targetClose)}`
 }
 
 // ─── Auto-Crop Render ────────────────────────────────────────────────────────
@@ -475,7 +520,9 @@ export async function renderToPng(
     createFn?: (theme: 'dark' | 'light') => ReactNode,
     theme?: 'dark' | 'light',
 ): Promise<void> {
-    await renderToPngWithOutput(element, options, createFn, theme)
+    await withRenderContext({ background: options.background ?? 'transparent', ...(options.density !== undefined ? { density: options.density } : {}) }, () =>
+        renderToPngInContext(element, options, createFn, theme, { measureOutputBounds: false, writeFile: true }),
+    )
 }
 
 export async function renderToPngWithOutput(
@@ -485,15 +532,28 @@ export async function renderToPngWithOutput(
     theme?: 'dark' | 'light',
 ): Promise<RenderOutput> {
     return withRenderContext({ background: options.background ?? 'transparent', ...(options.density !== undefined ? { density: options.density } : {}) }, () =>
-        renderToPngInContext(element, options, createFn, theme)
+        renderToPngInContext(element, options, createFn, theme, { measureOutputBounds: true, writeFile: true }),
+    )
+}
+
+/** Internal: run the full render + autocrop + layout pipeline in memory without encoding or writing PNG bytes. */
+export async function renderToCheckOutput(
+    element: ReactNode,
+    options: Omit<RenderOptions, 'outputPath'>,
+    createFn?: (theme: 'dark' | 'light') => ReactNode,
+    theme?: 'dark' | 'light',
+): Promise<RenderOutput> {
+    return withRenderContext({ background: options.background ?? 'transparent', ...(options.density !== undefined ? { density: options.density } : {}) }, () =>
+        renderToPngInContext(element, { ...options, outputPath: '' }, createFn, theme, { measureOutputBounds: true, writeFile: false }),
     )
 }
 
 async function renderToPngInContext(
     element: ReactNode,
     options: RenderOptions,
-    createFn?: (theme: 'dark' | 'light') => ReactNode,
-    theme?: 'dark' | 'light',
+    createFn: ((theme: 'dark' | 'light') => ReactNode) | undefined,
+    theme: 'dark' | 'light' | undefined,
+    internal: { measureOutputBounds: boolean; writeFile: boolean },
 ): Promise<RenderOutput> {
     const fonts = await getFonts()
     const renderTheme = options.theme ?? theme ?? 'dark'
@@ -515,11 +575,10 @@ async function renderToPngInContext(
         background: 'rgba(0, 0, 0, 0)',
     })
     const detectResult = detectResvg.render()
-    const detectPixels = detectResult.pixels
+    const pixelData = pixelView(detectResult.pixels)
 
     // Step 2: Detect content bounds using alpha-based background detection
     // With transparent backgrounds, we rely on the autocrop's alpha check (a < 10)
-    const pixelData = new Uint8Array(detectPixels.buffer)
     const detectedBg = detectBackgroundColor(pixelData)
     const bounds = detectContentBounds(
         pixelData,
@@ -530,7 +589,6 @@ async function renderToPngInContext(
     )
 
     // Step 2b: Check for content overflow (clipping)
-
     const overflow = detectOverflow(
         pixelData,
         options.width,
@@ -546,13 +604,15 @@ async function renderToPngInContext(
     }
 
     // Step 3: Determine if we should crop height by re-rendering.
-    // We do not shrink width here because Satori flex layouts are responsive —
+    // We do not shrink width here because Satori flex layouts are responsive --
     // a narrower canvas causes text to wrap and bars to shrink, which makes
-    // content taller and can overflow the cropped height.  Keeping the
+    // content taller and can overflow the cropped height. Keeping the
     // layout width avoids reflow; horizontal crop happens later by SVG viewBox.
     let finalWidth = options.width
     let finalHeight = options.height
-    let finalElement: ReactNode = element
+    let finalSvg = svg
+    let finalNodes = detectionNodes
+    let activeRaster = { width: options.width, height: detectResult.height, pixels: pixelData, bg: detectedBg, bounds }
 
     // Keep the detected bottom edge, including autocrop padding.
     const croppedHeight = bounds.y + bounds.height
@@ -560,129 +620,127 @@ async function renderToPngInContext(
     const heightSavedPercent = (heightSaved / options.height) * 100
 
     if (shouldCropHeight(options.crop) && heightSavedPercent >= CROP_THRESHOLD_PERCENT) {
-        // Significant vertical blank space: crop height only.
-        finalHeight = croppedHeight
-
-        // Re-create the illustration element if possible (for responsive resize)
-        // The illustration's CSS uses width/height: 100% so it adapts automatically
-        if (createFn && theme) {
-            finalElement = createFn(theme)
-        }
-    }
-
-    // Step 4: Final render with optional watermark at the cropped dimensions.
-    const watermark = resolveWatermark(options)
-    const renderFinalSvg = async (targetElement: ReactNode, targetWidth: number, targetHeight: number) => {
-        const layoutNodes: SatoriNode[] = []
-        const outputElement = watermark
-            ? wrapWithWatermark(
-                targetElement,
-                targetWidth,
-                targetHeight,
-                renderTheme,
-                watermark,
-            )
-            : targetElement
-
-        const renderedSvg = await satori(outputElement as React.ReactElement, {
-            width: targetWidth,
-            height: targetHeight,
+        // Significant vertical blank space: crop height only and check for reflow overflow.
+        const candidateElement = createFn && theme ? createFn(theme) : element
+        const candidateNodes: SatoriNode[] = []
+        const candidateSvg = sanitizeSvg(await satori(candidateElement as React.ReactElement, {
+            width: finalWidth,
+            height: croppedHeight,
             fonts,
             loadAdditionalAsset,
-            onNodeDetected: options.onNodeDetected ? (node) => layoutNodes.push(node) : undefined,
-        })
-        return { svg: sanitizeSvg(renderedSvg), layoutNodes }
-    }
+            onNodeDetected: options.onNodeDetected ? (node) => candidateNodes.push(node) : undefined,
+        }))
 
-    let finalRender = await renderFinalSvg(finalElement, finalWidth, finalHeight)
-    let finalSvg = finalRender.svg
-
-    if (finalHeight < options.height) {
-        const cropCheck = new Resvg(finalSvg, {
+        const cropCheck = new Resvg(candidateSvg, {
             fitTo: { mode: 'width', value: finalWidth },
             background: 'rgba(0, 0, 0, 0)',
         }).render()
-        const cropPixels = new Uint8Array(cropCheck.pixels.buffer)
+        const cropPixels = pixelView(cropCheck.pixels)
         const cropBg = detectBackgroundColor(cropPixels)
         const cropOverflow = detectOverflow(cropPixels, finalWidth, cropCheck.height, cropBg)
 
-        if (cropOverflow.overflows) {
-            finalHeight = options.height
-            finalElement = element
-            finalRender = await renderFinalSvg(finalElement, finalWidth, finalHeight)
-            finalSvg = finalRender.svg
+        if (!cropOverflow.overflows) {
+            finalHeight = croppedHeight
+            finalSvg = candidateSvg
+            finalNodes = candidateNodes
+            activeRaster = {
+                width: finalWidth,
+                height: cropCheck.height,
+                pixels: cropPixels,
+                bg: cropBg,
+                bounds: detectContentBounds(cropPixels, finalWidth, cropCheck.height, cropBg, AUTOCROP_PADDING),
+            }
         }
     }
 
-    // Step 5: Crop final SVG viewport without reflowing the Satori layout.
-    // Width shrink via re-render can wrap text; viewport crop removes only
-    // transparent gutters from the already-rendered SVG.
+    // Step 4: Crop final SVG viewport without reflowing the Satori layout, reusing the 1x raster above.
+    let cropOffsetX = 0
+    let cropOffsetY = 0
+    let didCropViewport = false
     if (shouldCropViewport(options.crop)) {
-        const viewportCheck = new Resvg(finalSvg, {
-            fitTo: { mode: 'width', value: finalWidth },
-            background: 'rgba(0, 0, 0, 0)',
-        }).render()
-        const viewportPixels = new Uint8Array(viewportCheck.pixels.buffer)
-        const viewportBg = detectBackgroundColor(viewportPixels)
-        const viewportBounds = detectContentBounds(
-            viewportPixels,
-            finalWidth,
-            viewportCheck.height,
-            viewportBg,
-            AUTOCROP_PADDING,
-        )
-
+        const viewportBounds = activeRaster.bounds
         if (
             viewportBounds.width < finalWidth
-            || viewportBounds.height < viewportCheck.height
+            || viewportBounds.height < activeRaster.height
         ) {
+            cropOffsetX = Math.max(0, Math.floor(viewportBounds.x))
+            cropOffsetY = Math.max(0, Math.floor(viewportBounds.y))
             finalSvg = cropSvgViewport(finalSvg, viewportBounds)
-            finalRender.layoutNodes = cropLayoutNodes(finalRender.layoutNodes, viewportBounds)
-            finalWidth = viewportBounds.width
-            finalHeight = viewportBounds.height
+            finalNodes = cropLayoutNodes(finalNodes, viewportBounds)
+            finalWidth = Math.max(1, Math.ceil(viewportBounds.width))
+            finalHeight = Math.max(1, Math.ceil(viewportBounds.height))
+            didCropViewport = true
         }
+    }
+
+    // Step 5: Apply watermark AFTER cropping so it sits in the final frame corners
+    // without blocking horizontal/vertical auto-crop or re-running layout on the whole diagram.
+    const watermark = resolveWatermark(options)
+    if (watermark) {
+        finalSvg = await overlayWatermarkSvg(finalSvg, finalWidth, finalHeight, cropOffsetX, cropOffsetY, renderTheme, watermark, fonts)
     }
 
     if (options.onNodeDetected) {
-        finalRender.layoutNodes.forEach(options.onNodeDetected)
+        finalNodes.forEach(options.onNodeDetected)
     }
 
-    // Step 6: SVG → PNG at 2x for retina (with transparent background)
-    const resvg = new Resvg(finalSvg, {
-        fitTo: {
-            mode: 'width',
-            value: finalWidth * (options.scale ?? 2),
-        },
-        background: 'rgba(0, 0, 0, 0)',
-    })
+    const scale = options.scale ?? 2
+    // Step 6: SVG -> PNG at target scale (reusing the 1x raster when scale === 1 and unmodified)
+    let outputPixels: Uint8Array
+    let pixelWidth: number
+    let pixelHeight: number
+    let pngBuffer: Uint8Array | undefined
 
-    const pngData = resvg.render()
-    const outputPixels = new Uint8Array(pngData.pixels.buffer)
-    const outputBackground = detectBackgroundColor(outputPixels)
-    const physicalContentBounds = detectContentBounds(
-        outputPixels,
-        pngData.width,
-        pngData.height,
-        outputBackground,
-        0,
-    )
-    const outputScale = pngData.width / finalWidth
-    const contentBounds = {
-        x: physicalContentBounds.x / outputScale,
-        y: physicalContentBounds.y / outputScale,
-        width: physicalContentBounds.width / outputScale,
-        height: physicalContentBounds.height / outputScale,
+    if (!internal.writeFile && scale === 1 && !didCropViewport && !watermark) {
+        outputPixels = activeRaster.pixels
+        pixelWidth = activeRaster.width
+        pixelHeight = activeRaster.height
+    } else {
+        const resvg = new Resvg(finalSvg, {
+            fitTo: {
+                mode: 'width',
+                value: finalWidth * scale,
+            },
+            background: 'rgba(0, 0, 0, 0)',
+        })
+        const pngData = resvg.render()
+        outputPixels = pixelView(pngData.pixels)
+        pixelWidth = pngData.width
+        pixelHeight = pngData.height
+        if (internal.writeFile) pngBuffer = pngData.asPng()
     }
-    const pngBuffer = pngData.asPng()
 
-    // Step 7: Write to disk
-    await mkdir(dirname(options.outputPath), { recursive: true })
-    await writeFile(options.outputPath, pngBuffer)
+    let contentBounds: CropRegion
+    if (internal.measureOutputBounds) {
+        const outputBackground = detectBackgroundColor(outputPixels)
+        const physicalContentBounds = detectContentBounds(
+            outputPixels,
+            pixelWidth,
+            pixelHeight,
+            outputBackground,
+            0,
+        )
+        const outputScale = pixelWidth / finalWidth
+        contentBounds = {
+            x: physicalContentBounds.x / outputScale,
+            y: physicalContentBounds.y / outputScale,
+            width: physicalContentBounds.width / outputScale,
+            height: physicalContentBounds.height / outputScale,
+        }
+    } else {
+        contentBounds = { x: 0, y: 0, width: finalWidth, height: finalHeight }
+    }
+
+    // Step 7: Write to disk when requested
+    if (internal.writeFile && pngBuffer) {
+        await mkdir(dirname(options.outputPath), { recursive: true })
+        await writeFile(options.outputPath, pngBuffer)
+    }
     return {
         width: finalWidth,
         height: finalHeight,
-        pixelWidth: pngData.width,
-        pixelHeight: pngData.height,
+        pixelWidth,
+        pixelHeight,
         contentBounds,
     }
 }

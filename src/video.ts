@@ -219,6 +219,9 @@ export async function renderAnimationVideo<S extends object>(
         throw new Error('MP4 requires an opaque background; use "theme" or an opaque CSS color')
     }
 
+    let lastSvg: string | undefined
+    let lastPixels: Uint8Array | undefined
+    let lastRepeat = false
     return renderRgbaVideo(async (info) => {
         const sampled = sampleAnimationFrame(animation, info.time, {
             index: info.index, count: info.count, delay: 1_000 / info.fps, fps: info.fps,
@@ -245,6 +248,10 @@ export async function renderAnimationVideo<S extends object>(
                 frameIndex: info.index, frameCount: info.count, time: info.time, label: sampled.frame.label,
             })
         }
+        if (svg === lastSvg && lastPixels) {
+            lastRepeat = true
+            return lastPixels
+        }
         const rendered = new Resvg(svg, {
             fitTo: { mode: 'width', value: options.width * scale },
             background: backgroundColor,
@@ -252,12 +259,16 @@ export async function renderAnimationVideo<S extends object>(
         if (rendered.width !== options.width * scale || rendered.height !== options.height * scale) {
             throw new Error('All video frames must match the scaled canvas dimensions')
         }
+        lastRepeat = false
+        lastSvg = svg
+        lastPixels = rendered.pixels
         return rendered.pixels
     }, {
         ...options,
         width: options.width * scale,
         height: options.height * scale,
         duration: animation.duration,
+        frameIsRepeat: options.frameIsRepeat ?? (() => lastRepeat),
     })
 }
 

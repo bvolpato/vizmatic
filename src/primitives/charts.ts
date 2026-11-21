@@ -980,7 +980,8 @@ export function BarChart({
         // instead of painting over the labels below or the title above.
         const valueY = clamp(yInPlot(item.value, domain, plot), plot.y, plot.bottom)
         const distance = Math.abs(baselineY - valueY)
-        const barHeight = Math.min(plot.innerHeight, Math.max(4, distance))
+        const isInRangeZero = item.value === 0 && domain.min <= 0 && domain.max >= 0
+        const barHeight = isInRangeZero ? 0 : Math.min(plot.innerHeight, Math.max(4, distance))
         const growsUp = valueY < baselineY || (valueY === baselineY && item.value >= 0)
         const y = growsUp
             ? Math.max(plot.y, baselineY - barHeight)
@@ -1011,7 +1012,7 @@ export function BarChart({
                     })
                 ),
                 React.createElement('line', { x1: plot.x, y1: baselineY, x2: plot.right, y2: baselineY, stroke: c.borderLight, strokeWidth: d.stroke.hair }),
-                ...barGeometries.map(({ item, index, x, y, barHeight, color }) =>
+                ...barGeometries.filter(({ barHeight }) => barHeight > 0).map(({ item, index, x, y, barHeight, color }) =>
                     React.createElement('rect', {
                         key: `${item.label}-${index}`,
                         x,
@@ -1279,8 +1280,8 @@ export function LineChart({
 }: LineChartProps): React.ReactElement {
     const d = densityOf(c)
     const direct = directLabels ?? series.length > 1
-    const labelRoom = direct
-        ? Math.min(width * 0.28, Math.max(...series.map((item) => estimateTextWidth(item.name, d.type.micro))) + d.s(10))
+    const labelRoom = direct && series.length > 0
+        ? Math.min(width * 0.28, Math.max(0, ...series.map((item) => estimateTextWidth(item.name, d.type.micro))) + d.s(10))
         : d.f(12)
     const margin: ChartMargins = { top: d.f(12), right: labelRoom, bottom: d.f(labels ? 24 : 12), left: d.f(yAxisLabel ? 62 : 34) }
     const plot = createPlotArea(width, height, margin)

@@ -28,14 +28,22 @@ export interface RenderMathSvgResult {
 const DEFAULT_FONT_SIZE = 16
 const EX_FACTOR = 0.5
 
-const adaptor = liteAdaptor({ fontSize: DEFAULT_FONT_SIZE })
-RegisterHTMLHandler(adaptor)
-
-const outputJax = new SVG({ fontCache: 'none', exFactor: EX_FACTOR })
+let adaptor: ReturnType<typeof liteAdaptor> | undefined
+let outputJax: SVG<unknown, unknown, unknown> | undefined
 const renderCache = new Map<string, RenderMathSvgResult>()
 const RENDER_CACHE_LIMIT = 128
 
+function ensureMathJax() {
+    if (!adaptor) {
+        adaptor = liteAdaptor({ fontSize: DEFAULT_FONT_SIZE })
+        RegisterHTMLHandler(adaptor)
+    }
+    outputJax ??= new SVG({ fontCache: 'none', exFactor: EX_FACTOR })
+    return { adaptor, outputJax }
+}
+
 function createDocument() {
+    const { outputJax: svgOutput } = ensureMathJax()
     const inputJax = new TeX({
         packages: ['base', 'ams', 'newcommand', 'mhchem'],
         formatError(_jax: unknown, error: TexError) {
@@ -53,7 +61,7 @@ function createDocument() {
             }
         })
     }, -4.5)
-    return mathjax.document('', { InputJax: inputJax, OutputJax: outputJax })
+    return mathjax.document('', { InputJax: inputJax, OutputJax: svgOutput })
 }
 
 function parseEx(value: unknown, name: string): number {
@@ -128,32 +136,33 @@ function renderSvg(tex: string, options: RenderMathSvgOptions, context?: string)
         throw new Error(`Unable to render TeX: ${detail}`, { cause })
     }
 
-    const svgElement = adaptor.tags(container, 'svg')[0]
+    const { adaptor: mathAdaptor } = ensureMathJax()
+    const svgElement = mathAdaptor.tags(container, 'svg')[0]
     if (!svgElement) throw new Error('MathJax did not produce an SVG image')
 
-    const width = parseEx(adaptor.getAttribute(svgElement, 'width'), 'width') * fontSize * EX_FACTOR
-    const height = parseEx(adaptor.getAttribute(svgElement, 'height'), 'height') * fontSize * EX_FACTOR
+    const width = parseEx(mathAdaptor.getAttribute(svgElement, 'width'), 'width') * fontSize * EX_FACTOR
+    const height = parseEx(mathAdaptor.getAttribute(svgElement, 'height'), 'height') * fontSize * EX_FACTOR
     if (!Number.isFinite(width) || !Number.isFinite(height)) {
         throw new Error('MathJax returned non-finite SVG dimensions')
     }
 
-    const [, viewBoxY, , viewBoxHeight] = parseViewBox(adaptor.getAttribute(svgElement, 'viewBox'))
+    const [, viewBoxY, , viewBoxHeight] = parseViewBox(mathAdaptor.getAttribute(svgElement, 'viewBox'))
     const baseline = -viewBoxY * height / viewBoxHeight
     if (!Number.isFinite(baseline)) {
         throw new Error('MathJax returned an invalid SVG baseline')
     }
 
-    const drawing = adaptor.tags(svgElement, 'g')[0]
+    const drawing = mathAdaptor.tags(svgElement, 'g')[0]
     if (!drawing) throw new Error('MathJax returned an SVG without a drawing group')
 
-    adaptor.removeAttribute(svgElement, 'style')
-    adaptor.setAttribute(svgElement, 'width', `${width}px`)
-    adaptor.setAttribute(svgElement, 'height', `${height}px`)
-    adaptor.setAttribute(drawing, 'fill', normalizedColor)
-    adaptor.setAttribute(drawing, 'stroke', normalizedColor)
+    mathAdaptor.removeAttribute(svgElement, 'style')
+    mathAdaptor.setAttribute(svgElement, 'width', `${width}px`)
+    mathAdaptor.setAttribute(svgElement, 'height', `${height}px`)
+    mathAdaptor.setAttribute(drawing, 'fill', normalizedColor)
+    mathAdaptor.setAttribute(drawing, 'stroke', normalizedColor)
 
     const result = {
-        svg: adaptor.serializeXML(svgElement),
+        svg: mathAdaptor.serializeXML(svgElement),
         width,
         height,
         baseline,

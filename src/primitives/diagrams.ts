@@ -90,8 +90,9 @@ export function LayeredNetwork({
     showFormula = true,
 }: LayeredNetworkProps): React.ReactElement {
     const radius = nodeSize / 2
+    const showBottomBar = showFormula && Boolean(formula)
     const top = 82
-    const bottom = showFormula || formula ? height - 118 : height - 42
+    const bottom = showBottomBar ? height - 118 : height - 42
     const layerXs = distributeValues(layers.length, 82, width - 82)
     const nodeLayout = layers.map((layer, layerIndex) => ({
         ...layer,
@@ -188,7 +189,9 @@ export function LayeredNetwork({
                         color: getReadableTextColor(color, c),
                         border: active ? `3px solid ${c.warningLight}` : `1.5px solid ${color}`,
                         boxSizing: 'border-box' as const,
-                        boxShadow: active ? `0 0 16px ${withColorAlpha(c.warningLight, 0x70 / 0xff)}` : `0 8px 14px ${c.shadow}`,
+                        ...(active
+                            ? { boxShadow: `0 0 16px ${withColorAlpha(c.warningLight, 0x70 / 0xff)}` }
+                            : hasShadow(c) ? { boxShadow: `0 8px 14px ${c.shadow}` } : {}),
                         fontFamily: 'JetBrains Mono',
                         fontSize: densityOf(c).f(16),
                         fontWeight: 600,
@@ -199,7 +202,7 @@ export function LayeredNetwork({
         }).filter(Boolean) as React.ReactElement[]
     )
 
-    const annotationY = showFormula || formula ? height - 84 : height - 26
+    const annotationY = showBottomBar ? height - 84 : height - 26
     const annotationElements = annotations.slice(0, Math.max(0, layerXs.length - 1)).map((annotation, index) =>
         label(
             `annotation-${index}`,
@@ -214,14 +217,18 @@ export function LayeredNetwork({
         )
     )
 
-    const formulaElement = (showFormula || formula) && formula
+    const legendWidth = 160
+    const legendLeft = Math.max(24, width - legendWidth - 24)
+    const formulaWidth = Math.max(160, Math.min(488, legendLeft - 40))
+    const formulaLeft = Math.max(16, Math.min(width / 2 - formulaWidth / 2, legendLeft - formulaWidth - 16))
+    const formulaElement = showBottomBar && formula
         ? React.createElement('div', {
             key: 'formula-wrap',
             style: {
                 position: 'absolute' as const,
-                left: width / 2 - 244,
+                left: formulaLeft,
                 top: height - 52,
-                width: 488,
+                width: formulaWidth,
                 height: 44,
                 borderRadius: densityOf(c).r(10),
                 border: `1px solid ${c.borderSubtle}`,
@@ -238,14 +245,14 @@ export function LayeredNetwork({
         }, formatMathText(formula))
         : null
 
-    const legendElement = (showFormula || formula) && formula
+    const legendElement = showBottomBar && formula
         ? React.createElement('div', {
             key: 'legend-wrap',
             style: {
                 position: 'absolute' as const,
-                left: width - 184,
+                left: legendLeft,
                 top: height - 43,
-                width: 160,
+                width: legendWidth,
                 display: 'flex',
                 alignItems: 'center',
                 gap: densityOf(c).s(14),

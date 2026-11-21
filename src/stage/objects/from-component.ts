@@ -1,17 +1,24 @@
 import type { ReactNode } from 'react'
 import { renderToSvg, type RenderBackground } from '../../render'
 import type { ThemeMode } from '../../theme'
+import { resolveLook, type Look, type LookName } from '../look'
 import { fromSvg, type FromSvgOptions, type SvgNode } from '../svg-import'
 
 export interface FromComponentOptions extends FromSvgOptions {
     /** Layout size of the component, in pixels. */
     width: number
     height: number
-    theme?: ThemeMode
+    theme?: ThemeMode | Look | LookName
     /** Canvas behind the component. Transparent by default, so it sits on the film. */
     canvas?: RenderBackground
     /** Scale on stage. Layout stays at `width` and `height`, so dense text stays small. */
     scale?: number
+}
+
+function resolveComponentTheme(theme: ThemeMode | Look | LookName | undefined): ThemeMode {
+    if (!theme || theme === 'dark' || theme === 'light') return theme ?? 'dark'
+    if (typeof theme === 'string') return resolveLook(theme).dark ? 'dark' : 'light'
+    return theme.dark ? 'dark' : 'light'
 }
 
 /**
@@ -24,6 +31,6 @@ export interface FromComponentOptions extends FromSvgOptions {
  */
 export async function fromComponent(element: ReactNode, options: FromComponentOptions): Promise<SvgNode> {
     const { width, height, theme, canvas, scale, ...rest } = options
-    const svg = await renderToSvg(element, width, height, { theme: theme ?? 'dark', background: canvas, watermark: false })
+    const svg = await renderToSvg(element, width, height, { theme: resolveComponentTheme(theme), background: canvas, watermark: false })
     return fromSvg(svg, { ...rest, width: width * (scale ?? 1), height: height * (scale ?? 1) })
 }

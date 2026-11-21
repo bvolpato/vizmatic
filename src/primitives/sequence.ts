@@ -381,7 +381,9 @@ export function SequenceDiagram({
     if (width != null && width < minimumWidth) {
         throw new Error(`SequenceDiagram width ${width} is too small for ${participants.length} participants; use at least ${minimumWidth}.`)
     }
-    const headerHeight = 92
+    const titleClearance = title != null && subtitle != null ? 38 : title != null || subtitle != null ? 24 : 0
+    const participantTop = Math.max(padding, titleClearance)
+    const headerHeight = Math.max(92, participantTop - padding + 76)
     const minimumHeight = padding + headerHeight + rows.length * rowHeight + padding
     const resolvedHeight = height ?? minimumHeight
     if (height != null && height < minimumHeight) {
@@ -402,14 +404,18 @@ export function SequenceDiagram({
         ?? 'Sequence diagram'
     const accessibleLabel = labelText || 'Sequence diagram'
 
-    const markerDefinitions = participants.flatMap((participant, participantIndex) => {
-        const color = getToneColor(participant.tone ?? 'blue', c)
-        return sequenceMessageKindsForMarkers(orderedItems).map((kind) => ArrowMarkerDef({
-            id: `sequence-arrow-${participantIndex}-${kind}`,
-            color,
-            size: 5,
-        }))
-    })
+    const markerIdByKey = new Map<string, string>()
+    const markerDefinitions: React.ReactElement[] = []
+    const markerIdFor = (color: string, kind: SequenceMessageKind): string => {
+        const key = `${color}\u0000${kind}`
+        let id = markerIdByKey.get(key)
+        if (!id) {
+            id = `sequence-arrow-${markerIdByKey.size}-${kind}`
+            markerIdByKey.set(key, id)
+            markerDefinitions.push(ArrowMarkerDef({ id, color, size: 5 }))
+        }
+        return id
+    }
 
     const fragmentElements = flattened.spans.map((span) => {
         const tone = span.fragment.tone ?? (span.fragment.kind === 'loop' ? 'purple' : span.fragment.kind === 'parallel' ? 'cyan' : 'warm')
@@ -525,7 +531,7 @@ export function SequenceDiagram({
         const kind = sequenceMessageKind(message)
         const tone = message.tone ?? (kind === 'return' ? 'neutral' : kind === 'async' ? 'cyan' : 'blue')
         const color = message.muted ? c.textMuted : getToneColor(tone, c)
-        const markerId = `sequence-arrow-${participants.findIndex((participant) => participant.id === message.to)}-${kind}`
+        const markerId = markerIdFor(color, kind)
         const y = rowCenter(rowIndex)
         const selfLoop = message.from === message.to
         if (message.label != null) {
@@ -614,7 +620,7 @@ export function SequenceDiagram({
             style: {
                 position: 'absolute' as const,
                 left: x - participantWidth / 2,
-                top: padding,
+                top: participantTop,
                 width: participantWidth,
                 minHeight: 54,
                 boxSizing: 'border-box' as const,
@@ -716,21 +722,4 @@ export function SequenceDiagram({
             },
         }, subtitle),
     )
-}
-
-function sequenceMessageKindsForMarkers(items: SequenceItem[]): SequenceMessageKind[] {
-    const kinds = new Set<SequenceMessageKind>()
-    const visit = (nextItems: SequenceItem[]): void => {
-        for (const item of nextItems) {
-            if (isFragment(item)) {
-                if (item.branches) item.branches.forEach((branch) => visit(sequenceContainerItems(branch)))
-                else visit(sequenceContainerItems(item))
-            } else if (!isNote(item) && !isActivation(item)) {
-                kinds.add(sequenceMessageKind(item))
-            }
-        }
-    }
-    visit(items)
-    if (!kinds.size) kinds.add('sync')
-    return Array.from(kinds)
 }
