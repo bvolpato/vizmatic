@@ -376,6 +376,13 @@ button:hover { background: rgba(255,255,255,.12); }
 .tick { position: absolute; top: 4px; width: 1px; height: 8px; background: rgba(255,255,255,.55); }
 .time { font-variant-numeric: tabular-nums; opacity: .82; white-space: nowrap; }
 svg { width: 14px; height: 14px; fill: currentColor; }
+@media (hover: none), (pointer: coarse) {
+  .chrome { opacity: .92; padding: 20px 10px 8px; gap: 8px; }
+  button { width: 34px; height: 34px; }
+  .track { height: 28px; }
+  .track::before, .fill { top: 13px; }
+  .tick { top: 10px; }
+}
 `
 
 const ICON_PLAY = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"/></svg>'
