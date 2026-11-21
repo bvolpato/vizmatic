@@ -139,7 +139,7 @@ export class FilmPlayer {
         let width = Math.max(2, Math.round(cssWidth * ratio))
         if (this.options.pixelRatio === undefined) {
             const baseCap = this.options.maxWidth ?? Math.max(this.film.width, 1920)
-            const cpuBloomFallback = this.options.bloom !== false && this.film.look.dark && this.film.bloom > 0 && !this.gpuBloom
+            const cpuBloomFallback = this.options.bloom !== false && Boolean(this.film.look?.dark) && this.film.bloom > 0 && !this.gpuBloom
             const cap = cpuBloomFallback ? Math.min(baseCap, 1280) : baseCap
             if (width > cap) width = cap
         }
