@@ -332,10 +332,10 @@ async function main(): Promise<void> {
             }
         }
         const started = performance.now()
-        const audio = entry.audio ? resolve('docs', entry.audio.replace(/^\.?\//, '')) : undefined
+        const audioPath = entry.audio ? resolve('docs', entry.audio.replace(/^\.?\//, '')) : undefined
         const video = await renderFilmVideo(film, outputMp4, {
             quality, workers, dither: CATALOG_DITHER, backend: 'cpu', h264Encoder: 'libx264',
-            ...(audio ? { audio } : {}),
+            audioPath,
         })
         if (cacheDir) await saveCachedFilm(cacheDir, entry.id, cacheKey, outputMp4)
         const seconds = (performance.now() - started) / 1000
