@@ -206,9 +206,15 @@ export function arrow(from: Vec, to: Vec, style: ArrowStyle = {}): Node {
     tx /= tl
     ty /= tl
     const baseX = end[0] - tx * usableTip, baseY = end[1] - ty * usableTip
+    let sx = control[0] - start[0], sy = control[1] - start[1]
+    const sl = Math.hypot(sx, sy) || 1
+    sx /= sl
+    sy /= sl
+    const startBaseX = start[0] + (bend === 0 ? dx : sx) * usableTip
+    const startBaseY = start[1] + (bend === 0 ? dy : sy) * usableTip
     const shaftPath: Path = bend === 0
-        ? linePath(style.both ? [start[0] + dx * usableTip, start[1] + dy * usableTip] : start, [baseX, baseY])
-        : parseSvgPath(`M${start[0]} ${start[1]}Q${control[0]} ${control[1]} ${baseX} ${baseY}`)
+        ? linePath(style.both ? [startBaseX, startBaseY] : start, [baseX, baseY])
+        : parseSvgPath(`M${style.both ? startBaseX : start[0]} ${style.both ? startBaseY : start[1]}Q${control[0]} ${control[1]} ${baseX} ${baseY}`)
     const shaft = new Node(shaftPath).stroke(color, width)
     if (style.dash) shaft.dash(style.dash)
     const half = usableTip * ratio / 2
@@ -218,7 +224,7 @@ export function arrow(from: Vec, to: Vec, style: ArrowStyle = {}): Node {
         [x - ux * usableTip + uy * half, y - uy * usableTip - ux * half],
     ], true)).fill(color)
     group.add(shaft, head(end[0], end[1], tx, ty))
-    if (style.both) group.add(head(start[0], start[1], -dx, -dy))
+    if (style.both) group.add(head(start[0], start[1], bend === 0 ? -dx : -sx, bend === 0 ? -dy : -sy))
     if (style.opacity !== undefined) group.opacity(style.opacity)
     if (style.glow) {
         shaft.glow(style.glow)

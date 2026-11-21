@@ -38,36 +38,56 @@ export function scalarField(sample: (x: number, y: number, time: number) => numb
         return [i / (options.colors.length - 1), paint as Rgba] as const
     })
     // Color conversion is independent of the sample and clock. Interpolate a
-    // dense palette so a live field does not convert Oklab for every pixel.
-    const palette = Array.from({ length: 1025 }, (_, i) => sampleStops(stops, i / 1024))
+    // dense flat palette so a live field does not convert Oklab or allocate per pixel.
+    const palette = new Float32Array(1025 * 4)
+    for (let i = 0; i <= 1024; i++) {
+        const rgba = sampleStops(stops, i / 1024)
+        const o = i * 4
+        palette[o] = rgba[0]
+        palette[o + 1] = rgba[1]
+        palette[o + 2] = rgba[2]
+        palette[o + 3] = rgba[3] * 255
+    }
     const node = new Node(rectPath(-width / 2, -height / 2, width, height))
     node.layoutBox = [-width / 2, -height / 2, width / 2, height / 2]
+    const x0 = x[0], dx = (x[1] - x[0]) / (nx - 1), y1 = y[1], dy = (y[1] - y[0]) / (ny - 1)
     let lastTime = NaN, lastPixels: PixelImage | undefined, visible = false
-    node.rawOps = function (matrix, alpha, ops) {
+    node.rawOps = function (matrix, alpha, ops, blend) {
         const time = clock.now
         if (!lastPixels || time !== lastTime) {
             const data = new Uint8ClampedArray(nx * ny * 4)
             visible = false
-            for (let row = 0; row < ny; row++) for (let col = 0; col < nx; col++) {
-                const value = sample(x[0] + (x[1] - x[0]) * (col / (nx - 1)), y[1] - (y[1] - y[0]) * (row / (ny - 1)), time)
-                if (!Number.isFinite(value)) continue
-                const normalized = normalization.map(value)
-                if (!Number.isFinite(normalized)) continue
-                const position = Math.max(0, Math.min(1, normalized)) * 1024
-                const low = Math.floor(position), fraction = position - low
-                const a = palette[low], b = palette[Math.min(1024, low + 1)]
-                const i = (row * nx + col) * 4
-                for (let c = 0; c < 4; c++) data[i + c] = (a[c] + (b[c] - a[c]) * fraction) * (c === 3 ? 255 : 1)
-                visible ||= data[i + 3] > 0
+            for (let row = 0; row < ny; row++) {
+                const wy = y1 - dy * row
+                const rowOff = row * nx * 4
+                for (let col = 0; col < nx; col++) {
+                    const value = sample(x0 + dx * col, wy, time)
+                    if (!Number.isFinite(value)) continue
+                    const normalized = normalization.map(value)
+                    if (!Number.isFinite(normalized)) continue
+                    const clamped = normalized <= 0 ? 0 : normalized >= 1 ? 1024 : normalized * 1024
+                    const low = clamped | 0
+                    const fraction = clamped - low
+                    const a = low * 4
+                    const b = low < 1024 ? a + 4 : a
+                    const i = rowOff + col * 4
+                    data[i] = palette[a]! + (palette[b]! - palette[a]!) * fraction
+                    data[i + 1] = palette[a + 1]! + (palette[b + 1]! - palette[a + 1]!) * fraction
+                    data[i + 2] = palette[a + 2]! + (palette[b + 2]! - palette[a + 2]!) * fraction
+                    const alphaByte = palette[a + 3]! + (palette[b + 3]! - palette[a + 3]!) * fraction
+                    data[i + 3] = alphaByte
+                    if (alphaByte >= 0.5) visible = true
+                }
             }
             lastPixels = { width: nx, height: ny, data }
             lastTime = time
         }
         if (!visible) return
         const [a, b, c, d, e, f] = matrix
+        const ownBlend = this.get('blend')
         ops.push({ kind: 'image', image: { src: '', width, height, pixels: lastPixels },
             matrix: [a, b, c, d, e - a * width / 2 - c * height / 2, f - b * width / 2 - d * height / 2],
-            alpha, blend: this.get('blend'), node: this })
+            alpha, blend: ownBlend !== 'normal' ? ownBlend : (blend ?? 'normal'), node: this })
     }
     ownLabels(node, { name: 'scalar field', plot: true })
     return node

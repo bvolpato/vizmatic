@@ -1,10 +1,11 @@
-import { smooth, linear, thereAndBack, wiggle as wiggleEase, type Ease } from './ease'
+import { smooth, thereAndBack, wiggle as wiggleEase, type Ease } from './ease'
 import { encloses } from './enclose'
 import {
     apply, compose, matScale, pathBounds, pointAt, subdivideEach, tangentAt, transformPath, warpPath, circlePath, linePath, rectPath,
     type Bounds, type Mat, type Path, type Vec,
 } from './geometry'
 import { contrast, isGradient, over, sampleStops, toPaint, type ColorInput, type Paint, type Rgba } from './color'
+import { worldPaint } from './display'
 import { clock, Track } from './track'
 import { Node, type NodeProps, type PropName } from './node'
 import { Block, nodeOrPoint, nodesFor, oneNode } from './layout'
@@ -375,10 +376,15 @@ export function to<T extends Node | Block>(node: T, change: (node: T) => unknown
             for (const each of nodes) ensureVisible(each, ctx.t0, ctx.stage)
             const touched = new Set<{ overlay: Map<string, unknown> | null }>()
             clock.capture = touched
+            let ok = false
             try {
                 change(node)
+                ok = true
             } finally {
                 clock.capture = null
+                if (!ok) {
+                    for (const entry of touched) entry.overlay?.clear()
+                }
             }
             for (const entry of touched) {
                 const target = entry as Node
@@ -578,7 +584,9 @@ interface Baked {
     glow: number
     glowColor: Rgba | null
     cap: NodeProps['cap']
+    join: NodeProps['join']
     dash: NodeProps['dash']
+    dashOffset: number
     z: number
     fixed: boolean
     key: unknown
@@ -592,6 +600,7 @@ function chainOpacity(node: Node): number {
 
 function bake(leaf: Node): Baked {
     const m = leaf.worldMatrix()
+    const scale = matScale(m)
     const opacity = chainOpacity(leaf)
     let z = 0
     let fixed = false
@@ -599,17 +608,20 @@ function bake(leaf: Node): Baked {
         z += n.get('z')
         fixed ||= n.get('fixed')
     }
+    const dash = leaf.get('dash')
     return {
         path: transformPath(leaf.get('path') ?? [], m),
-        fill: leaf.get('fill'),
+        fill: worldPaint(leaf.get('fill'), m),
         fillOpacity: leaf.get('fill') ? leaf.get('fillOpacity') * opacity : 0,
-        stroke: leaf.get('stroke'),
+        stroke: worldPaint(leaf.get('stroke'), m),
         strokeOpacity: leaf.get('stroke') ? leaf.get('strokeOpacity') * opacity : 0,
-        strokeWidth: leaf.get('strokeWidth') * matScale(m),
-        glow: leaf.get('glow'),
+        strokeWidth: leaf.get('strokeWidth') * scale,
+        glow: leaf.get('glow') * scale,
         glowColor: leaf.get('glowColor'),
         cap: leaf.get('cap'),
-        dash: leaf.get('dash'),
+        join: leaf.get('join'),
+        dash: dash ? dash.map((value) => value * scale) : null,
+        dashOffset: leaf.get('dashOffset') * scale,
         z,
         fixed,
         key: leaf.data['key'],
@@ -624,6 +636,9 @@ function ghost(stage: Stage, from: Baked, to: Baked, ctx: { t0: number; t1: numb
     node.base.visible = false
     node.base.path = from.path
     node.base.cap = from.cap
+    node.base.join = from.join
+    node.base.dash = from.dash ?? to.dash
+    node.base.dashOffset = from.dashOffset
     node.base.z = from.z
     node.base.fixed = from.fixed
     node.base.fill = from.fill ?? to.fill
@@ -640,10 +655,12 @@ function ghost(stage: Stage, from: Baked, to: Baked, ctx: { t0: number; t1: numb
     node.track('path').add({ t0: ctx.t0, t1: ctx.t1, ease: ctx.ease, to: to.path, at: pathMixer(from.path, to.path) })
     if (from.fill && to.fill) node.tween('fill', to.fill, ctx.t0, ctx.t1, ctx.ease)
     if (from.stroke && to.stroke) node.tween('stroke', to.stroke, ctx.t0, ctx.t1, ctx.ease)
+    if (from.glowColor && to.glowColor) node.tween('glowColor', to.glowColor, ctx.t0, ctx.t1, ctx.ease)
     node.tween('fillOpacity', to.fillOpacity, ctx.t0, ctx.t1, ctx.ease)
     node.tween('strokeOpacity', to.strokeOpacity, ctx.t0, ctx.t1, ctx.ease)
     node.tween('strokeWidth', to.strokeWidth || from.strokeWidth, ctx.t0, ctx.t1, ctx.ease)
     if (from.glow !== to.glow) node.tween('glow', to.glow, ctx.t0, ctx.t1, ctx.ease)
+    if (from.dashOffset !== to.dashOffset) node.tween('dashOffset', to.dashOffset, ctx.t0, ctx.t1, ctx.ease)
     stepAt(node, 'visible', false, ctx.hide ?? ctx.t1)
     return node
 }
@@ -1009,7 +1026,7 @@ export function shake(node: Node, options: AnimOptions & { angle?: number; cycle
 export function circumscribe(target: Node, options: AnimOptions & { color?: ColorInput; pad?: number; radius?: number; width?: number } = {}): Anim {
     oneNode('circumscribe', target, 'the first argument')
     return {
-        label: 'circumscribe', duration: options.duration ?? 1.3, ease: options.ease ?? linear,
+        label: 'circumscribe', duration: options.duration ?? 1.3, ease: options.ease ?? smooth,
         schedule(ctx) {
             const b = target.bounds()
             const pad = options.pad ?? 14
@@ -1018,12 +1035,12 @@ export function circumscribe(target: Node, options: AnimOptions & { color?: Colo
                 .glow(8)
             // A film puts this line around a text on purpose, so the film check does not judge the text against it.
             outline.data['decoration'] = true
-            ctx.stage.add(outline)
+            ctx.stage.mountAt(outline, ctx.t0)
             ctx.stage.marks.set(outline, target)
             const t0 = ctx.t0, t1 = ctx.t1, mid = t0 + (t1 - t0) * 0.55
             stepAt(outline, 'trimTo', 0, t0)
-            outline.tween('trimTo', 1, t0, mid, smooth)
-            outline.tween('trimFrom', 1, mid - (t1 - t0) * 0.08, t1, smooth)
+            outline.tween('trimTo', 1, t0, mid, ctx.ease)
+            outline.tween('trimFrom', 1, mid - (t1 - t0) * 0.08, t1, ctx.ease)
             hideAt(outline, t1)
         },
     }
@@ -1053,7 +1070,7 @@ export function flash(point: Vec | Node, options: AnimOptions & { color?: ColorI
                 const ray = new Node(linePath([center[0] + cos * radius * 0.35, center[1] + sin * radius * 0.35], [center[0] + cos * radius, center[1] + sin * radius]))
                     .stroke(options.color ?? 'yellow', 2.5)
                     .glow(5)
-                ctx.stage.add(ray)
+                ctx.stage.mountAt(ray, ctx.t0)
                 markOf(ctx, ray, point)
                 stepAt(ray, 'trimTo', 0, ctx.t0)
                 ray.tween('trimTo', 1, ctx.t0, ctx.t0 + (ctx.t1 - ctx.t0) * 0.6, ctx.ease)
@@ -1072,7 +1089,7 @@ export function ripple(point: Vec | Node, options: AnimOptions & { color?: Color
         schedule(ctx) {
             const center: Vec = point instanceof Node ? point.center : point
             const ring = new Node(circlePath(0, 0, options.radius ?? 90)).stroke(options.color ?? 'blue', options.width ?? 3).at(center)
-            ctx.stage.add(ring)
+            ctx.stage.mountAt(ring, ctx.t0)
             markOf(ctx, ring, point)
             stepAt(ring, 'sx', 0.05, ctx.t0)
             stepAt(ring, 'sy', 0.05, ctx.t0)
@@ -1098,7 +1115,7 @@ export function pulse(line: Node, options: AnimOptions & { color?: ColorInput; l
             const lit = new Node(transformPath(path, line.worldMatrix()))
                 .stroke(options.color ?? 'yellow', options.width ?? (line.get('strokeWidth') + 1.5))
                 .glow(options.glow ?? 10)
-            ctx.stage.add(lit)
+            ctx.stage.mountAt(lit, ctx.t0)
             ctx.stage.marks.set(lit, line)
             const length = options.length ?? 0.18
             stepAt(lit, 'trimFrom', 0, ctx.t0)

@@ -271,7 +271,9 @@ export default film({ width: 160, height: 90, fps: 2, bloom: 0.6 }, (stage) => {
     const output = join(directory, 'docs', 'assets', 'films')
     const pixels = decode(await readFile(join(output, 'sample.png')))
     const frames = await readFile(join(output, 'sample.mp4'))
-    expect(frames.subarray(0, pixels.data.length)).toEqual(Buffer.from(pixels.data))
+    expect(frames.subarray(0, 4).toString('ascii')).toBe('DKIF')
+    expect(frames.readUInt32LE(32)).toBe(pixels.data.length)
+    expect(frames.subarray(44, 44 + pixels.data.length)).toEqual(Buffer.from(pixels.data))
     const argsFile = (await readdir(output)).find((name) => name.endsWith('.args'))!
     const args = (await readFile(join(output, argsFile), 'utf8')).split('\n')
     expect(args[args.indexOf('-x264-params') + 1]).toBe('aq-strength=1.0:subme=6:trellis=0')

@@ -141,6 +141,21 @@ describe('film export', () => {
             return { frames: await readFile(output.outputPath), settings: at < 0 ? undefined : args[at + 1] }
         }
 
+        /** Unpack timestamped IVF RGBA packets produced by renderFilmVideo's repeat-frame stream. */
+        function ivfFrames(stream: Buffer, frameBytes: number): Buffer[] {
+            expect(stream.subarray(0, 4).toString('ascii')).toBe('DKIF')
+            const out: Buffer[] = []
+            let offset = 32
+            while (offset + 12 <= stream.length) {
+                const size = stream.readUInt32LE(offset)
+                expect(size).toBe(frameBytes)
+                out.push(stream.subarray(offset + 12, offset + 12 + size))
+                offset += 12 + size
+            }
+            expect(offset).toBe(stream.length)
+            return out
+        }
+
         // The defaults: a quality for work on a film has no dither, and a quality for a copy to publish has it.
         // The settings are what the H.264 encoder gets with the dither, so that it keeps the grain.
         it.each([
@@ -151,10 +166,11 @@ describe('film export', () => {
         ] as const)('at %s, a movie has the dither by default: %s, and the option turns it on with %s and off with no settings', async (quality, byDefault, settings) => {
             const directory = await tempDirectory()
             const dark = await ring(), { plain, dithered } = await expectedFrames(dark)
-            // The first frame and a later frame: a still picture has the same grain in each. The motion blur is
-            // that of the quality, so at high and master each frame is an average of shutter samples.
-            const shows = (frames: Buffer, expected: Uint8Array) => frames.length === 5 * bytes
-                && Buffer.compare(frames.subarray(0, bytes), expected) === 0 && Buffer.compare(frames.subarray(3 * bytes, 4 * bytes), expected) === 0
+            // A motionless clip sends the first and closing IVF packets with identical pixels.
+            const shows = (stream: Buffer, expected: Uint8Array) => {
+                const packets = ivfFrames(stream, bytes)
+                return packets.length >= 2 && packets.every((frame) => Buffer.compare(frame, expected) === 0)
+            }
             const unset = await movie(directory, `${quality}.raw`, dark, { quality })
             expect(shows(unset.frames, byDefault ? dithered : plain)).toBe(true)
             expect(unset.settings).toBe(byDefault ? settings : undefined)
@@ -172,7 +188,7 @@ describe('film export', () => {
             // VP9 takes no x264 settings. Its frames have the dither all the same.
             const webm = await movie(directory, 'high.webm.raw', dark, { quality: 'high', codec: 'vp9' })
             expect(webm.settings).toBeUndefined()
-            expect(Buffer.compare(webm.frames.subarray(0, bytes), dithered)).toBe(0)
+            expect(Buffer.compare(ivfFrames(webm.frames, bytes)[0]!, dithered)).toBe(0)
             // A look with no bloom has no grain to keep, with the dither by default or by the option.
             expect((await movie(directory, 'paper.raw', await ring('paper'), { quality: 'high' })).settings).toBeUndefined()
             expect((await movie(directory, 'paper-on.raw', await ring('paper'), { quality: 'standard', dither: true })).settings).toBeUndefined()

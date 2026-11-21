@@ -46,7 +46,7 @@ if (probe) {
     setTimeout(() => process.exit(count < (config.failures || 0) ? 1 : 0), config.delay || 0);
 } else if (args.includes('framecrc')) {
     process.stdout.write('#tb 0: 1/30\\n0, 0, 0, 1, 1, 0\\n0, 1, 1, 1, 1, 0\\n0, 2, 2, 1, 1, 0\\n');
-} else if (args.includes('rawvideo')) {
+} else if (args.includes('rawvideo') || args.includes('ivf')) {
     process.stdin.resume();
     process.stdin.on('end', () => {
         if (config.failRender) process.exit(1);
@@ -157,7 +157,7 @@ describe('H.264 encoder selection', () => {
         })
         expect(result.h264Encoder).toBe('videotoolbox')
         const calls = await fake.calls()
-        for (const kind of ['lavfi', 'rawvideo']) {
+        for (const kind of ['lavfi', 'ivf']) {
             const args = calls.find(call => call.args.includes(kind))!.args
             expect(value(args, '-c:v')).toBe('h264_videotoolbox')
             expect(value(args, '-q:v')).toBe('90')
@@ -174,7 +174,7 @@ describe('H.264 encoder selection', () => {
             quality: 'high', look: 'midnight', dither: true, h264Encoder: 'videotoolbox', ffmpegPath: fake.ffmpegPath,
         })
         expect(result.h264Encoder).toBe('libx264')
-        const args = (await fake.calls()).find(call => call.args.includes('rawvideo'))!.args
+        const args = (await fake.calls()).find(call => call.args.includes('ivf'))!.args
         expect(value(args, '-crf')).toBe('15')
         expect(value(args, '-x264-params')).toContain('trellis=0')
         expect(args).not.toContain('-q:v')

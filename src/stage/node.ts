@@ -170,7 +170,7 @@ export class Node {
     /** Rebuilt on every frame from timeline values. */
     draw: ((time: number) => Node | readonly Node[] | null) | null = null
     /** Emits draw operations directly, for objects with thousands of marks such as 3D meshes. */
-    rawOps: ((matrix: Mat, alpha: number, ops: DrawOp[]) => void) | null = null
+    rawOps: ((matrix: Mat, alpha: number, ops: DrawOp[], blend?: BlendMode) => void) | null = null
     /**
      * The node whose `draw` built this node for the frame that is on screen. A node that `draw` returns has no
      * parent, so this is the way from a mark of a dynamic drawing up to the object that made it.
@@ -496,10 +496,13 @@ export class Node {
     alignTo(target: Node | Vec | Block, edge: Edge): this {
         const own = this.bounds()
         const b = boundsOfTarget('alignTo', target)
-        if (edge === 'left') return this.shift(b.x - own.x, 0)
-        if (edge === 'right') return this.shift(b.x + b.width - own.x - own.width, 0)
-        if (edge === 'top') return this.shift(0, b.y - own.y)
-        return this.shift(0, b.y + b.height - own.y - own.height)
+        const dx = edge === 'left' ? b.x - own.x : edge === 'right' ? b.x + b.width - own.x - own.width : 0
+        const dy = edge === 'top' ? b.y - own.y : edge === 'bottom' ? b.y + b.height - own.y - own.height : 0
+        if (!this.parent) return this.shift(dx, dy)
+        const inverse = invert(this.parent.worldMatrix())
+        const [lx0, ly0] = apply(inverse, own.x, own.y)
+        const [lx1, ly1] = apply(inverse, own.x + dx, own.y + dy)
+        return this.shift(lx1 - lx0, ly1 - ly0)
     }
 
     /**

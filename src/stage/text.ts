@@ -39,6 +39,8 @@ export class TextNode extends Node {
     font: FontFamily = LIBRARY_FONT
     /** The size of the text, in the pixels of the node. `text()` records it. */
     size = 0
+    /** The advance width of the widest line in local node units. */
+    advanceWidth = 0
     /** The y of the base line of the first line, in the coordinates of the node. A row of the layout puts texts of two sizes on one base line with it. */
     readonly baseline = 0
     /**
@@ -51,11 +53,16 @@ export class TextNode extends Node {
 
     /** Glyph nodes whose characters match, such as every "x". */
     find(fragment: string): Node[] {
+        const needle = Array.from(fragment.replace(/\s/g, ''))
+        if (needle.length === 0) return []
+        const keys = this.chars.map((glyph) => glyph.data['key'] as string)
         const out: Node[] = []
-        const keys = this.chars.map((glyph) => glyph.data['key'] as string).join('')
-        const needle = fragment.replace(/\s/g, '')
-        for (let at = keys.indexOf(needle); at >= 0; at = keys.indexOf(needle, at + 1)) {
-            out.push(...this.chars.slice(at, at + needle.length))
+        for (let at = 0; at <= keys.length - needle.length; at++) {
+            let match = true
+            for (let j = 0; j < needle.length; j++) {
+                if (keys[at + j] !== needle[j]) { match = false; break }
+            }
+            if (match) out.push(...this.chars.slice(at, at + needle.length))
         }
         return out
     }
@@ -150,17 +157,20 @@ export function text(content: string, options: TextOptions = {}): TextNode {
     for (const paragraph of source.split('\n')) {
         let line: Placed[] = []
         let width = 0
+        let started = false
         for (const word of paragraph.split(' ')) {
             const measured = measureWord(word)
-            const gap = line.length > 0 ? space : 0
+            const gap = started ? space : 0
             if (options.maxWidth !== undefined && line.length > 0 && width + gap + measured.width > options.maxWidth) {
                 lines.push({ glyphs: line, width })
                 line = []
                 width = 0
+                started = false
             }
-            const offset = width + (line.length > 0 ? space : 0)
+            const offset = width + (started ? space : 0)
             for (const glyph of measured.glyphs) line.push({ ...glyph, x: glyph.x + offset })
             width = offset + measured.width
+            started = true
         }
         lines.push({ glyphs: line, width })
     }
@@ -197,6 +207,7 @@ export function text(content: string, options: TextOptions = {}): TextNode {
     node.base.py = height / 2 - ascent * 0.36
     node.data['size'] = size
     node.size = size
+    node.advanceWidth = blockWidth
     // The line box of the block, for the layout: its advance width, and 1.2 text sizes for one line, around
     // the middle of the capital letters. The box holds the letters that go under the base line, so a gap
     // from the box is a gap from the ink.

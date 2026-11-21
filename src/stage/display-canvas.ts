@@ -107,7 +107,7 @@ function paintFrameContents(ctx: Canvas2D, frame: Frame, scale: number, images?:
                 }
             }
             if (op.kind === 'image') {
-                const source = op.image.pixels ? pixelCanvas(op.image.pixels) : images?.(op.image) ?? browserImageSource(op.image.asset)
+                const source = op.image.pixels ? pixelCanvas(op.image.pixels, op.dim !== undefined && op.dim < 1 ? undefined : op.node) : images?.(op.image) ?? browserImageSource(op.image.asset)
                 if (!source) throw new ImageAssetError('Image pixels are unavailable. Await image preparation and provide an ImageLookup outside the browser.')
                 const m = op.matrix
                 ctx.save()
@@ -126,9 +126,10 @@ function paintFrameContents(ctx: Canvas2D, frame: Frame, scale: number, images?:
                 const color = glowOf(op)
                 const path = op.strokePath.length ? op.strokePath : op.path
                 const profile = glowProfile(op)
-                const bounds = glowBounds(path, profile.width, profile.sigma, frame)
-                if (color && bounds) {
-                    const base = Math.max(op.fillAlpha, op.strokeAlpha) * (frame.dark ? 1 : 0.22)
+                const rawBounds = pathBounds(path)
+                const bounds = rawBounds ? glowBounds(path, profile.width, profile.sigma, frame) : null
+                if (color && rawBounds && bounds) {
+                    const base = Math.max(op.fillAlpha, op.strokeAlpha) * color[3] * (frame.dark ? 1 : 0.22)
                     ctx.save()
                     // Bound the filter's intermediate surface, especially on CPU-backed canvases.
                     ctx.beginPath()
@@ -143,7 +144,7 @@ function paintFrameContents(ctx: Canvas2D, frame: Frame, scale: number, images?:
                     ctx.setLineDash([])
                     // shadowBlur uses sigma = blur / 2 in device pixels, unaffected by setTransform.
                     // Drawing only the shadow is faster than ctx.filter on CPU canvases and also works without filter support.
-                    const offset = (frame.width - pathBounds(path)!.x + profile.width / 2 + 4 * profile.sigma) * scale
+                    const offset = (frame.width - rawBounds.x + profile.width / 2 + 4 * profile.sigma) * scale
                     ctx.setTransform(scale, 0, 0, scale, offset, 0)
                     ctx.shadowColor = ctx.strokeStyle
                     ctx.shadowBlur = 2 * profile.sigma * scale

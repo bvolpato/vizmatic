@@ -223,10 +223,19 @@ describe('a frame that is equal to the frame before', () => {
             workers: 1, ffmpegPath: encoder,
             onProgress: async (info) => { if (info.index === 0) await writeFile(filename, png([0, 0, 255, 255])) },
         })
-        const frames = await readFile(output.outputPath)
-        expect(frames).toHaveLength(12 * 4 * 4 * 4)
-        expect(Array.from(frames.subarray(0, 4))).toEqual([255, 0, 0, 255])
-        expect(Array.from(frames.subarray(frames.length - 4))).toEqual([0, 0, 255, 255])
+        const stream = await readFile(output.outputPath)
+        const frameBytes = 4 * 4 * 4
+        expect(stream.subarray(0, 4).toString('ascii')).toBe('DKIF')
+        const packets: Buffer[] = []
+        for (let offset = 32; offset + 12 <= stream.length;) {
+            const size = stream.readUInt32LE(offset)
+            expect(size).toBe(frameBytes)
+            packets.push(stream.subarray(offset + 12, offset + 12 + size))
+            offset += 12 + size
+        }
+        expect(packets).toHaveLength(12)
+        expect(Array.from(packets[0]!.subarray(0, 4))).toEqual([255, 0, 0, 255])
+        expect(Array.from(packets[11]!.subarray(frameBytes - 4))).toEqual([0, 0, 255, 255])
         expect(await calls()).toBe(12)
     })
 })

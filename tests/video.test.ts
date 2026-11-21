@@ -326,6 +326,34 @@ describe('RGBA video export', () => {
             .toEqual([['One', 0, 400], ['Two', 400, 420]])
     }, 120_000)
 
+    it.skipIf(!hasFfmpeg || !hasFfprobe)('clips MP4 chapters and captions to the video duration in seconds', async () => {
+        const directory = await tempDirectory()
+        const outputPath = join(directory, 'clipped.mp4')
+        const pixels = new Uint8Array(64 * 48 * 4).fill(255)
+        await renderRgbaVideo(() => pixels, {
+            width: 64, height: 48, duration: 2_000, fps: 10, outputPath,
+            title: 'Short',
+            chapters: [
+                { title: 'Start', time: 0 },
+                { title: 'Middle', time: 1 },
+                { title: 'OutOfRange', time: 5 },
+            ],
+            captions: [
+                { t0: 0.2, t1: 1.5, text: 'inside' },
+                { t0: 10, t1: 12, text: 'past end' },
+            ],
+        })
+        const probe = spawnSync('ffprobe', ['-v', 'error', '-show_chapters', '-of', 'json', outputPath], { encoding: 'utf8' })
+        expect(probe.status, probe.stderr).toBe(0)
+        const chapters = (JSON.parse(probe.stdout) as { chapters: Array<{ start_time: string; end_time: string; tags: { title: string } }> }).chapters
+        expect(chapters.map((chapter) => [chapter.tags.title, Number(chapter.start_time), Number(chapter.end_time)]))
+            .toEqual([['Start', 0, 1], ['Middle', 1, 2]])
+        const srt = spawnSync('ffmpeg', ['-v', 'error', '-i', outputPath, '-map', '0:s:0', '-f', 'srt', 'pipe:1'], { encoding: 'utf8' })
+        expect(srt.status, srt.stderr).toBe(0)
+        expect(srt.stdout).toContain('inside')
+        expect(srt.stdout).not.toContain('past end')
+    }, 60_000)
+
     it.skipIf(!hasFfmpeg || !hasFfprobe || process.platform === 'win32')('exports AAC with an older encoder and keeps Opus audio in WebM', async () => {
         const directory = await tempDirectory()
         const encoder = join(directory, 'ffmpeg')

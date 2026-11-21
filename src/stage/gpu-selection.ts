@@ -18,11 +18,14 @@ export interface GpuExportOptions {
     dither: boolean
     workers: number
     memoryBudget?: number
+    /** When true and CPU is selected, return the warmed CPU RasterPool instead of closing it. */
+    keepPool?: boolean
     signal?: AbortSignal
 }
 
 export interface GpuSelection {
     gpu?: GpuRasterizer
+    pool?: RasterPool
     source: boolean
     reason: string
 }
@@ -104,6 +107,7 @@ export async function selectGpuRenderer(film: CompiledFilm, options: GpuExportOp
         gpu = await GpuRasterizer.create(options.signal, gpuSourceOf(film))
         const source = gpu.usesFilmSource
         const pool = new RasterPool(options.workers)
+        let keepPool = false
         const timesAt = (time: number) => Array.from({ length: subframes }, (_, index) => time + index / subframes * shutterSpan)
         const background = (value: string | null): readonly [number, number, number] => {
             const color = parseColor(value ?? '#000000'); return [color[0], color[1], color[2]]
@@ -163,13 +167,17 @@ export async function selectGpuRenderer(film: CompiledFilm, options: GpuExportOp
             if (options.request === 'auto') {
                 const probeMs = performance.now() - started
                 if (gpuMs >= estimatedCpuMs * 0.85 || (estimatedCpuMs - gpuMs) / count * options.count <= probeMs) {
-                    return { source: false, reason: `${measured}; CPU avoids GPU transfer/startup overhead` }
+                    if (options.keepPool) {
+                        keepPool = true
+                        pool.stats.computed = pool.stats.reused = pool.stats.mainMs = pool.stats.rasterMs = pool.stats.averageMs = pool.stats.bloomMs = 0
+                    }
+                    return { ...(keepPool ? { pool } : {}), source: false, reason: `${measured}; CPU avoids GPU transfer/startup overhead` }
                 }
             }
             keep = true
             gpu.rasterMs = gpu.bloomMs = gpu.readbackMs = 0
             return { gpu, source: !!source, reason: `${options.request === 'gpu' ? 'GPU requested; ' : ''}${measured}` }
-        } finally { await pool.close() }
+        } finally { if (!keepPool) await pool.close() }
     } catch (error) {
         if (options.request === 'gpu' || !(error instanceof GpuUnavailableError)) throw error
         return { source: false, reason: error.message }

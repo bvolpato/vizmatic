@@ -588,13 +588,22 @@ export function fallbackGlyph(family: FontFamily, code: number, weight: FontWeig
 }
 
 const glyphPaths = new WeakMap<LoadedFont, Map<number, Map<number, Path>>>()
+const GLYPH_SIZE_CACHE_LIMIT = 64
 
 /** Glyph outline scaled to a pixel size, with y pointing down and the origin on the baseline. */
 export function glyphPath(font: LoadedFont, glyph: number, size: number): Path {
     let bySize = glyphPaths.get(font)
     if (!bySize) glyphPaths.set(font, bySize = new Map())
     let byGlyph = bySize.get(size)
-    if (!byGlyph) bySize.set(size, byGlyph = new Map())
+    if (byGlyph) {
+        // Refresh LRU position on hit.
+        bySize.delete(size)
+        bySize.set(size, byGlyph)
+    } else {
+        byGlyph = new Map()
+        bySize.set(size, byGlyph)
+        if (bySize.size > GLYPH_SIZE_CACHE_LIMIT) bySize.delete(bySize.keys().next().value!)
+    }
     const cached = byGlyph.get(glyph)
     if (cached) return cached
     const outline = font.outline(glyph)

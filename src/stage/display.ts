@@ -66,13 +66,14 @@ export interface CameraState {
     readonly x: number
     readonly y: number
     readonly zoom: number
+    readonly zoomY?: number
     readonly rotation: number
 }
 
 const ALONG_PIECE_LENGTH = 14
 const MAX_ALONG_PIECES = 96
 
-function worldPaint(paint: Paint | null, m: Mat): Paint | null {
+export function worldPaint(paint: Paint | null, m: Mat): Paint | null {
     if (!paint || !isGradient(paint)) return paint
     if (paint.type === 'linear') {
         return { ...paint, from: apply(m, paint.from[0], paint.from[1]), to: apply(m, paint.to[0], paint.to[1]) }
@@ -141,7 +142,15 @@ function emit(node: Node, path: Path, m: Mat, alpha: number, blend: BlendMode, o
 
 /** A stroke whose color changes along its length draws as short solid pieces. */
 function splitAlong(op: PathOp, paint: Gradient, ops: DrawOp[]): void {
-    ops.push({ ...op, stroke: null, strokeAlpha: 0 })
+    if (op.fill || op.glow > 0) {
+        ops.push({
+            ...op,
+            stroke: null,
+            // Retain strokeAlpha when glowing so glow intensity matches the stroke even with no fill.
+            strokeAlpha: op.glow > 0 ? op.strokeAlpha : 0,
+            glowColor: op.glow > 0 ? (op.glowColor ?? sampleStops(paint.stops, 0.5)) : op.glowColor,
+        })
+    }
     const glowless = { ...op, fill: null, fillAlpha: 0, glow: 0 }
     const length = pathLength(op.strokePath)
     const full = pathLength(op.path)
@@ -216,13 +225,19 @@ function walk(node: Node, parent: Mat, alpha: number, dim: number, inheritedBlen
     if (path && path.length > 0) emit(node, path, m, opacity, blend, ops)
     const image = node.get('image')
     if (image) ops.push({ kind: 'image', image, matrix: m, alpha: opacity, blend, node })
-    if (node.rawOps) node.rawOps(m, opacity, ops)
+    if (node.rawOps) node.rawOps(m, opacity, ops, blend)
     if (least < 1) dimOps(ops, first, least, pass.backdrop)
     if (node.draw) {
         const built = node.draw(clockNow())
         if (built) {
             const list: readonly Node[] = Array.isArray(built) ? built as readonly Node[] : [built as Node]
-            for (const child of list) {
+            let needsSort = false
+            for (let i = 0; i < list.length; i++) {
+                if (list[i]!.get('z') !== 0) { needsSort = true; break }
+            }
+            const orderedBuilt = needsSort ? list.map((child, index) => ({ child, index, z: child.get('z') }))
+                .sort((a, b) => a.z - b.z || a.index - b.index).map((entry) => entry.child) : list
+            for (const child of orderedBuilt) {
                 child.drawer = node
                 walk(child, m, opacity, least, blend, pass)
             }
@@ -257,7 +272,7 @@ export function buildOps(root: Node, camera: CameraState, width: number, height:
     // The root is one node, such as the root of a stage. A block of the layout and a list are not.
     if (typeof (root as { localMatrix?: unknown } | null)?.localMatrix !== 'function') throw new Error('buildOps: the root is not a node. Give one node, such as the root of a stage, or a group of the nodes: group(block)')
     const screen: Mat = [1, 0, 0, 1, width / 2, height / 2]
-    const view = mul(screen, compose(0, 0, -camera.rotation, camera.zoom, camera.zoom, camera.x, camera.y))
+    const view = mul(screen, compose(0, 0, -camera.rotation, camera.zoom, camera.zoomY ?? camera.zoom, camera.x, camera.y))
     const ops: DrawOp[] = []
     walk(root, view, 1, 1, 'normal', { screen, backdrop, marks, ops })
     return ops
@@ -392,7 +407,7 @@ export function frameToSvg(frame: Frame, options: { scale?: number; transparent?
             const profile = glowProfile(op)
             const bounds = glowBounds(path, profile.width, profile.sigma, frame)
             if (color && bounds) {
-                const base = Math.max(op.fillAlpha, op.strokeAlpha) * (frame.dark ? 1 : 0.22)
+                const base = Math.max(op.fillAlpha, op.strokeAlpha) * color[3] * (frame.dark ? 1 : 0.22)
                 const mode = frame.dark ? ' style="mix-blend-mode:screen"' : ''
                 const id = `h${glowCount++}`
                 defs.push(`<filter id="${id}" filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse" x="${fmt(bounds.x)}" y="${fmt(bounds.y)}" width="${fmt(bounds.width)}" height="${fmt(bounds.height)}" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="${fmt(profile.sigma)}"/></filter>`)

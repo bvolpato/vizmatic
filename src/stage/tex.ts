@@ -117,7 +117,7 @@ function layoutTex(tex: string, display: boolean, context?: string): Layout {
     let current: Mat = [1, 0, 0, 1, 0, 0]
     const viewBox = /viewBox="([^"]+)"/.exec(svg)?.[1]?.trim().split(/[ ,]+/).map(Number) ?? [0, 0, 1000, 1000]
     const widthPx = Number(/\swidth="([\d.]+)px"/.exec(svg)?.[1] ?? 1000)
-    const unit = widthPx / viewBox[2]! / 1000
+    const unit = widthPx / (viewBox[2] || 1000) / 1000
     const tag = /<(\/?)([a-zA-Z]+)((?:\s+[-\w:]+="[^"]*")*)\s*(\/?)>/g
     // MathJax draws the middle of a tall delimiter inside a nested svg with its own
     // viewBox, which also clips the piece. Only the outermost svg is a plain wrapper.
@@ -136,6 +136,7 @@ function layoutTex(tex: string, display: boolean, context?: string): Layout {
                 }
                 continue
             }
+            if (selfClosing) continue
             svgDepth++
             if (svgDepth > 1) {
                 const box = (attr('viewBox') ?? '0 0 1 1').trim().split(/[ ,]+/).map(Number)
@@ -218,8 +219,11 @@ function layoutTex(tex: string, display: boolean, context?: string): Layout {
 
 function decodeXml(value: string): string {
     const named: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" }
-    return value.replace(/&(#x[\da-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (_, entity: string) =>
-        entity[0] === '#' ? String.fromCodePoint(Number.parseInt(entity.slice(entity[1] === 'x' ? 2 : 1), entity[1] === 'x' ? 16 : 10)) : named[entity]!)
+    return value.replace(/&(#x[\da-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (_, entity: string) => {
+        if (entity[0] !== '#') return named[entity.toLowerCase()]!
+        const hex = entity[1] === 'x' || entity[1] === 'X'
+        return String.fromCodePoint(Number.parseInt(entity.slice(hex ? 2 : 1), hex ? 16 : 10))
+    })
 }
 
 /** Keep argument boundaries, but ignore typography and redundant one-child TeX groups. */

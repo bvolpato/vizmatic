@@ -91,8 +91,9 @@ export function matScale(m: Mat): number {
     return Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2]))
 }
 
-export function ring(points: ArrayLike<number>, closed = false): Ring {
-    return { p: points instanceof Float64Array ? points : Float64Array.from(points as ArrayLike<number>), closed }
+export function ring(points: ArrayLike<number>, closed = false, straight = false): Ring {
+    const p = points instanceof Float64Array ? points : Float64Array.from(points as ArrayLike<number>)
+    return straight ? { p, closed, straight: true } : { p, closed }
 }
 
 export function segmentCount(r: Ring): number {
@@ -106,7 +107,7 @@ function lineInto(out: number[], x0: number, y0: number, x1: number, y1: number)
 export function linePath(a: Vec, b: Vec): Path {
     const out = [a[0], a[1]]
     lineInto(out, a[0], a[1], b[0], b[1])
-    return [ring(out)]
+    return [ring(out, false, true)]
 }
 
 export function polyPath(points: readonly Vec[], closed = false): Path {
@@ -118,7 +119,7 @@ export function polyPath(points: readonly Vec[], closed = false): Path {
         const last = points[points.length - 1]!
         if (last[0] !== first[0] || last[1] !== first[1]) lineInto(out, last[0], last[1], first[0], first[1])
     }
-    return [ring(out, closed)]
+    return [ring(out, closed, true)]
 }
 
 /** A smooth cubic spline through every point (Catmull-Rom, centripetal-ish tension). */
@@ -217,14 +218,15 @@ export function transformPath(path: Path, m: Mat): Path {
     if (m === IDENTITY) return path
     const out: Ring[] = new Array(path.length)
     for (let r = 0; r < path.length; r++) {
-        const src = path[r]!.p
+        const item = path[r]!
+        const src = item.p
         const dst = new Float64Array(src.length)
         for (let i = 0; i < src.length; i += 2) {
             const x = src[i]!, y = src[i + 1]!
             dst[i] = m[0] * x + m[2] * y + m[4]
             dst[i + 1] = m[1] * x + m[3] * y + m[5]
         }
-        out[r] = { p: dst, closed: path[r]!.closed }
+        out[r] = item.straight ? { p: dst, closed: item.closed, straight: true } : { p: dst, closed: item.closed }
     }
     return out
 }
@@ -278,7 +280,7 @@ export function subdivideEach(r: Ring, n: number): Ring {
         }
         out.push(seg[2]!, seg[3]!, seg[4]!, seg[5]!, seg[6]!, seg[7]!)
     }
-    return ring(out, r.closed)
+    return ring(out, r.closed, r.straight === true)
 }
 
 interface RingMeasure {
@@ -299,22 +301,33 @@ function measure(r: Ring): RingMeasure {
     const lut = new Float64Array(count * LUT_STEPS)
     let sum = 0
     const p = r.p
-    for (let i = 0; i < count; i++) {
-        const o = i * 6
-        const x0 = p[o]!, y0 = p[o + 1]!, x1 = p[o + 2]!, y1 = p[o + 3]!, x2 = p[o + 4]!, y2 = p[o + 5]!, x3 = p[o + 6]!, y3 = p[o + 7]!
-        let lastX = x0, lastY = y0, acc = 0
-        for (let k = 1; k <= LUT_STEPS; k++) {
-            const t = k / LUT_STEPS, u = 1 - t
-            const a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t
-            const x = a * x0 + b * x1 + c * x2 + d * x3
-            const y = a * y0 + b * y1 + c * y2 + d * y3
-            acc += Math.hypot(x - lastX, y - lastY)
-            lut[i * LUT_STEPS + k - 1] = acc
-            lastX = x
-            lastY = y
+    if (r.straight) {
+        for (let i = 0; i < count; i++) {
+            const o = i * 6
+            const segLen = Math.hypot(p[o + 6]! - p[o]!, p[o + 7]! - p[o + 1]!)
+            const base = i * LUT_STEPS
+            for (let k = 1; k <= LUT_STEPS; k++) lut[base + k - 1] = segLen * (k / LUT_STEPS)
+            sum += segLen
+            total[i] = sum
         }
-        sum += acc
-        total[i] = sum
+    } else {
+        for (let i = 0; i < count; i++) {
+            const o = i * 6
+            const x0 = p[o]!, y0 = p[o + 1]!, x1 = p[o + 2]!, y1 = p[o + 3]!, x2 = p[o + 4]!, y2 = p[o + 5]!, x3 = p[o + 6]!, y3 = p[o + 7]!
+            let lastX = x0, lastY = y0, acc = 0
+            for (let k = 1; k <= LUT_STEPS; k++) {
+                const t = k / LUT_STEPS, u = 1 - t
+                const a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t
+                const x = a * x0 + b * x1 + c * x2 + d * x3
+                const y = a * y0 + b * y1 + c * y2 + d * y3
+                acc += Math.hypot(x - lastX, y - lastY)
+                lut[i * LUT_STEPS + k - 1] = acc
+                lastX = x
+                lastY = y
+            }
+            sum += acc
+            total[i] = sum
+        }
     }
     const result = { total, lut, length: sum }
     measures.set(r, result)
@@ -371,6 +384,7 @@ export function trimRing(r: Ring, from: number, to: number): Ring | null {
         let seg: number[] = Array.from(r.p.subarray(i * 6, i * 6 + 8))
         const start = i === i0 ? t0 : 0
         const end = i === i1 ? t1 : 1
+        if (end <= start + 1e-12) continue
         if (start > 0) {
             const rest: number[] = []
             splitInto(seg, 0, start, [], rest)
@@ -379,14 +393,15 @@ export function trimRing(r: Ring, from: number, to: number): Ring | null {
         if (end < 1) {
             const left: number[] = []
             const rest: number[] = []
-            const scaled = start > 0 ? (end - start) / (1 - start) : end
+            const scaled = start > 0 ? Math.min(1, Math.max(0, (end - start) / (1 - start))) : end
             splitInto(seg, 0, scaled, left, rest)
             seg = [seg[0]!, seg[1]!, ...left]
         }
         if (out.length === 0) out.push(seg[0]!, seg[1]!)
         out.push(seg[2]!, seg[3]!, seg[4]!, seg[5]!, seg[6]!, seg[7]!)
     }
-    return ring(out, false)
+    if (out.length < 8) return null
+    return ring(out, false, r.straight === true)
 }
 
 /**
@@ -489,13 +504,25 @@ function boundsOfRing(r: Ring): Bounds {
     if (cached) return cached
     const p = r.p
     if (p.length < 2) return EMPTY_BOUNDS
-    const xs: [number, number] = [p[0]!, p[0]!]
-    const ys: [number, number] = [p[1]!, p[1]!]
-    for (let o = 0; o + 7 < p.length; o += 6) {
-        extendCubicAxis(xs, p[o]!, p[o + 2]!, p[o + 4]!, p[o + 6]!)
-        extendCubicAxis(ys, p[o + 1]!, p[o + 3]!, p[o + 5]!, p[o + 7]!)
+    let minX = p[0]!, maxX = p[0]!, minY = p[1]!, maxY = p[1]!
+    if (r.straight) {
+        for (let o = 6; o + 1 < p.length; o += 6) {
+            const x = p[o]!, y = p[o + 1]!
+            if (x < minX) minX = x
+            if (x > maxX) maxX = x
+            if (y < minY) minY = y
+            if (y > maxY) maxY = y
+        }
+    } else {
+        const xs: [number, number] = [minX, maxX]
+        const ys: [number, number] = [minY, maxY]
+        for (let o = 0; o + 7 < p.length; o += 6) {
+            extendCubicAxis(xs, p[o]!, p[o + 2]!, p[o + 4]!, p[o + 6]!)
+            extendCubicAxis(ys, p[o + 1]!, p[o + 3]!, p[o + 5]!, p[o + 7]!)
+        }
+        minX = xs[0]; maxX = xs[1]; minY = ys[0]; maxY = ys[1]
     }
-    const bounds = { x: xs[0], y: ys[0], width: xs[1] - xs[0], height: ys[1] - ys[0] }
+    const bounds = { x: minX, y: minY, width: maxX - minX, height: maxY - minY }
     ringBounds.set(r, bounds)
     return bounds
 }
@@ -522,14 +549,24 @@ export function unionBounds(a: Bounds | null, b: Bounds | null): Bounds | null {
     return { x, y, width: Math.max(a.x + a.width, b.x + b.width) - x, height: Math.max(a.y + a.height, b.y + b.height) - y }
 }
 
-/** Shoelace area over the anchors. The sign gives the winding direction. */
+/** Exact signed area via Green's theorem over cubic segments (reduces to shoelace for straight rings). */
 export function signedArea(r: Ring): number {
     const p = r.p
+    if (r.straight) {
+        let sum = 0
+        for (let o = 0; o + 7 < p.length; o += 6) {
+            sum += p[o]! * p[o + 7]! - p[o + 6]! * p[o + 1]!
+        }
+        return sum / 2
+    }
     let sum = 0
     for (let o = 0; o + 7 < p.length; o += 6) {
-        sum += p[o]! * p[o + 7]! - p[o + 6]! * p[o + 1]!
+        const x0 = p[o]!, y0 = p[o + 1]!, x1 = p[o + 2]!, y1 = p[o + 3]!
+        const x2 = p[o + 4]!, y2 = p[o + 5]!, x3 = p[o + 6]!, y3 = p[o + 7]!
+        sum += 6 * (x0 * y1 - x1 * y0) + 3 * (x0 * y2 - x2 * y0) + (x0 * y3 - x3 * y0)
+            + 3 * (x1 * y2 - x2 * y1) + 3 * (x1 * y3 - x3 * y1) + 6 * (x2 * y3 - x3 * y2)
     }
-    return sum / 2
+    return sum / 20
 }
 
 export function ringCenter(r: Ring): [number, number] {
@@ -544,7 +581,7 @@ export function reverseRing(r: Ring): Ring {
         out[i] = p[p.length - 2 - i]!
         out[i + 1] = p[p.length - 1 - i]!
     }
-    return { p: out, closed: r.closed }
+    return r.straight ? { p: out, closed: r.closed, straight: true } : { p: out, closed: r.closed }
 }
 
 /** Parse SVG path data, including arcs and relative commands, into cubic rings. */
@@ -557,9 +594,9 @@ export function parseSvgPath(d: string): Path {
     let lastCmd = '', lastCx = 0, lastCy = 0
     const num = () => Number(tokens[i++])
     const flags = (): number => {
-        // Arc flags can run together with the next number, such as "a1 1 0 00.5 .5".
+        // Arc flags are single bits (0 or 1) and can run together with the next number, such as "a1 1 0 00.5 .5".
         const token = tokens[i]!
-        if (token.length > 1 && (token[0] === '0' || token[0] === '1') && !token.startsWith('0.') && !token.startsWith('1.')) {
+        if (token.length > 1 && (token[0] === '0' || token[0] === '1')) {
             tokens[i] = token.slice(1)
             return Number(token[0])
         }

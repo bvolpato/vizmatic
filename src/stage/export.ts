@@ -280,6 +280,7 @@ export async function renderFilmVideo(
     const ci = !!(process.env.CI || process.env.GITHUB_ACTIONS)
     if (ci && request === 'gpu') throw new Error('GPU rendering is disabled in CI. Use backend: cpu or auto.')
     let gpu: GpuRasterizer | undefined
+    let keptPool: RasterPool | undefined
     let source = false
     const demanding = motionBlur > 1 || size.width * size.height >= 3840 * 2160 || plan.workers < 8
     let backendReason = ci ? 'CI uses CPU rendering' : request === 'cpu' ? 'CPU requested' : 'CPU avoids GPU probing for a short, small, or inexpensive export'
@@ -287,11 +288,11 @@ export async function renderFilmVideo(
         const { selectGpuRenderer } = await import('./gpu-selection')
         const selection = await selectGpuRenderer(compiled, {
             request, ...size, from, to, count, subframes: motionBlur, shutterSpan: shutter / fps, dither,
-            workers: plan.workers, memoryBudget: options.memoryBudget, signal: options.signal,
+            workers: plan.workers, memoryBudget: options.memoryBudget, keepPool: true, signal: options.signal,
         })
-        gpu = selection.gpu; source = selection.source; backendReason = selection.reason
+        gpu = selection.gpu; keptPool = selection.pool; source = selection.source; backendReason = selection.reason
     }
-    const pool = gpu ? undefined : new RasterPool(plan.workers)
+    const pool = gpu ? undefined : (keptPool ?? new RasterPool(plan.workers))
     try {
         const stats: ExportStats = pool?.stats ?? {
             workers: 0, computed: 0, reused: 0, mainMs: 0, rasterMs: 0, averageMs: 0, bloomMs: 0,
@@ -302,15 +303,20 @@ export async function renderFilmVideo(
             : frameStream(compiled, pool!, (index) => from + index / fps, size, count, plan.readAhead, motionBlur, shutter / fps, dither)
         // When the export loop took the last frame. From then, it waits for the encoder.
         let handed = 0
+        let lastPixels: Uint8Array | undefined
+        let lastWasRepeat = false
         const output = await renderRgbaVideo(async (info) => {
             const asked = performance.now()
             if (handed > 0) stats.encoderWaitMs += asked - handed
             const pixels = await next(info.index)
+            lastWasRepeat = lastPixels !== undefined && pixels === lastPixels
+            lastPixels = pixels
             handed = performance.now()
             stats.frameWaitMs += handed - asked
             return pixels
         }, {
             width: size.width, height: size.height, fps, duration: (to - from) * 1000, outputPath,
+            frameIsRepeat: () => lastWasRepeat,
             codec, h264Encoder: codec === 'h264' ? encoder ?? 'auto' : encoder, requireH264Encoder: options.requireH264Encoder,
             ...(encoder === 'videotoolbox' ? { videoToolboxQuality: quality.videoToolboxQuality }
                 : { crf: codec === 'vp9' ? quality.vp9Crf : quality.crf }),
@@ -346,15 +352,31 @@ function gpuFrameStream(
     count: number, from: number, subframes: number, shutterSpan: number, dither: boolean, stats: ExportStats,
 ): (index: number) => Promise<Uint8Array> {
     const pending = new Map<number, Promise<Uint8Array>>()
-    const submit = async (index: number) => {
-        const started = performance.now()
-        const times = Array.from({ length: subframes }, (_, sub) => from + index / film.fps + sub / subframes * shutterSpan)
-        const frames: Frame[] = []
-        if (!source) for (const time of times) frames.push(await frameAt(film, time))
-        const pixels = gpu.run(source ? { ...size, times, dither } : { ...size, frames, dither })
-        stats.mainMs += performance.now() - started
-        stats.computed++
-        return pixels
+    let before: Promise<{ job: RasterJob | null; pixels: Promise<Uint8Array> } | null> = Promise.resolve(null)
+    const submit = (index: number): Promise<Uint8Array> => {
+        const previous = before
+        const rendered = (async () => {
+            const started = performance.now()
+            const times = Array.from({ length: subframes }, (_, sub) => from + index / film.fps + sub / subframes * shutterSpan)
+            const frames: Frame[] = []
+            let job: RasterJob | null = null
+            if (!source) {
+                for (const time of times) frames.push(await frameAt(film, time))
+                job = framesToJob(frames, size.width, backgroundBytes, size.height, dither)
+            }
+            const last = await previous.catch(() => null)
+            if (job && last?.job && sameRasterJob(last.job, job)) {
+                stats.mainMs += performance.now() - started
+                stats.reused++
+                return last
+            }
+            const pixels = gpu.run(source ? { ...size, times, dither } : { ...size, frames, dither })
+            stats.mainMs += performance.now() - started
+            stats.computed++
+            return { job, pixels }
+        })()
+        before = rendered
+        return rendered.then(entry => entry.pixels)
     }
     return async index => {
         for (let ahead = index; ahead < Math.min(count, index + 3); ahead++) if (!pending.has(ahead)) {
@@ -386,7 +408,7 @@ function changedRegion(previous: Uint8Array, current: Uint8Array, width: number,
         const row = y * width * 4
         for (let x = 0; x < width; x++) {
             const o = row + x * 4
-            if (previous[o] !== current[o] || previous[o + 1] !== current[o + 1] || previous[o + 2] !== current[o + 2]) {
+            if (previous[o] !== current[o] || previous[o + 1] !== current[o + 1] || previous[o + 2] !== current[o + 2] || previous[o + 3] !== current[o + 3]) {
                 if (x < minX) minX = x
                 if (x > maxX) maxX = x
                 if (y < minY) minY = y
@@ -442,9 +464,14 @@ export async function renderFilmGif(film: FilmDefinition | CompiledFilm, outputP
         const repeat = options.loop === false ? -1 : 0
         let previous: Uint8Array | null = null
         let pending: { index: Uint8Array; region: { x: number; y: number; width: number; height: number }; delay: number } | null = null
+        // Carry sub-centisecond rounding error across frames so non-dividing frame rates (like 30 fps) keep accurate playback speed.
+        let delayError = 0
         const flush = (first: boolean) => {
             if (!pending) return
-            let remaining = pending.delay
+            const target = pending.delay + delayError
+            const rounded = Math.max(20, Math.round(target / 10) * 10)
+            delayError = target - rounded
+            let remaining = rounded
             let includePalette = first
             do {
                 const span = Math.min(MAX_GIF_DELAY, remaining)
@@ -654,10 +681,18 @@ export async function posterTime(film: CompiledFilm): Promise<number> {
 /** Captions as WebVTT, for a sidecar track. */
 export function captionsToVtt(film: CompiledFilm): string {
     const stamp = (seconds: number) => {
-        const m = Math.floor(seconds / 60), s = seconds - m * 60
-        return `${String(m).padStart(2, '0')}:${s.toFixed(3).padStart(6, '0')}`
+        const totalMs = Math.max(0, Math.round(seconds * 1000))
+        const hours = Math.floor(totalMs / 3_600_000)
+        const minutes = Math.floor(totalMs / 60_000) % 60
+        const secs = Math.floor(totalMs / 1_000) % 60
+        const ms = totalMs % 1_000
+        const mm = String(minutes).padStart(2, '0')
+        const ss = String(secs).padStart(2, '0')
+        const mmm = String(ms).padStart(3, '0')
+        return hours > 0 ? `${String(hours).padStart(2, '0')}:${mm}:${ss}.${mmm}` : `${mm}:${ss}.${mmm}`
     }
-    const cues = film.captions.map((cue) => `${stamp(cue.t0)} --> ${stamp(cue.t1)}\n${cue.text}`)
+    const clean = (value: string) => value.replace(/-->/g, '--&gt;').replace(/\r?\n\s*\r?\n/g, '\n')
+    const cues = film.captions.map((cue) => `${stamp(cue.t0)} --> ${stamp(cue.t1)}\n${clean(cue.text)}`)
     return `WEBVTT\n\n${cues.join('\n\n')}\n`
 }
 

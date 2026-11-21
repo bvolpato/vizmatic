@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
-    along, applyMatrix, arcPath, arrow, checkFilm, circle, circlePath, compileFilm, curveThrough, dot, draw, dynamic, fadeIn, fadeOut, film, fontFor, group, grow, indicate, lagged,
-    line, linePath, linear, mixColor, morph, morphMatching, Node, parseColor, parseSvgPath, pathBounds, pathLength,
-    plane, pointAt, projectionMark, projectToLine, rect, rotate, scaleBy, seq, shake, spin, tex, text, to, trimPath, write, smooth, spring, thereAndBack, type Anim, type PathOp,
+    along, applyMatrix, arcPath, arrow, checkFilm, circle, circlePath, circumscribe, colorAlong, curveThrough, delay, dot, draw, dynamic, fadeIn, fadeOut, film, flash, fontFor, group, grow, indicate, lagged,
+    line, linePath, linear, mixColor, morph, morphMatching, Node, notQuiteThere, parseColor, parseSvgPath, pathBounds, pathLength,
+    plane, pointAt, polyPath, projectionMark, projectToLine, pulse, rect, ripple, rotate, scaleBy, seq, shake, signedArea, spin, tex, text, to, transformPath, trimPath, typewriter, write, smooth, spring, thereAndBack, type Anim, type PathOp,
 } from '../src/stage/index'
+import { compileFilm } from '../src/stage/stage'
 import { Track } from '../src/stage/track'
 import { alignPaths, matchSequence, pathMixer } from '../src/stage/morph'
-import { renderFilmFrame } from '../src/stage/export'
+import { captionsToVtt, renderFilmFrame } from '../src/stage/export'
 import { RasterPool, framesToJob } from '../src/stage/raster'
 import { decode } from 'fast-png'
 import { readFile, mkdtemp, rm } from 'node:fs/promises'
@@ -573,5 +574,97 @@ describe('raster', () => {
         } finally {
             await pool.close()
         }
+    })
+})
+
+describe('stage core regressions', () => {
+    it('preserves Ring.straight on 2D straight geometry across transforms and trims', () => {
+        const seg = linePath([0, 0], [100, 50])
+        expect(seg[0]!.straight).toBe(true)
+        const moved = transformPath(seg, [1, 0, 0, 1, 25, -10])
+        expect(moved[0]!.straight).toBe(true)
+        const trimmed = trimPath(moved, 0.2, 0.8)
+        expect(trimmed[0]!.straight).toBe(true)
+        const poly = polyPath([[0, 0], [40, 0], [40, 30]], true)
+        expect(poly[0]!.straight).toBe(true)
+    })
+
+    it('computes exact cubic signed area for curved closed shapes', () => {
+        expect(Math.abs(signedArea(circlePath(0, 0, 10)[0]!))).toBeCloseTo(Math.PI * 100, 0)
+    })
+
+    it('keeps non-1-ending eases at ease(1) after t1 instead of snapping to target', () => {
+        const track = new Track(0)
+        track.add({ t0: 0, t1: 1, ease: thereAndBack, to: 100, at: (a) => a * 100 })
+        expect(track.sample(0.5)).toBeCloseTo(100, 4)
+        expect(track.sample(1)).toBeCloseTo(0, 6)
+        expect(track.sample(2)).toBeCloseTo(0, 6)
+
+        const partial = new Track(0)
+        partial.add({ t0: 0, t1: 1, ease: notQuiteThere(0.7), to: 100, at: (a) => a * 100 })
+        expect(partial.sample(1)).toBeCloseTo(70, 6)
+        expect(partial.sample(2)).toBeCloseTo(70, 6)
+    })
+
+    it('mounts delayed effect verbs at their scheduled start instead of stage.time', async () => {
+        const compiled = await compileFilm(film((s) => {
+            const box = s.add(rect(120, 60, { stroke: 'blue' }))
+            const wire = s.add(line([-100, 80], [100, 80], { stroke: 'dim' }))
+            const word = text('hi', { size: 40 }).at(0, -100)
+            s.play(
+                delay(circumscribe(box, { duration: 0.5 }), 1),
+                delay(flash([0, 0], { duration: 0.5 }), 1),
+                delay(ripple([0, 0], { duration: 0.5 }), 1),
+                delay(pulse(wire, { duration: 0.5 }), 1),
+                delay(typewriter(word, { cursor: true, duration: 0.5 }), 1),
+            )
+        }))
+        // Before t=1, only box and wire exist; none of the delayed effect marks or cursor may appear.
+        const before = paths(compiled, 0.4)
+        const during = paths(compiled, 1.2)
+        expect(before.length).toBe(2)
+        expect(during.length).toBeGreaterThan(10)
+    })
+
+    it('preserves glow on colorAlong strokes in SVG output', async () => {
+        const compiled = await compileFilm(film((s) => {
+            s.add(line([-200, 0], [200, 0], { stroke: colorAlong('blue', 'yellow'), width: 5, glow: 10 }))
+            s.wait(0.2)
+        }))
+        const svg = compiled.svg(0)
+        expect(svg).toContain('feGaussianBlur')
+    })
+
+    it('preserves leading spaces and supports astral characters in TextNode.find', async () => {
+        await compileFilm(film(() => {
+            const plain = text('code', { font: 'mono', size: 30, anchor: 'left' })
+            const indented = text('    code', { font: 'mono', size: 30, anchor: 'left' })
+            expect(indented.advanceWidth).toBeGreaterThan(plain.advanceWidth)
+            expect(indented.chars[0]!.bounds().x).toBeGreaterThan(plain.chars[0]!.bounds().x)
+
+            const astral = text('x∈ℝ²', { size: 30 })
+            expect(astral.find('ℝ')).toHaveLength(1)
+            expect(astral.find('ℝ')[0]!.data['key']).toBe('ℝ')
+        }))
+    })
+
+    it('formats VTT timestamps cleanly across minute and hour boundaries', async () => {
+        const compiled = await compileFilm(film((s) => {
+            s.at(59.9999, () => s.caption('edge --> safe', 1))
+            s.at(3661.25, () => s.caption('hour mark', 1))
+        }))
+        const vtt = captionsToVtt(compiled)
+        expect(vtt).toContain('01:00.000 --> 01:01.000')
+        expect(vtt).toContain('edge --&gt; safe')
+        expect(vtt).toContain('01:01:01.250 --> 01:01:02.250')
+    })
+
+    it('aligns child nodes inside transformed parents accurately', () => {
+        const parent = group().at(200, 100).scale(2)
+        const target = rect(40, 20).at(50, 0)
+        const child = rect(20, 20).at(-50, 0)
+        parent.add(child)
+        child.alignTo(target, 'left')
+        expect(child.bounds().x).toBeCloseTo(target.bounds().x, 4)
     })
 })
