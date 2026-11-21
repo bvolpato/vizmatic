@@ -10,7 +10,7 @@ const canvas = document.createElement('canvas')
 const context = canvas.getContext('2d', { willReadFrequently: false })!
 const accumulated = document.createElement('canvas')
 const average = accumulated.getContext('2d', { willReadFrequently: false })!
-const floatAccum = new WebGLSubframeAccumulator()
+let floatAccum: WebGLSubframeAccumulator | null = null
 const images = new Map<string, ImageBitmap>()
 let bloom: CanvasBloom | null = null
 let film: CompiledFilm | undefined
@@ -69,13 +69,16 @@ async function paint(job: GpuFrameJob): Promise<{ pixels: Promise<Uint8Array<Arr
     await prepareImages(job)
     const started = performance.now()
     let usedFloatAccum = false
-    if (frames.length > 1 && floatAccum.begin(canvas)) {
-        usedFloatAccum = true
-        for (let i = 0; i < frames.length; i++) {
-            paintFrame(context, frames[i], width / frames[i].width, lookup)
-            if (!floatAccum.add(canvas)) { usedFloatAccum = false; break }
+    if (frames.length > 1) {
+        if (!floatAccum && typeof WebGLSubframeAccumulator === 'function') floatAccum = new WebGLSubframeAccumulator()
+        if (floatAccum?.begin(canvas)) {
+            usedFloatAccum = true
+            for (let i = 0; i < frames.length; i++) {
+                paintFrame(context, frames[i], width / frames[i].width, lookup)
+                if (!floatAccum.add(canvas)) { usedFloatAccum = false; break }
+            }
+            if (usedFloatAccum && !floatAccum.resolveTo(average)) usedFloatAccum = false
         }
-        if (usedFloatAccum && !floatAccum.resolveTo(average)) usedFloatAccum = false
     }
     if (!usedFloatAccum) {
         average.resetTransform()
