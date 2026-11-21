@@ -96,7 +96,7 @@ jobs:
       - name: Install CPU encoder
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          sudo apt-get install -y --no-install-recommends ffmpeg
       - id: cache-key
         name: Hash this shard's rendering inputs
         env:
@@ -156,7 +156,7 @@ jobs:
       - name: Install CPU encoder
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          sudo apt-get install -y --no-install-recommends ffmpeg
       - uses: actions/download-artifact@v8
         with:
           pattern: pages-films-${{ needs.prepare.outputs.sha }}-*

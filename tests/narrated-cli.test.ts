@@ -27,13 +27,19 @@ async function project(): Promise<string> {
     return directory
 }
 
+const BUILT_CLI = resolve('dist/cli.js')
+const USE_BUILT_CLI = process.env['VIZMATIC_TEST_USE_EXISTING_BUILD'] === '1' && existsSync(BUILT_CLI)
+
 function cli(args: string[], cwd: string, more: NodeJS.ProcessEnv = {}) {
     const env: NodeJS.ProcessEnv = { ...process.env, VIZMATIC_DISABLE_NETWORK: '1', ...more }
     delete env.NODE_OPTIONS
     for (const key of Object.keys(env)) {
         if (key.startsWith('TSX_') || key.startsWith('VITEST')) delete env[key]
     }
-    return spawnSync(process.execPath, ['--import', `file://${resolve('node_modules/tsx/dist/loader.mjs')}`, resolve('src/cli.ts'), ...args], { cwd, encoding: 'utf8', env, maxBuffer: 32 * 1024 * 1024 })
+    const cliArgs = USE_BUILT_CLI
+        ? [BUILT_CLI, ...args]
+        : ['--import', `file://${resolve('node_modules/tsx/dist/loader.mjs')}`, resolve('src/cli.ts'), ...args]
+    return spawnSync(process.execPath, cliArgs, { cwd, encoding: 'utf8', env, maxBuffer: 32 * 1024 * 1024 })
 }
 
 async function template(): Promise<string> {

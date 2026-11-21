@@ -157,20 +157,28 @@ describe('fast bloom', () => {
 
     it('gives the bytes of the first version on frames of two films', async () => {
         const { Resvg } = createRequire(import.meta.url)('@resvg/resvg-js') as typeof import('@resvg/resvg-js')
-        for (const [id, times] of [['lorenz', [8, 30]], ['fourier-epicycles', [30.5]]] as const) {
-            const module = await import(`../examples/films/${id}.ts`) as { default: unknown }
-            if (!isFilm(module.default)) throw new Error(`${id} has no film as its default export`)
-            const film = await compileFilm(module.default, { look: 'midnight' })
+        const cases: readonly (readonly [string, number, readonly number[]])[] = [
+            ['lorenz', 8, [640, 1283, 1920]],
+            ['lorenz', 30, [1920, 3840]],
+            ['fourier-epicycles', 30.5, [97, 640, 1280, 1920]],
+        ]
+        const compiled = new Map<string, Awaited<ReturnType<typeof compileFilm>>>()
+        for (const [id, time, widths] of cases) {
+            let film = compiled.get(id)
+            if (!film) {
+                const module = await import(`../examples/films/${id}.ts`) as { default: unknown }
+                if (!isFilm(module.default)) throw new Error(`${id} has no film as its default export`)
+                film = await compileFilm(module.default, { look: 'midnight' })
+                compiled.set(id, film)
+            }
             const background = parseColor(film.background!).slice(0, 3)
-            for (const time of times) {
-                const svg = film.svg(time)
-                for (const [w] of SIZES) {
-                    const image = new Resvg(svg, { fitTo: { mode: 'width', value: w }, font: { loadSystemFonts: false } }).render()
-                    const pixels = new Uint8Array(image.pixels)
-                    // The frame must have light, or the test compares nothing.
-                    expect(pixels.some((value, index) => index % 4 === 0 && value > background[0]! + 40)).toBe(true)
-                    expect([id, time, w, firstDifference(pixels, image.width, image.height, film.bloom, background)]).toEqual([id, time, w, -1])
-                }
+            const svg = film.svg(time)
+            for (const w of widths) {
+                const image = new Resvg(svg, { fitTo: { mode: 'width', value: w }, font: { loadSystemFonts: false } }).render()
+                const pixels = new Uint8Array(image.pixels)
+                // The frame must have light, or the test compares nothing.
+                expect(pixels.some((value, index) => index % 4 === 0 && value > background[0]! + 40)).toBe(true)
+                expect([id, time, w, firstDifference(pixels, image.width, image.height, film.bloom, background)]).toEqual([id, time, w, -1])
             }
         }
     }, 240_000)

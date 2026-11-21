@@ -1,5 +1,6 @@
-import { access, readFile, writeFile } from 'fs/promises'
-import { spawnSync } from 'child_process'
+import { access, copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'fs/promises'
+import { spawn } from 'child_process'
+import { cpus, tmpdir } from 'os'
 import { basename, join } from 'path'
 import { exampleTitle, listGalleryExamples } from './gallery-examples'
 
@@ -17,10 +18,12 @@ if (selected) {
         throw new Error('--only requires comma-separated example names without the .tsx extension')
     }
 }
-let rendered = 0
 
 const manifest: Array<{ name: string; source: string; outputs: string[] }> = []
 const animatedSources: string[] = []
+const regularSources: string[] = []
+const ncclSources: string[] = []
+const transparentSources: string[] = []
 
 function previewFor(outputs: string[], theme: (typeof themes)[number]): string {
     return outputs.find((output) => output.endsWith(`_${theme}.gif`))
@@ -53,24 +56,24 @@ function generateExamplesReadme(entries: typeof manifest): string {
     ].join('\n')
 }
 
-for (const { name, source } of examples) {
-    const renderArgs = [
-        'dist/cli.js',
-        'render',
-        source,
-        '--out',
-        outDir,
-        '--theme',
-        themes.join(','),
-    ]
-    if (name.startsWith('nccl-')) renderArgs.push('--no-crop')
-    // Gallery images stay opaque, so they read on any page. The two exceptions show transparency itself.
-    if (name !== 'transparent-badge') renderArgs.push('--background', 'theme')
+function runCli(args: string[]): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const child = spawn(process.execPath, args, { stdio: 'inherit' })
+        child.once('error', reject)
+        child.once('exit', (code, signal) => {
+            if (code === 0) resolve()
+            else reject(new Error(`dist/cli.js exited with ${signal ? `signal ${signal}` : `code ${code}`}`))
+        })
+    })
+}
 
+let rendered = 0
+for (const { name, source } of examples) {
     const shouldRender = !selected || selected.has(name)
     if (shouldRender) {
-        const result = spawnSync(process.execPath, renderArgs, { stdio: 'inherit' })
-        if (result.status !== 0) process.exit(result.status ?? 1)
+        if (name === 'transparent-badge') transparentSources.push(source)
+        else if (name.startsWith('nccl-')) ncclSources.push(source)
+        else regularSources.push(source)
         rendered++
     }
 
@@ -96,41 +99,91 @@ for (const { name, source } of examples) {
     })
 }
 
-if (animatedSources.length > 0) {
-    const gifManifestPath = join(outDir, 'gif-manifest.json')
-    const previousGifs: Array<{ name: string }> = selected
-        ? JSON.parse(await readFile(gifManifestPath, 'utf8'))
-        : []
-    const gifResult = spawnSync(process.execPath, [
-        'dist/cli.js',
-        'gif',
-        ...animatedSources,
-        '--out',
-        outDir,
-        '--theme',
-        themes.join(','),
-        '--watermark',
-        'Vizmatic',
-        '--scale',
-        '1',
-    ], {
-        stdio: 'inherit',
-    })
-
-    if (gifResult.status !== 0) {
-        process.exit(gifResult.status ?? 1)
+await mkdir(outDir, { recursive: true })
+const scratchRoot = await mkdtemp(join(tmpdir(), 'vizmatic-render-examples-'))
+try {
+    // Partition regular examples across parallel worker batches so Node, fonts, and Satori stay warm
+    // and every batch writes its own temp manifest without contending on docs/assets/examples/manifest.json.
+    const workerCount = Math.min(4, Math.max(1, cpus().length))
+    const batches: Array<{ sources: string[]; extraArgs: string[] }> = []
+    if (regularSources.length > 0) {
+        const chunkCount = Math.min(workerCount, regularSources.length)
+        const chunks: string[][] = Array.from({ length: chunkCount }, () => [])
+        regularSources.forEach((source, index) => chunks[index % chunkCount]!.push(source))
+        for (const chunk of chunks) batches.push({ sources: chunk, extraArgs: ['--background', 'theme'] })
+    }
+    if (ncclSources.length > 0) {
+        batches.push({ sources: ncclSources, extraArgs: ['--no-crop', '--background', 'theme'] })
+    }
+    if (transparentSources.length > 0) {
+        batches.push({ sources: transparentSources, extraArgs: [] })
     }
 
-    if (selected) {
-        const updatedGifs: Array<{ name: string }> = JSON.parse(await readFile(gifManifestPath, 'utf8'))
-        const gifsByName = new Map([...previousGifs, ...updatedGifs].map(entry => [entry.name, entry]))
-        const completeGifs = manifest.filter(entry => entry.outputs.some(output => output.endsWith('.gif'))).map(entry => {
-            const gif = gifsByName.get(entry.name)
-            if (!gif) throw new Error(`Missing ${entry.name} GIF metadata; run the full example render`)
-            return gif
-        })
-        await writeFile(gifManifestPath, `${JSON.stringify(completeGifs, null, 2)}\n`)
+    const renderTasks: Promise<void>[] = []
+    let nextBatch = 0
+    const runWorker = async (workerId: number) => {
+        for (;;) {
+            const index = nextBatch++
+            const batch = batches[index]
+            if (!batch) return
+            const batchOut = join(scratchRoot, `batch-${workerId}-${index}`)
+            await runCli([
+                'dist/cli.js',
+                'render',
+                ...batch.sources,
+                '--out',
+                batchOut,
+                '--theme',
+                themes.join(','),
+                ...batch.extraArgs,
+            ])
+            const files = await readdir(batchOut)
+            await Promise.all(
+                files
+                    .filter((file) => file.endsWith('.png'))
+                    .map((file) => copyFile(join(batchOut, file), join(outDir, file))),
+            )
+        }
     }
+
+    const activeWorkers = Math.min(workerCount, batches.length)
+    for (let i = 0; i < activeWorkers; i++) renderTasks.push(runWorker(i))
+
+    if (animatedSources.length > 0) {
+        const gifManifestPath = join(outDir, 'gif-manifest.json')
+        const previousGifs: Array<{ name: string }> = selected
+            ? JSON.parse(await readFile(gifManifestPath, 'utf8'))
+            : []
+        renderTasks.push((async () => {
+            await runCli([
+                'dist/cli.js',
+                'gif',
+                ...animatedSources,
+                '--out',
+                outDir,
+                '--theme',
+                themes.join(','),
+                '--watermark',
+                'Vizmatic',
+                '--scale',
+                '1',
+            ])
+            if (selected) {
+                const updatedGifs: Array<{ name: string }> = JSON.parse(await readFile(gifManifestPath, 'utf8'))
+                const gifsByName = new Map([...previousGifs, ...updatedGifs].map(entry => [entry.name, entry]))
+                const completeGifs = manifest.filter(entry => entry.outputs.some(output => output.endsWith('.gif'))).map(entry => {
+                    const gif = gifsByName.get(entry.name)
+                    if (!gif) throw new Error(`Missing ${entry.name} GIF metadata; run the full example render`)
+                    return gif
+                })
+                await writeFile(gifManifestPath, `${JSON.stringify(completeGifs, null, 2)}\n`)
+            }
+        })())
+    }
+
+    await Promise.all(renderTasks)
+} finally {
+    await rm(scratchRoot, { recursive: true, force: true })
 }
 
 await writeFile(join(outDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
