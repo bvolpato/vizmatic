@@ -1,5 +1,6 @@
 import { execFile, spawn } from 'child_process'
 import { randomUUID } from 'crypto'
+import { existsSync } from 'fs'
 import { chmod, mkdir, open, rename, rm, stat, writeFile } from 'fs/promises'
 import { connect, createServer, type Socket } from 'net'
 import { createInterface } from 'readline'
@@ -27,8 +28,10 @@ export interface VideoFrameInfo {
 }
 
 export type VideoCodec = 'h264' | 'vp9'
-export type H264Encoder = 'libx264' | 'videotoolbox' | 'nvenc'
+export type H264Encoder = 'libx264' | 'videotoolbox' | 'nvenc' | 'vaapi' | 'qsv' | 'amf'
 export type H264EncoderRequest = H264Encoder | 'auto'
+export type HardwareH264Encoder = Exclude<H264Encoder, 'libx264'>
+export const HARDWARE_H264_ENCODERS: readonly HardwareH264Encoder[] = ['videotoolbox', 'nvenc', 'vaapi', 'qsv', 'amf']
 
 export interface RgbaVideoOptions {
     width: number
@@ -413,6 +416,20 @@ const NVENC_PRESETS: Readonly<Record<string, string>> = {
     slow: 'p7', slower: 'p7', veryslow: 'p7', placebo: 'p7',
 }
 
+const QSV_PRESETS: Readonly<Record<string, string>> = {
+    ultrafast: 'veryfast', superfast: 'veryfast', veryfast: 'veryfast', faster: 'faster', fast: 'fast',
+    medium: 'medium', slow: 'slow', slower: 'slower', veryslow: 'veryslow', placebo: 'veryslow',
+}
+
+const AMF_PRESETS: Readonly<Record<string, string>> = {
+    ultrafast: 'speed', superfast: 'speed', veryfast: 'speed', faster: 'speed', fast: 'balanced',
+    medium: 'balanced', slow: 'quality', slower: 'quality', veryslow: 'quality', placebo: 'quality',
+}
+
+function vaapiDevice(): string {
+    return process.env.VIZMATIC_VAAPI_DEVICE || '/dev/dri/renderD128'
+}
+
 function nvencArgs(options: H264SelectionOptions): string[] {
     // FFmpeg 6.1's nvenc_h264.c defines p1..p7, hq and VBR CQ (0 is automatic, 1..51 is quality).
     // https://github.com/FFmpeg/FFmpeg/blob/n6.1/libavcodec/nvenc_h264.c
@@ -426,6 +443,47 @@ function videoToolboxArgs({ width, height, fps }: H264Format, quality = 75): str
     if (blocks <= 8192 && blocks * fps <= 245760) args.push('-level:v', '4.0')
     else if (blocks <= 8704 && blocks * fps <= 522240) args.push('-level:v', '4.2')
     return args
+}
+
+function vaapiArgs(options: H264SelectionOptions): string[] {
+    return ['-c:v', 'h264_vaapi', '-profile:v', 'high', '-qp', String(options.crf ?? 18), '-g', '250']
+}
+
+function qsvArgs(options: H264SelectionOptions): string[] {
+    return ['-c:v', 'h264_qsv', '-preset', QSV_PRESETS[options.preset ?? 'fast']!, '-profile:v', 'high',
+        '-global_quality', String(options.crf ?? 18), '-g', '250']
+}
+
+function amfArgs(options: H264SelectionOptions): string[] {
+    const qp = String(options.crf ?? 18)
+    return ['-c:v', 'h264_amf', '-quality', AMF_PRESETS[options.preset ?? 'fast']!, '-profile:v', 'high',
+        '-rc', 'cqp', '-qp_i', qp, '-qp_p', qp, '-g', '250']
+}
+
+function hardwareEncoderArgs(encoder: HardwareH264Encoder, format: H264Format, options: H264SelectionOptions): {
+    inputPrefix: string[]
+    filterSuffix: string
+    codecArgs: string[]
+    pixFmt: string | null
+} {
+    switch (encoder) {
+        case 'videotoolbox':
+            return { inputPrefix: [], filterSuffix: '', codecArgs: videoToolboxArgs(format, options.videoToolboxQuality), pixFmt: 'yuv420p' }
+        case 'nvenc':
+            return { inputPrefix: [], filterSuffix: '', codecArgs: nvencArgs(options), pixFmt: 'yuv420p' }
+        case 'vaapi':
+            return { inputPrefix: ['-vaapi_device', vaapiDevice()], filterSuffix: ',format=nv12,hwupload', codecArgs: vaapiArgs(options), pixFmt: null }
+        case 'qsv':
+            return { inputPrefix: [], filterSuffix: '', codecArgs: qsvArgs(options), pixFmt: 'nv12' }
+        case 'amf':
+            return { inputPrefix: [], filterSuffix: '', codecArgs: amfArgs(options), pixFmt: 'yuv420p' }
+    }
+}
+
+export function platformHardwareCandidates(): HardwareH264Encoder[] {
+    if (process.platform === 'darwin') return ['videotoolbox', 'nvenc']
+    if (process.platform === 'win32') return ['nvenc', 'amf', 'qsv']
+    return existsSync(vaapiDevice()) ? ['nvenc', 'vaapi', 'qsv'] : ['nvenc', 'qsv']
 }
 
 /** Check each encoded presentation time before replacing the caller's movie. */
@@ -474,16 +532,18 @@ const hardwareProbes = new Set<string>()
 const pendingHardwareProbes = new Map<string, Promise<boolean>>()
 
 async function probeH264Encoder(
-    encoder: Exclude<H264Encoder, 'libx264'>,
+    encoder: HardwareH264Encoder,
     ffmpegPath: string,
     format: H264Format,
     options: H264SelectionOptions,
 ): Promise<boolean> {
     const { width, height, fps } = format
-    const args = ['-nostdin', '-v', 'error', '-abort_on', 'empty_output', '-f', 'lavfi', '-i', `color=size=${width}x${height}:rate=${fps},format=rgba`,
-        '-frames:v', '1', '-vf', COLOR_FILTER,
-        ...(encoder === 'nvenc' ? nvencArgs(options) : videoToolboxArgs(format, options.videoToolboxQuality)),
-        '-pix_fmt', 'yuv420p', ...COLOR_TAGS, '-f', 'null', '-']
+    const hw = hardwareEncoderArgs(encoder, format, options)
+    const args = ['-nostdin', '-v', 'error', '-abort_on', 'empty_output', ...hw.inputPrefix, '-f', 'lavfi',
+        '-i', `color=size=${width}x${height}:rate=${fps},format=rgba`,
+        '-frames:v', '1', '-vf', `${COLOR_FILTER}${hw.filterSuffix}`,
+        ...hw.codecArgs,
+        ...(hw.pixFmt ? ['-pix_fmt', hw.pixFmt] : []), ...COLOR_TAGS, '-f', 'null', '-']
     const key = JSON.stringify([ffmpegPath, args])
     if (hardwareProbes.has(key)) return true
     // A cancellable caller owns its probe so aborting it cannot interrupt another export.
@@ -530,8 +590,8 @@ export async function resolveH264Encoder(
             throw new Error('videoToolboxQuality must be an integer between 0 and 100')
     }
     if (requested === 'libx264') return requested
-    if (requested !== 'videotoolbox' && requested !== 'nvenc' && requested !== 'auto')
-        throw new Error('h264Encoder must be libx264, videotoolbox, nvenc or auto')
+    if (requested !== 'auto' && !HARDWARE_H264_ENCODERS.includes(requested))
+        throw new Error('h264Encoder must be libx264, videotoolbox, nvenc, vaapi, qsv, amf or auto')
     const { width, height, fps } = format
     if (![width, height].every(value => Number.isSafeInteger(value) && value > 0 && value % 2 === 0)
         || !Number.isInteger(fps) || fps < 1 || fps > 120) throw new Error('Invalid H.264 probe dimensions or FPS')
@@ -541,13 +601,13 @@ export async function resolveH264Encoder(
     if (requested === 'auto' && (process.env.CI || process.env.GITHUB_ACTIONS || crf !== 18
         || options.tune !== undefined || options.x264Params !== undefined)) return 'libx264'
 
-    const candidates: Exclude<H264Encoder, 'libx264'>[] = requested === 'auto'
-        ? (process.platform === 'darwin' ? ['videotoolbox', 'nvenc'] : ['nvenc'])
+    const candidates: HardwareH264Encoder[] = requested === 'auto'
+        ? platformHardwareCandidates()
         : [requested]
     for (const encoder of candidates) {
-        const supported = options.x264Params === undefined && (encoder === 'nvenc'
-            ? options.tune === undefined && crf > 0 && Object.hasOwn(NVENC_PRESETS, preset)
-            : crf === 18 && (options.tune === undefined || options.tune === 'animation'))
+        const supported = options.x264Params === undefined && (encoder === 'videotoolbox'
+            ? crf === 18 && (options.tune === undefined || options.tune === 'animation')
+            : options.tune === undefined && crf > 0 && Object.hasOwn(NVENC_PRESETS, preset))
         if (!supported) continue
         const available = await probeH264Encoder(encoder, ffmpegPath, format, options)
         if (options.signal?.aborted) throw abortError()
@@ -556,6 +616,19 @@ export async function resolveH264Encoder(
     if (options.requireH264Encoder && requested !== 'auto')
         throw new Error(`Requested H.264 encoder ${requested} is unavailable for these settings`)
     return 'libx264'
+}
+
+/** Probe all platform-relevant native hardware H.264 encoders for diagnostics (`vizmatic doctor`). */
+export async function probeAvailableH264Encoders(
+    ffmpegPath = 'ffmpeg',
+    format: H264Format = { width: 1920, height: 1080, fps: 30 },
+    signal?: AbortSignal,
+): Promise<HardwareH264Encoder[]> {
+    const candidates = platformHardwareCandidates()
+    const results = await Promise.all(
+        candidates.map(async (encoder) => (await probeH264Encoder(encoder, ffmpegPath, format, { signal })) ? encoder : null),
+    )
+    return results.filter((encoder): encoder is HardwareH264Encoder => encoder !== null)
 }
 
 function hasFfmpegOption(ffmpegPath: string, component: string, option: string): Promise<boolean> {
@@ -683,10 +756,14 @@ export async function renderRgbaVideo(
         throw error
     }
     const seconds = formatSeconds(schedule.duration)
+    const hw = codec === 'h264' && h264Encoder !== 'libx264'
+        ? hardwareEncoderArgs(h264Encoder, { width, height, fps }, options)
+        : null
     const args = [
         // If the encoder gets no frame, it must fail. Without this flag, it writes a movie with no frames
         // and reports success.
         '-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-abort_on', 'empty_output',
+        ...(hw ? hw.inputPrefix : []),
         ...(repeat
             ? ['-f', 'ivf', '-fpsprobesize', '0', '-probesize', '32', '-analyzeduration', '1']
             : ['-f', 'rawvideo', '-pixel_format', 'rgba', '-video_size', `${width}x${height}`, '-framerate', String(fps)]),
@@ -728,14 +805,13 @@ export async function renderRgbaVideo(
     // VideoToolbox can reach the frame limit before FFmpeg finishes muxing AAC.
     // The input already ends at the last scheduled frame, including held frames.
     if (h264Encoder !== 'videotoolbox' || !options.audioPath) args.push('-frames:v', String(schedule.count))
-    args.push('-t', seconds, '-vf', repeat ? `${COLOR_FILTER},fps=${fps}` : COLOR_FILTER)
+    const baseFilter = repeat ? `${COLOR_FILTER},fps=${fps}` : COLOR_FILTER
+    args.push('-t', seconds, '-vf', hw ? `${baseFilter}${hw.filterSuffix}` : baseFilter)
     if (codec === 'vp9') {
         // The quality mode needs a zero bitrate. Row threading makes VP9 practical at HD and above.
         args.push('-c:v', 'libvpx-vp9', '-crf', String(crf), '-b:v', '0', '-deadline', 'good', '-cpu-used', '2', '-row-mt', '1', '-threads:v', String(threads))
-    } else if (h264Encoder === 'videotoolbox') {
-        args.push(...videoToolboxArgs({ width, height, fps }, options.videoToolboxQuality))
-    } else if (h264Encoder === 'nvenc') {
-        args.push(...nvencArgs(options))
+    } else if (hw) {
+        args.push(...hw.codecArgs)
     } else {
         args.push('-c:v', 'libx264', '-preset', preset)
         if (options.tune) args.push('-tune', options.tune)
@@ -746,7 +822,9 @@ export async function renderRgbaVideo(
         if (options.x264Params) args.push('-x264-params', options.x264Params)
         args.push('-threads:v', String(threads))
     }
-    args.push('-pix_fmt', 'yuv420p', ...COLOR_TAGS)
+    const pixFmt = hw ? hw.pixFmt : 'yuv420p'
+    if (pixFmt) args.push('-pix_fmt', pixFmt)
+    args.push(...COLOR_TAGS)
     if (options.audioPath) {
         if (codec === 'vp9') args.push('-c:a', 'libopus', '-b:a', '160k', '-ar', '48000', '-ac', '2')
         // 384 kbit/s is what YouTube asks for in a stereo upload. A site encodes the sound again, so the file keeps more than a viewer needs.

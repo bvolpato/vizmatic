@@ -3,7 +3,7 @@ import { totalmem } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { encode as encodePng } from 'fast-png'
 import * as gifenc from 'gifenc'
-import { renderRgbaVideo, resolveH264Encoder, type H264EncoderRequest, type RgbaVideoOutput, type VideoCodec, type VideoFrameInfo } from '../video'
+import { HARDWARE_H264_ENCODERS, renderRgbaVideo, resolveH264Encoder, type H264Encoder, type H264EncoderRequest, type HardwareH264Encoder, type RgbaVideoOutput, type VideoCodec, type VideoFrameInfo } from '../video'
 import { parseColor } from './color'
 import { frameToSvg, type Frame } from './display'
 import { RasterPool, defaultPoolSize, framesToJob, reportExportStats, sameRasterJob, type ExportStats, type RasterJob } from './raster'
@@ -267,22 +267,34 @@ export async function renderFilmVideo(
     const count = Math.max(1, Math.round((to - from) * fps))
     const dither = options.dither ?? quality.dither
     const grain = dither && compiled.bloom > 0 && compiled.look?.dark === true
-    // Explicit hardware encoding opts into its quality scale. Auto retains x264 animation/grain tuning.
-    const requestedHardware = options.h264Encoder === 'nvenc' || options.h264Encoder === 'videotoolbox'
-    const encoder = codec === 'h264' && requestedHardware
-        ? await resolveH264Encoder(options.h264Encoder, options.ffmpegPath, { ...size, fps }, {
-            ...(options.h264Encoder === 'videotoolbox' ? { videoToolboxQuality: quality.videoToolboxQuality } : { crf: quality.crf, preset: quality.preset }),
+    const ci = !!(process.env.CI || process.env.GITHUB_ACTIONS)
+    const isHardware = (value: H264EncoderRequest | undefined): value is HardwareH264Encoder =>
+        value !== undefined && value !== 'auto' && value !== 'libx264' && HARDWARE_H264_ENCODERS.includes(value)
+    // Resolve native hardware H.264 encoders (VideoToolbox, NVENC, VAAPI, QSV, AMF):
+    // - explicit hardware requests always probe (even in CI)
+    // - explicit 'auto' or default HD+ non-grain local exports probe automatically
+    // - grain-dithered high/master, CI, and tiny/short clips stay on libx264 unless overridden
+    const autoHardwareEligible = !ci && (options.h264Encoder === 'auto'
+        || (options.h264Encoder === undefined && !grain && size.width * size.height >= 1280 * 720 && count >= 60))
+    let encoder: H264Encoder | H264EncoderRequest | undefined = options.h264Encoder
+    if (codec === 'h264' && (isHardware(options.h264Encoder) || autoHardwareEligible)) {
+        const probeTarget = isHardware(options.h264Encoder) ? options.h264Encoder : 'auto'
+        encoder = await resolveH264Encoder(probeTarget, options.ffmpegPath, { ...size, fps }, {
+            ...(probeTarget === 'videotoolbox' ? { videoToolboxQuality: quality.videoToolboxQuality }
+                : probeTarget === 'auto' ? (process.platform === 'darwin' ? {} : { preset: quality.preset })
+                : { crf: quality.crf, preset: quality.preset }),
             signal: options.signal, requireH264Encoder: options.requireH264Encoder,
-        }) : options.h264Encoder
-    const hardware = encoder === 'nvenc' || encoder === 'videotoolbox'
+        })
+    }
+    const hardware = isHardware(encoder)
     const request = options.backend ?? 'auto'
     if (!['auto', 'cpu', 'gpu'].includes(request)) throw new Error('backend must be auto, cpu or gpu')
-    const ci = !!(process.env.CI || process.env.GITHUB_ACTIONS)
     if (ci && request === 'gpu') throw new Error('GPU rendering is disabled in CI. Use backend: cpu or auto.')
     let gpu: GpuRasterizer | undefined
     let keptPool: RasterPool | undefined
     let source = false
     const demanding = motionBlur > 1 || size.width * size.height >= 3840 * 2160 || plan.workers < 8
+        || (compiled.bloom > 0 && compiled.look?.dark === true)
     let backendReason = ci ? 'CI uses CPU rendering' : request === 'cpu' ? 'CPU requested' : 'CPU avoids GPU probing for a short, small, or inexpensive export'
     if (!ci && request !== 'cpu' && (request === 'gpu' || (demanding && count >= 300 && size.width * size.height >= 1280 * 720))) {
         const { selectGpuRenderer } = await import('./gpu-selection')
@@ -379,7 +391,7 @@ function gpuFrameStream(
         return rendered.then(entry => entry.pixels)
     }
     return async index => {
-        for (let ahead = index; ahead < Math.min(count, index + 3); ahead++) if (!pending.has(ahead)) {
+        for (let ahead = index; ahead < Math.min(count, index + 4); ahead++) if (!pending.has(ahead)) {
             const pixels = submit(ahead)
             pixels.catch(() => {})
             pending.set(ahead, pixels)
@@ -404,6 +416,22 @@ const gifApi: GifencApi = typeof gifenc.GIFEncoder === 'function' ? gifenc : (gi
 
 function changedRegion(previous: Uint8Array, current: Uint8Array, width: number, height: number): { x: number; y: number; width: number; height: number } | null {
     let minX = width, minY = height, maxX = -1, maxY = -1
+    if (previous.byteOffset % 4 === 0 && current.byteOffset % 4 === 0) {
+        const prev32 = new Uint32Array(previous.buffer, previous.byteOffset, width * height)
+        const curr32 = new Uint32Array(current.buffer, current.byteOffset, width * height)
+        for (let y = 0; y < height; y++) {
+            const row = y * width
+            for (let x = 0; x < width; x++) {
+                if (prev32[row + x] !== curr32[row + x]) {
+                    if (x < minX) minX = x
+                    if (x > maxX) maxX = x
+                    if (y < minY) minY = y
+                    maxY = y
+                }
+            }
+        }
+        return maxX < 0 ? null : { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 }
+    }
     for (let y = 0; y < height; y++) {
         const row = y * width * 4
         for (let x = 0; x < width; x++) {

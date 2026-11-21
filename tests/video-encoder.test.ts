@@ -5,7 +5,7 @@ import { join } from 'path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderFilmVideo } from '../src/stage/export'
 import { film } from '../src/stage/stage'
-import { renderRgbaVideo, resolveH264Encoder, type H264EncoderRequest } from '../src/video'
+import { platformHardwareCandidates, renderRgbaVideo, resolveH264Encoder, type H264EncoderRequest } from '../src/video'
 
 const directories: string[] = []
 const format = { width: 192, height: 128, fps: 30 }
@@ -119,7 +119,37 @@ describe('H.264 encoder selection', () => {
     it('allows auto to fall back when every local hardware probe fails', async () => {
         const fake = await encoder({ failures: 10 })
         expect(await resolveH264Encoder('auto', fake.ffmpegPath, format, { requireH264Encoder: true })).toBe('libx264')
-        expect(await fake.calls()).toHaveLength(process.platform === 'darwin' ? 2 : 1)
+        expect(await fake.calls()).toHaveLength(platformHardwareCandidates().length)
+    })
+
+    it('supports explicit vaapi, qsv, and amf native hardware H.264 encoders', async () => {
+        const fake = await encoder()
+        expect(await resolveH264Encoder('vaapi', fake.ffmpegPath, format, { crf: 20 })).toBe('vaapi')
+        expect(await resolveH264Encoder('qsv', fake.ffmpegPath, format, { crf: 19, preset: 'medium' })).toBe('qsv')
+        expect(await resolveH264Encoder('amf', fake.ffmpegPath, format, { crf: 22, preset: 'slow' })).toBe('amf')
+        const calls = await fake.calls()
+        expect(calls).toHaveLength(3)
+        expect(value(calls[0]!.args, '-c:v')).toBe('h264_vaapi')
+        expect(value(calls[0]!.args, '-vf')).toContain('format=nv12,hwupload')
+        expect(value(calls[0]!.args, '-qp')).toBe('20')
+        expect(calls[0]!.args).toContain('-vaapi_device')
+        expect(value(calls[1]!.args, '-c:v')).toBe('h264_qsv')
+        expect(value(calls[1]!.args, '-global_quality')).toBe('19')
+        expect(value(calls[1]!.args, '-pix_fmt')).toBe('nv12')
+        expect(value(calls[2]!.args, '-c:v')).toBe('h264_amf')
+        expect(value(calls[2]!.args, '-quality')).toBe('quality')
+        expect(value(calls[2]!.args, '-qp_i')).toBe('22')
+    })
+
+    it('selects local hardware automatically for standard film exports when auto is requested', async () => {
+        const fake = await encoder()
+        const movie = film({ ...format, bloom: 0 }, s => { s.wait(0.1) })
+        const result = await renderFilmVideo(movie, join(fake.path, 'auto-hw.mp4'), {
+            width: format.width, backend: 'cpu', workers: 1, motionBlur: 1, quality: 'standard',
+            h264Encoder: 'auto', ffmpegPath: fake.ffmpegPath,
+        })
+        const expected = platformHardwareCandidates()[0]
+        expect(result.h264Encoder).toBe(expected)
     })
 
     it.each([{ tune: 'grain' }, { tune: 'animation' }, { x264Params: 'aq-strength=1.0' }, { crf: 16 }, { crf: 0 }])

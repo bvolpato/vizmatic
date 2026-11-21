@@ -536,8 +536,9 @@ export class WebGLSubframeAccumulator {
         return !gl.isContextLost()
     }
 
-    resolveTo(targetCtx: CanvasRenderingContext2D): boolean {
-        if (!this.gl || !this.canvas || this.broken || this.count <= 0 || this.gl.isContextLost()) return false
+    /** Resolve the float32 accumulator onto its own WebGL2 canvas without copying back to Canvas2D. */
+    resolveCanvas(): HTMLCanvasElement | null {
+        if (!this.gl || !this.canvas || this.broken || this.count <= 0 || this.gl.isContextLost()) return null
         const gl = this.gl
         gl.bindFramebuffer(gl.FRAMEBUFFER, null)
         gl.viewport(0, 0, this.width, this.height)
@@ -547,7 +548,12 @@ export class WebGLSubframeAccumulator {
         gl.bindTexture(gl.TEXTURE_2D, this.accumTex)
         gl.uniform1f(this.resolveScale, 1 / this.count)
         gl.drawArrays(gl.TRIANGLES, 0, 3)
-        if (gl.isContextLost()) return false
+        return gl.isContextLost() ? null : this.canvas
+    }
+
+    resolveTo(targetCtx: CanvasRenderingContext2D): boolean {
+        const resolved = this.resolveCanvas()
+        if (!resolved) return false
         targetCtx.save()
         try {
             targetCtx.resetTransform()
@@ -555,9 +561,27 @@ export class WebGLSubframeAccumulator {
             targetCtx.globalCompositeOperation = 'copy'
             targetCtx.filter = 'none'
             targetCtx.shadowColor = 'transparent'
-            targetCtx.drawImage(this.canvas, 0, 0)
+            targetCtx.drawImage(resolved, 0, 0)
         } finally { targetCtx.restore() }
         return true
+    }
+
+    dispose(): void {
+        if (this.gl && !this.gl.isContextLost()) {
+            if (this.addProgram) this.gl.deleteProgram(this.addProgram)
+            if (this.resolveProgram) this.gl.deleteProgram(this.resolveProgram)
+            if (this.srcTex) this.gl.deleteTexture(this.srcTex)
+            if (this.accumTex) this.gl.deleteTexture(this.accumTex)
+            if (this.accumFbo) this.gl.deleteFramebuffer(this.accumFbo)
+            this.gl.getExtension('WEBGL_lose_context')?.loseContext()
+        }
+        this.gl = null
+        this.canvas = null
+        this.addProgram = null
+        this.resolveProgram = null
+        this.srcTex = null
+        this.accumTex = null
+        this.accumFbo = null
     }
 }
 

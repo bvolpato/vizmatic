@@ -1,5 +1,7 @@
+import { spawnSync } from 'child_process'
 import { existsSync } from 'fs'
 import { cp, mkdir, rename, stat, writeFile } from 'fs/promises'
+import { cpus } from 'os'
 import { basename, dirname, extname, join, relative, resolve } from 'path'
 import { fileURLToPath } from 'url'
 import { captionsToVtt, posterTime, renderFilmFrame, renderFilmGif, renderFilmSheet, renderFilmSvg, renderFilmVideo, type Quality, type RenderBackend, type H264EncoderRequest } from './stage/export'
@@ -9,8 +11,9 @@ import { FILM_TEMPLATES } from './stage/templates'
 import { FILM_OBJECTS } from './stage/catalog'
 import { isFilm, type CompiledFilm, type FilmDefinition } from './stage/stage'
 import * as stageApi from './stage/index'
-import type { VideoFrameInfo } from './video'
+import { HARDWARE_H264_ENCODERS, probeAvailableH264Encoders, resolveH264Encoder, type VideoFrameInfo } from './video'
 import { rememberGpuSource } from './stage/gpu-source'
+import { defaultPoolSize } from './stage/raster'
 
 export type FilmFormat = 'mp4' | 'webm' | 'gif' | 'png' | 'svg'
 
@@ -157,7 +160,8 @@ export function parseFilmArgs(argv: readonly string[]): FilmArgs {
             }
             case '--encoder': {
                 const value = requireValue(argv, i++, arg) as H264EncoderRequest
-                if (!['auto', 'libx264', 'nvenc', 'videotoolbox'].includes(value)) throw new Error('--encoder must be auto, libx264, nvenc or videotoolbox')
+                const valid = ['auto', 'libx264', ...HARDWARE_H264_ENCODERS]
+                if (!valid.includes(value)) throw new Error('--encoder must be auto, libx264, nvenc, videotoolbox, vaapi, qsv or amf')
                 args.encoder = value
                 break
             }
@@ -594,4 +598,63 @@ export function runObjectsCommand(argv: readonly string[]): void {
         console.log('')
     }
     console.log(`Import everything from 'vizmatic/stage'. Add --json for a machine-readable list.`)
+}
+
+/** Report local CPU, FFmpeg, native hardware H.264 encoders, GPU browser, and uv readiness. */
+export async function runDoctorCommand(argv: readonly string[]): Promise<void> {
+    const json = argv.includes('--json')
+    const probeGpu = argv.includes('--probe-gpu')
+    const ffmpegIndex = argv.indexOf('--ffmpeg')
+    const ffmpegPath = ffmpegIndex >= 0 && argv[ffmpegIndex + 1] ? argv[ffmpegIndex + 1]! : 'ffmpeg'
+    const ffmpegCheck = spawnSync(ffmpegPath, ['-version'], { encoding: 'utf8' })
+    const ffmpegAvailable = ffmpegCheck.status === 0
+    const ffmpegVersion = ffmpegAvailable ? (ffmpegCheck.stdout.split(/\r?\n/)[0] ?? '').trim() : null
+    const uvCheck = spawnSync('uv', ['--version'], { encoding: 'utf8' })
+    const uvVersion = uvCheck.status === 0 ? uvCheck.stdout.trim() : null
+
+    const hardwareEncoders = ffmpegAvailable
+        ? await probeAvailableH264Encoders(ffmpegPath, { width: 1280, height: 720, fps: 30 })
+        : []
+    const autoEncoder = ffmpegAvailable
+        ? await resolveH264Encoder('auto', ffmpegPath, { width: 1280, height: 720, fps: 30 })
+        : 'libx264'
+
+    const { findBrowser, GpuRasterizer } = await import('./stage/gpu-selection')
+    const browserPath = await findBrowser().catch(() => null)
+    let gpuDevice: string | null = null
+    let gpuError: string | null = null
+    if (probeGpu) {
+        try {
+            const gpu = await GpuRasterizer.create()
+            gpuDevice = gpu.device
+            await gpu.close()
+        } catch (error) {
+            gpuError = error instanceof Error ? error.message : String(error)
+        }
+    }
+
+    const report = {
+        platform: process.platform,
+        arch: process.arch,
+        node: process.version,
+        cpuCores: cpus().length,
+        defaultWorkers: defaultPoolSize(),
+        ci: Boolean(process.env.CI || process.env.GITHUB_ACTIONS),
+        ffmpeg: { path: ffmpegPath, available: ffmpegAvailable, version: ffmpegVersion },
+        h264: { auto: autoEncoder, hardware: hardwareEncoders, supported: ['libx264', ...HARDWARE_H264_ENCODERS] },
+        gpuBrowser: { executable: browserPath, ...(probeGpu ? { device: gpuDevice, error: gpuError } : {}) },
+        uv: { available: uvVersion !== null, version: uvVersion },
+    }
+    if (json) {
+        process.stdout.write(`${JSON.stringify(report, null, 2)}\n`)
+        return
+    }
+    console.log(`Vizmatic accelerator diagnostics (${report.platform}/${report.arch}, Node ${report.node})`)
+    console.log(`  CPU:          ${report.cpuCores} logical cores (default raster pool: ${report.defaultWorkers} workers)`)
+    console.log(`  FFmpeg:       ${ffmpegAvailable ? ffmpegVersion : 'not found (install FFmpeg for MP4/WebM export)'}`)
+    console.log(`  H.264 auto:   ${report.h264.auto}${report.ci ? ' (CI disables automatic hardware encoding)' : ''}`)
+    console.log(`  Hardware H264:${hardwareEncoders.length ? ` ${hardwareEncoders.join(', ')}` : ' none detected (software libx264 available)'}`)
+    console.log(`  GPU browser:  ${browserPath ?? 'not found (set VIZMATIC_BROWSER_EXECUTABLE_PATH for --backend gpu)'}`)
+    if (probeGpu) console.log(`  GPU device:   ${gpuDevice ?? `unavailable (${gpuError})`}`)
+    console.log(`  uv (audio):   ${uvVersion ?? 'not found (optional; needed for vizmatic narrated audio tools)'}`)
 }

@@ -1,4 +1,6 @@
+import { findBrowser } from './gpu-browser'
 import { GpuRasterizer, GpuUnavailableError } from './gpu-raster'
+export { findBrowser, GpuRasterizer }
 import { gpuSourceOf } from './gpu-source'
 import { RasterPool, framesToJob, sameRasterJob } from './raster'
 import { parseColor } from './color'
@@ -94,9 +96,9 @@ export async function selectGpuRenderer(film: CompiledFilm, options: GpuExportOp
     const { width, height, dither, subframes, shutterSpan, workers } = options
     let count = 3
     if (options.request === 'auto') {
-        // Time whole CPU worker batches to measure sustained throughput.
+        // Time one whole CPU worker batch (capped at 12 frames) to measure sustained throughput without bloated probes.
         const budget = options.memoryBudget ?? Math.min(2 * 1024 ** 3, totalmem() * 0.25)
-        const capacity = Math.min(24, Math.max(3, workers * 2), Math.floor(budget / (width * height * 4 * 4)))
+        const capacity = Math.min(12, Math.max(3, workers), Math.floor(budget / (width * height * 4 * 4)))
         count = Math.floor(capacity / workers) * workers
         if (count < 3) return { source: false, reason: 'GPU probe needs at least three frames and a whole CPU worker batch' }
     }
@@ -106,7 +108,9 @@ export async function selectGpuRenderer(film: CompiledFilm, options: GpuExportOp
     try {
         gpu = await GpuRasterizer.create(options.signal, gpuSourceOf(film))
         const source = gpu.usesFilmSource
-        const pool = new RasterPool(options.workers)
+        // Explicit GPU mode only needs up to 3 CPU workers for pixel parity verification, not the entire CPU pool.
+        const probeWorkers = options.request === 'gpu' ? Math.min(options.workers, count) : options.workers
+        const pool = new RasterPool(probeWorkers)
         let keepPool = false
         const timesAt = (time: number) => Array.from({ length: subframes }, (_, index) => time + index / subframes * shutterSpan)
         const background = (value: string | null): readonly [number, number, number] => {
@@ -116,12 +120,14 @@ export async function selectGpuRenderer(film: CompiledFilm, options: GpuExportOp
             const indices = Array.from({ length: count }, (_, i) => Math.floor(options.count * (i + 0.5) / count))
             const frameTime = (index: number) => options.from + index / film.fps
             const moments = indices.map(frameTime)
-            const warmTimes = timesAt(moments[0])
-            const warm = await sampleGpuFrames(film, warmTimes, options.signal)
-            const warmJob = framesToJob(warm, width, background, height, dither)
-            // Start every CPU worker before measuring; otherwise worker startup makes GPU look faster.
-            await withAbort(Promise.all(Array.from({ length: options.workers }, () => pool.run(warmJob))), options.signal)
-            await gpu.run(source ? { times: warmTimes, width, height, dither } : { frames: warm, width, height, dither })
+            if (options.request === 'auto') {
+                const warmTimes = timesAt(moments[0])
+                const warm = await sampleGpuFrames(film, warmTimes, options.signal)
+                const warmJob = framesToJob(warm, width, background, height, dither)
+                // Start every CPU worker before measuring; otherwise worker startup makes GPU look faster.
+                await withAbort(Promise.all(Array.from({ length: probeWorkers }, () => pool.run(warmJob))), options.signal)
+                await gpu.run(source ? { times: warmTimes, width, height, dither } : { frames: warm, width, height, dither })
+            }
             let buildMs = 0, prepareCpuMs = 0
             const frames: Frame[][] = []
             const jobs: ReturnType<typeof framesToJob>[] = []

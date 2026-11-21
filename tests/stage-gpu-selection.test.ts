@@ -6,7 +6,11 @@ import { selectGpuRenderer, type GpuExportOptions } from '../src/stage/gpu-selec
 import { RasterPool } from '../src/stage/raster'
 import { compileFilm, film, Suspend } from '../src/stage/stage'
 
-vi.mock('../src/video', () => ({ renderRgbaVideo: vi.fn(), resolveH264Encoder: vi.fn() }))
+vi.mock('../src/video', () => ({
+    HARDWARE_H264_ENCODERS: ['videotoolbox', 'nvenc', 'vaapi', 'qsv', 'amf'],
+    renderRgbaVideo: vi.fn(),
+    resolveH264Encoder: vi.fn(),
+}))
 
 function encoded(options: RgbaVideoOptions): RgbaVideoOutput {
     const fps = options.fps ?? 30
