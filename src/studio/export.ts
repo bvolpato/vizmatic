@@ -5,7 +5,8 @@
  */
 import * as gifenc from 'gifenc'
 import { paintCanvasBloom, type CanvasBloom } from '../stage/bloom-canvas'
-import { supportsWebGLBloom } from '../stage/bloom-webgl'
+import { createWebGLBloomPresenter, supportsWebGLBloom, WebGLSubframeAccumulator, type WebGLBloomPresenter } from '../stage/bloom-webgl'
+import { parseColor } from '../stage/color'
 import { FilmPlayer } from '../stage/player'
 import { isSuspend, type CompiledFilm, type Frame } from '../stage/index'
 import { muxMp4, muxWebm, vp9Config, type Mp4Sample, type VideoCodec } from './mp4'
@@ -86,17 +87,24 @@ function nextTask(): Promise<void> {
     })
 }
 
-/** Paints frames at any resolution, including bloom and optional motion blur. */
+/** Paints frames at any resolution, including GPU WebGL2 bloom and float32 motion blur. */
 export class FramePainter {
     readonly canvas = document.createElement('canvas')
     private readonly player: FilmPlayer
     private readonly accumulate: HTMLCanvasElement | null
     private readonly accumulateCtx: CanvasRenderingContext2D | null
+    private readonly bloomCanvas: HTMLCanvasElement | null
+    private bloomPresenter: WebGLBloomPresenter | null | undefined
+    private bloomBgKey: string | null | undefined
+    private bloomBgRgb: readonly number[] = [0, 0, 0]
+    private floatAccum: WebGLSubframeAccumulator | null = null
     private bloomState: CanvasBloom | null = null
 
     constructor(private readonly film: CompiledFilm, readonly width: number, readonly height: number, private readonly blur: number) {
-        this.player = new FilmPlayer(this.canvas, film, { pixelRatio: width / film.width, bloom: blur <= 1 })
+        const useDirectBloom = film.look.dark && film.bloom > 0 && supportsWebGLBloom(this.canvas)
+        this.player = new FilmPlayer(this.canvas, film, { pixelRatio: width / film.width, bloom: blur <= 1 && !useDirectBloom })
         if (this.canvas.height !== height) this.canvas.height = height
+        this.bloomCanvas = useDirectBloom ? document.createElement('canvas') : null
         if (blur > 1) {
             this.accumulate = document.createElement('canvas')
             this.accumulate.width = width
@@ -108,18 +116,59 @@ export class FramePainter {
         }
     }
 
+    private applyBloom(source: HTMLCanvasElement, sourceCtx: CanvasRenderingContext2D | null, frame: Frame): HTMLCanvasElement {
+        if (!frame.dark || frame.bloom <= 0) return source
+        if (this.bloomCanvas) {
+            if (this.bloomBgKey !== frame.background) {
+                this.bloomBgKey = frame.background
+                this.bloomBgRgb = parseColor(frame.background ?? '#000000')
+            }
+            if (this.bloomPresenter === undefined) this.bloomPresenter = createWebGLBloomPresenter(this.bloomCanvas)
+            if (this.bloomPresenter && this.bloomPresenter.paint(source, frame.bloom, this.bloomBgRgb, true)) {
+                return this.bloomCanvas
+            }
+        }
+        const target = sourceCtx ? source : this.accumulate!
+        const ctx = sourceCtx ?? this.accumulateCtx!
+        if (!sourceCtx) {
+            ctx.setTransform(1, 0, 0, 1, 0, 0)
+            ctx.globalAlpha = 1
+            ctx.globalCompositeOperation = 'copy'
+            ctx.drawImage(source, 0, 0)
+        }
+        this.bloomState = paintCanvasBloom(target, ctx, frame.bloom, frame.background, this.bloomState)
+        return target
+    }
+
     async paint(time: number, fps: number): Promise<HTMLCanvasElement> {
         if (!this.accumulate || !this.accumulateCtx) {
-            await this.seek(time)
+            const frame = await this.seek(time)
+            if (this.bloomCanvas) {
+                return this.applyBloom(this.canvas, this.canvas.getContext('2d'), frame)
+            }
             return this.canvas
+        }
+        const shutter = 0.5 / fps
+        let lastFrame: Frame | null = null
+        if (!this.floatAccum && supportsWebGLBloom(this.canvas)) {
+            this.floatAccum = new WebGLSubframeAccumulator()
+        }
+        if (this.floatAccum?.begin(this.canvas)) {
+            let ok = true
+            for (let i = 0; i < this.blur; i++) {
+                lastFrame = await this.seek(time + (i / this.blur) * shutter)
+                if (!this.floatAccum.add(this.canvas)) { ok = false; break }
+            }
+            const resolved = ok ? this.floatAccum.resolveCanvas() : null
+            if (resolved && lastFrame) {
+                return this.applyBloom(resolved, null, lastFrame)
+            }
         }
         const ctx = this.accumulateCtx
         ctx.setTransform(1, 0, 0, 1, 0, 0)
         ctx.globalCompositeOperation = 'source-over'
         ctx.globalAlpha = 1
         ctx.clearRect(0, 0, this.width, this.height)
-        const shutter = 0.5 / fps
-        let lastFrame: Frame | null = null
         for (let i = 0; i < this.blur; i++) {
             lastFrame = await this.seek(time + (i / this.blur) * shutter)
             if (i === 0) {
@@ -141,7 +190,7 @@ export class FramePainter {
         ctx.globalAlpha = 1
         ctx.globalCompositeOperation = 'source-over'
         if (lastFrame && lastFrame.bloom > 0 && lastFrame.dark) {
-            this.bloomState = paintCanvasBloom(this.accumulate, ctx, lastFrame.bloom, lastFrame.background, this.bloomState)
+            return this.applyBloom(this.accumulate, ctx, lastFrame)
         }
         return this.accumulate
     }
@@ -163,6 +212,10 @@ export class FramePainter {
     }
 
     destroy(): void {
+        this.bloomPresenter?.dispose()
+        this.bloomPresenter = null
+        this.floatAccum?.dispose()
+        this.floatAccum = null
         this.player.destroy()
     }
 }
@@ -192,37 +245,43 @@ interface EncoderChoice {
     codec: string
     container: 'mp4' | 'webm'
     mp4Codec?: VideoCodec
+    hardware: boolean
     config: VideoEncoderConfig
 }
 
 async function chooseEncoder(format: 'mp4' | 'webm', width: number, height: number, fps: number, bitrate: number): Promise<EncoderChoice | null> {
     if (typeof VideoEncoder === 'undefined') return null
     const base = { width, height, bitrate, framerate: fps, latencyMode: 'quality' as const }
-    const test = async (codec: string, extra: Partial<VideoEncoderConfig> = {}): Promise<VideoEncoderConfig | null> => {
-        const config: VideoEncoderConfig = { ...base, codec, ...extra }
-        try {
-            const support = await VideoEncoder.isConfigSupported(config)
-            return support.supported ? config : null
-        } catch {
-            return null
+    const test = async (codec: string, extra: Partial<VideoEncoderConfig> = {}): Promise<{ config: VideoEncoderConfig; hardware: boolean } | null> => {
+        for (const hardwareAcceleration of ['prefer-hardware', 'no-preference'] as const) {
+            const config: VideoEncoderConfig = { ...base, codec, hardwareAcceleration, ...extra }
+            try {
+                const support = await VideoEncoder.isConfigSupported(config)
+                if (support.supported) {
+                    return { config: support.config ?? config, hardware: hardwareAcceleration === 'prefer-hardware' }
+                }
+            } catch {
+                // Fall through to the next acceleration mode.
+            }
         }
+        return null
     }
     if (format === 'mp4') {
         for (const codec of h264Candidates(width, height, fps)) {
-            const config = await test(codec, { avc: { format: 'avc' } })
-            if (config) return { codec, container: 'mp4', mp4Codec: 'avc1', config }
+            const hit = await test(codec, { avc: { format: 'avc' } })
+            if (hit) return { codec, container: 'mp4', mp4Codec: 'avc1', hardware: hit.hardware, config: hit.config }
         }
         for (const codec of vp9Candidates(width, height, fps)) {
-            const config = await test(codec)
-            if (config) return { codec, container: 'mp4', mp4Codec: 'vp09', config }
+            const hit = await test(codec)
+            if (hit) return { codec, container: 'mp4', mp4Codec: 'vp09', hardware: hit.hardware, config: hit.config }
         }
     }
     for (const codec of vp9Candidates(width, height, fps)) {
-        const config = await test(codec)
-        if (config) return { codec, container: 'webm', config }
+        const hit = await test(codec)
+        if (hit) return { codec, container: 'webm', hardware: hit.hardware, config: hit.config }
     }
     const vp8 = await test('vp8')
-    if (vp8) return { codec: 'vp8', container: 'webm', config: vp8 }
+    if (vp8) return { codec: 'vp8', container: 'webm', hardware: vp8.hardware, config: vp8.config }
     return null
 }
 
@@ -294,13 +353,14 @@ async function exportVideo(film: CompiledFilm, settings: ExportSettings, control
     }
     control.onProgress?.({ done: total, total, stage: 'Writing file' })
     await nextTask()
+    const accel = choice.hardware ? ', hardware' : ''
     if (choice.container === 'webm') {
         return {
             bytes: muxWebm({ width, height, fps, codecId: choice.codec === 'vp8' ? 'V_VP8' : 'V_VP9', samples }),
             type: 'video/webm', extension: 'webm',
             note: settings.format === 'mp4'
-                ? `This browser cannot write MP4 here, so this is WebM (${choice.codec}). The film.tsx export renders MP4 with the CLI.`
-                : `WebM, ${choice.codec}, ${width}x${height} at ${fps} fps`,
+                ? `This browser cannot write MP4 here, so this is WebM (${choice.codec}${accel}). The film.tsx export renders MP4 with the CLI.`
+                : `WebM, ${choice.codec}${accel}, ${width}x${height} at ${fps} fps`,
         }
     }
     const color = {
@@ -315,7 +375,7 @@ async function exportVideo(film: CompiledFilm, settings: ExportSettings, control
     return {
         bytes: muxMp4({ codec: choice.mp4Codec!, width, height, fps, description: box, samples, color }),
         type: 'video/mp4', extension: 'mp4',
-        note: `MP4, ${choice.mp4Codec === 'avc1' ? 'H.264' : 'VP9'} (${choice.codec}), ${width}x${height} at ${fps} fps`,
+        note: `MP4, ${choice.mp4Codec === 'avc1' ? 'H.264' : 'VP9'} (${choice.codec}${accel}), ${width}x${height} at ${fps} fps`,
     }
 }
 

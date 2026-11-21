@@ -1,6 +1,9 @@
 import { paintFrame } from './display-canvas'
 import { paintCanvasBloom, type CanvasBloom } from './bloom-canvas'
-import { supportsWebGLBloom, WebGLSubframeAccumulator } from './bloom-webgl'
+import { createWebGLBloomPresenter, supportsWebGLBloom, WebGLSubframeAccumulator, type WebGLBloomPresenter } from './bloom-webgl'
+import { parseColor } from './color'
+import type { Frame } from './display'
+import type { Path } from './geometry'
 import { decodeGpuJob, type GpuFrameJob } from './gpu-wire'
 import type { StageImage } from './node'
 import { isSuspend, type CompiledFilm, type CompileOverrides } from './stage'
@@ -10,10 +13,90 @@ const canvas = document.createElement('canvas')
 const context = canvas.getContext('2d', { willReadFrequently: false })!
 const accumulated = document.createElement('canvas')
 const average = accumulated.getContext('2d', { willReadFrequently: false })!
+const bloomCanvas = document.createElement('canvas')
+let bloomPresenter: WebGLBloomPresenter | null | undefined
+let bloomBgKey: string | null | undefined
+let bloomBgRgb: readonly number[] = [0, 0, 0]
 let floatAccum: WebGLSubframeAccumulator | null = null
 const images = new Map<string, ImageBitmap>()
 let bloom: CanvasBloom | null = null
 let film: CompiledFilm | undefined
+let lastRenderedJob: { width: number; height: number; dither: boolean; frames: readonly Frame[] } | null = null
+
+function samePaint(a: unknown, b: unknown): boolean {
+    if (a === b) return true
+    if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false
+    if (Array.isArray(a) && Array.isArray(b)) {
+        if (a.length !== b.length) return false
+        for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false
+        return true
+    }
+    const ga = a as { kind?: string; from?: readonly number[]; to?: readonly number[]; stops?: readonly { offset: number; color: readonly number[] }[] }
+    const gb = b as typeof ga
+    if (ga.kind !== gb.kind || !ga.stops || !gb.stops || ga.stops.length !== gb.stops.length) return false
+    if (ga.from && gb.from && (ga.from[0] !== gb.from[0] || ga.from[1] !== gb.from[1])) return false
+    if (ga.to && gb.to && (ga.to[0] !== gb.to[0] || ga.to[1] !== gb.to[1])) return false
+    for (let i = 0; i < ga.stops.length; i++) {
+        const sa = ga.stops[i]!, sb = gb.stops[i]!
+        if (sa.offset !== sb.offset || !samePaint(sa.color, sb.color)) return false
+    }
+    return true
+}
+
+function samePath(a: Path, b: Path): boolean {
+    if (a === b) return true
+    if (a.length !== b.length) return false
+    for (let i = 0; i < a.length; i++) {
+        const ra = a[i]!, rb = b[i]!
+        if (ra.closed !== rb.closed || ra.p.length !== rb.p.length) return false
+        for (let j = 0; j < ra.p.length; j++) if (ra.p[j] !== rb.p[j]) return false
+    }
+    return true
+}
+
+function sameClips(a?: readonly Path[], b?: readonly Path[]): boolean {
+    if (a === b) return true
+    if (!a || !b || a.length !== b.length) return false
+    for (let i = 0; i < a.length; i++) if (!samePath(a[i]!, b[i]!)) return false
+    return true
+}
+
+function sameFrame(a: Frame, b: Frame): boolean {
+    if (a === b) return true
+    if (a.width !== b.width || a.height !== b.height || a.background !== b.background
+        || a.bloom !== b.bloom || a.dark !== b.dark || a.ops.length !== b.ops.length) return false
+    for (let i = 0; i < a.ops.length; i++) {
+        const oa = a.ops[i]!, ob = b.ops[i]!
+        if (oa.kind !== ob.kind) return false
+        if (oa.kind === 'image' && ob.kind === 'image') {
+            if (oa.image.pixels || ob.image.pixels) return false
+            if (oa.alpha !== ob.alpha || oa.blend !== ob.blend || oa.dim !== ob.dim
+                || !samePaint(oa.backdrop, ob.backdrop) || !sameClips(oa.clips, ob.clips)
+                || oa.image.src !== ob.image.src || oa.image.width !== ob.image.width || oa.image.height !== ob.image.height) return false
+            for (let m = 0; m < 6; m++) if (oa.matrix[m] !== ob.matrix[m]) return false
+        } else if (oa.kind === 'path' && ob.kind === 'path') {
+            if (oa.fillAlpha !== ob.fillAlpha || oa.strokeAlpha !== ob.strokeAlpha
+                || oa.strokeWidth !== ob.strokeWidth || oa.cap !== ob.cap || oa.join !== ob.join
+                || oa.dashOffset !== ob.dashOffset || oa.glow !== ob.glow || oa.blend !== ob.blend
+                || !sameClips(oa.clips, ob.clips) || !samePaint(oa.fill, ob.fill)
+                || !samePaint(oa.stroke, ob.stroke) || !samePaint(oa.glowColor, ob.glowColor)) return false
+            if ((oa.dash?.length ?? 0) !== (ob.dash?.length ?? 0)) return false
+            if (oa.dash && ob.dash) {
+                for (let d = 0; d < oa.dash.length; d++) if (oa.dash[d] !== ob.dash[d]) return false
+            }
+            if (!samePath(oa.path, ob.path) || !samePath(oa.strokePath, ob.strokePath)) return false
+        }
+    }
+    return true
+}
+
+function sameJobFrames(job: GpuFrameJob): boolean {
+    const prev = lastRenderedJob
+    if (!prev || prev.width !== job.width || prev.height !== job.height || prev.dither !== job.dither) return false
+    if (prev.frames.length !== job.frames.length) return false
+    for (let i = 0; i < job.frames.length; i++) if (!sameFrame(prev.frames[i]!, job.frames[i]!)) return false
+    return true
+}
 
 interface FilmSource { overrides: CompileOverrides; expected: Record<string, unknown> }
 
@@ -57,9 +140,13 @@ function lookup(image: StageImage): CanvasImageSource | null {
     return images.get(image.asset?.src ?? image.src) ?? null
 }
 
-async function paint(job: GpuFrameJob): Promise<{ pixels: Promise<Uint8Array<ArrayBuffer>>; rasterMs: number; bloomMs: number; readbackStarted: number }> {
+async function paint(job: GpuFrameJob): Promise<{ repeat?: boolean; pixels: Promise<Uint8Array<ArrayBuffer>>; rasterMs: number; bloomMs: number; readbackStarted: number }> {
     const { width, height, frames, dither } = job
     if (!frames.length) throw new Error('A GPU frame needs at least one sample')
+    if (sameJobFrames(job)) {
+        const now = performance.now()
+        return { repeat: true, pixels: Promise.resolve(new Uint8Array(0)), rasterMs: 0, bloomMs: 0, readbackStarted: now }
+    }
     if (!supportsWebGLBloom(canvas)) throw new Error('The GPU rendering context was lost')
     if (canvas.width !== width || canvas.height !== height) {
         canvas.width = accumulated.width = width
@@ -68,26 +155,33 @@ async function paint(job: GpuFrameJob): Promise<{ pixels: Promise<Uint8Array<Arr
     }
     await prepareImages(job)
     const started = performance.now()
-    let usedFloatAccum = false
+    let directSource: HTMLCanvasElement | null = null
     if (frames.length > 1) {
         if (!floatAccum && typeof WebGLSubframeAccumulator === 'function') floatAccum = new WebGLSubframeAccumulator()
         if (floatAccum?.begin(canvas)) {
-            usedFloatAccum = true
+            let ok = true
             for (let i = 0; i < frames.length; i++) {
                 paintFrame(context, frames[i], width / frames[i].width, lookup)
-                if (!floatAccum.add(canvas)) { usedFloatAccum = false; break }
+                if (!floatAccum.add(canvas)) { ok = false; break }
             }
-            if (usedFloatAccum && !floatAccum.resolveTo(average)) usedFloatAccum = false
+            if (ok) directSource = floatAccum.resolveCanvas()
         }
     }
-    if (!usedFloatAccum) {
+    let target: HTMLCanvasElement
+    let targetCtx: CanvasRenderingContext2D | null = null
+    if (frames.length === 1) {
+        paintFrame(context, frames[0], width / frames[0].width, lookup)
+        target = canvas
+        targetCtx = context
+    } else if (directSource) {
+        target = directSource
+    } else {
         average.resetTransform()
         average.globalAlpha = 1
         average.globalCompositeOperation = 'source-over'
         average.clearRect(0, 0, width, height)
         for (let i = 0; i < frames.length; i++) {
             paintFrame(context, frames[i], width / frames[i].width, lookup)
-            if (frames.length === 1) continue
             if (i === 0) {
                 average.globalCompositeOperation = 'copy'
                 average.drawImage(canvas, 0, 0)
@@ -102,20 +196,43 @@ async function paint(job: GpuFrameJob): Promise<{ pixels: Promise<Uint8Array<Arr
         }
         average.globalAlpha = 1
         average.globalCompositeOperation = 'source-over'
+        target = accumulated
+        targetCtx = average
     }
-    const target = frames.length === 1 ? canvas : accumulated
-    const ctx = frames.length === 1 ? context : average
     const rasterMs = performance.now() - started
     const bloomStart = performance.now()
     const last = frames[frames.length - 1]
-    if (last.dark && last.bloom > 0) bloom = paintCanvasBloom(target, ctx, last.bloom, last.background, bloom, dither)
+    let outputCanvas: HTMLCanvasElement = target
+    if (last.dark && last.bloom > 0) {
+        if (bloomBgKey !== last.background) {
+            bloomBgKey = last.background
+            bloomBgRgb = parseColor(last.background ?? '#000000')
+        }
+        if (bloomPresenter === undefined) bloomPresenter = createWebGLBloomPresenter(bloomCanvas)
+        if (bloomPresenter && bloomPresenter.paint(target, last.bloom, bloomBgRgb, dither)) {
+            // Direct WebGL2 bloom skips the WebGL2-to-Canvas2D drawImage roundtrip before VideoFrame capture.
+            outputCanvas = bloomCanvas
+        } else {
+            if (!targetCtx) {
+                average.resetTransform()
+                average.globalAlpha = 1
+                average.globalCompositeOperation = 'copy'
+                average.drawImage(target, 0, 0)
+                target = accumulated
+                targetCtx = average
+            }
+            bloom = paintCanvasBloom(target, targetCtx, last.bloom, last.background, bloom, dither)
+            outputCanvas = target
+        }
+    }
     const bloomMs = performance.now() - bloomStart
     // Raw RGBA goes through the same FFmpeg color conversion and quality settings as CPU export.
     const readbackStarted = performance.now()
-    const snapshot = new VideoFrame(target, { timestamp: 0 })
+    const snapshot = new VideoFrame(outputCanvas, { timestamp: 0 })
     const buffer = new Uint8Array(width * height * 4)
     const pixels = snapshot.copyTo(buffer, { format: 'RGBA', colorSpace: 'srgb' }).then(() => buffer).finally(() => snapshot.close())
     pixels.catch(() => {})
+    lastRenderedJob = { width, height, dither, frames }
     // Keep only assets used by this frame. Generated pixel canvases use the painter's WeakMap.
     const used = new Set(frames.flatMap(frame => frame.ops.flatMap(op => op.kind === 'image' && !op.image.pixels ? [op.image.asset?.src ?? op.image.src] : [])))
     for (const [source, bitmap] of images) if (!used.has(source)) { bitmap.close(); images.delete(source) }
@@ -142,17 +259,23 @@ async function run(): Promise<void> {
             next = fetch('./next', { signal })
             next.catch(() => {})
             const job: GpuFrameJob = 'times' in decoded ? { ...decoded, frames: await Promise.all(decoded.times.map(sample)) } : decoded
-            const { pixels, rasterMs, bloomMs, readbackStarted } = await paint(job)
+            const { repeat, pixels, rasterMs, bloomMs, readbackStarted } = await paint(job)
+            const prior = repeat ? pending[pending.length - 1] : undefined
             const sent = pixels.then(async buffer => {
-                const result = await fetch(`./result/${id}`, {
-                    method: 'POST', body: buffer, signal,
-                    headers: { 'x-raster-ms': String(rasterMs), 'x-bloom-ms': String(bloomMs), 'x-readback-ms': String(performance.now() - readbackStarted) },
-                })
+                // Ensure the referenced full frame finished delivery before its 0-byte repeat arrives.
+                if (prior) await prior
+                const headers: Record<string, string> = {
+                    'x-raster-ms': String(rasterMs),
+                    'x-bloom-ms': String(bloomMs),
+                    'x-readback-ms': String(repeat ? 0 : performance.now() - readbackStarted),
+                }
+                if (repeat) headers['x-frame-repeat'] = '1'
+                const result = await fetch(`./result/${id}`, { method: 'POST', body: buffer, signal, headers })
                 if (!result.ok) throw new Error(`GPU frame delivery returned HTTP ${result.status}`)
             })
             sent.catch(error => transport.abort(error))
             pending.push(sent)
-            if (pending.length >= 2) await pending.shift()
+            if (pending.length >= 4) await pending.shift()
         }
     } catch (error) {
         throw signal.aborted ? signal.reason : error

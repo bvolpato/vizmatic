@@ -234,10 +234,11 @@ function usageText() {
   vizmatic preview <file> [--port <n>] [--open]
   vizmatic check <file> [--look midnight,paper] [--motion] [--content-top <px>] [--text-margin <px>] [--text-gap <part>] [--text-size <px>] [--empty-space <part>] [--empty-seconds <s>] [--reading-speed <n>] [--stepped] [--json]
   vizmatic film <file...> [--out <dir>] [--look midnight,paper] [--format mp4,webm,gif,png,svg] [--quality draft|standard|high|master]
-                [--backend auto|cpu|gpu] [--encoder auto|libx264|nvenc|videotoolbox]
+                [--backend auto|cpu|gpu] [--encoder auto|libx264|nvenc|videotoolbox|vaapi|qsv|amf]
                 [--dither|--no-dither] [--fps <n>] [--width <n>] [--motion-blur <n>] [--shutter <0-1>] [--range a:b] [--frame t[,t]] [--every <seconds>]
                 [--sheet] [--columns <n>] [--poster] [--workers <n>] [--audio <file>] [--name <output name>] [--background <color|none>]
                 [--ffmpeg <path>] [--json]
+  vizmatic doctor [--probe-gpu] [--ffmpeg <path>] [--json]
   vizmatic looks [--json]
   vizmatic sounds [list]
   vizmatic sounds render <name> --out <file.wav>
@@ -2302,6 +2303,9 @@ async function main() {
     } else if (command === 'narrated') {
         const { runNarratedCommand } = await loadNarratedCli()
         await runNarratedCommand(rest)
+    } else if (command === 'doctor') {
+        const { runDoctorCommand } = await loadFilmCli()
+        await runDoctorCommand(rest)
     } else if (command === 'looks') {
         const { runLooksCommand } = await loadFilmCli()
         runLooksCommand(rest)

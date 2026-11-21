@@ -68,6 +68,7 @@ export class GpuRasterizer {
     private readonly queue: Pending[] = []
     private poll: ServerResponse | undefined
     private serial = 0
+    private lastPixels: Uint8Array | undefined
     private failure: Error | undefined
     private closing: Promise<void> | undefined
     private readyResolve!: () => void
@@ -167,8 +168,18 @@ export class GpuRasterizer {
         } else if (request.method === 'POST' && /^result\/\d+$/.test(route)) {
             const id = Number(route.slice(7)), job = this.pending.get(id)
             if (!job) { response.writeHead(404, { Connection: 'close' }).end(); return }
-            const pixels = await body(request, job.bytes)
-            if (pixels.byteLength !== job.bytes) throw new GpuUnavailableError('GPU frame delivery was truncated')
+            let pixels: Uint8Array
+            if (request.headers['x-frame-repeat'] === '1') {
+                await body(request, 0)
+                if (!this.lastPixels || this.lastPixels.byteLength !== job.bytes) {
+                    throw new GpuUnavailableError('GPU frame repeat arrived before an initial frame')
+                }
+                pixels = this.lastPixels
+            } else {
+                pixels = await body(request, job.bytes)
+                if (pixels.byteLength !== job.bytes) throw new GpuUnavailableError('GPU frame delivery was truncated')
+                this.lastPixels = pixels
+            }
             this.pending.delete(id); clearTimeout(job.timer)
             this.rasterMs += Number(request.headers['x-raster-ms']) || 0
             this.bloomMs += Number(request.headers['x-bloom-ms']) || 0

@@ -53,9 +53,26 @@ export default film({ title: 'Short', fps: 10 }, (s) => {
 describe('vizmatic film', () => {
     it('validates renderer and encoder choices before starting an export', () => {
         expect(parseFilmArgs(['intro.ts', '--backend', 'gpu', '--encoder', 'nvenc'])).toMatchObject({ backend: 'gpu', encoder: 'nvenc' })
+        expect(parseFilmArgs(['intro.ts', '--encoder', 'vaapi'])).toMatchObject({ encoder: 'vaapi' })
+        expect(parseFilmArgs(['intro.ts', '--encoder', 'qsv'])).toMatchObject({ encoder: 'qsv' })
+        expect(parseFilmArgs(['intro.ts', '--encoder', 'amf'])).toMatchObject({ encoder: 'amf' })
         expect(() => parseFilmArgs(['intro.ts', '--backend', 'cuda'])).toThrow('--backend must be auto, cpu or gpu')
-        expect(() => parseFilmArgs(['intro.ts', '--encoder', 'cuda'])).toThrow('--encoder must be auto, libx264, nvenc or videotoolbox')
+        expect(() => parseFilmArgs(['intro.ts', '--encoder', 'cuda'])).toThrow('--encoder must be auto, libx264, nvenc, videotoolbox, vaapi, qsv or amf')
     })
+
+    it('reports local accelerator diagnostics via vizmatic doctor --json', () => {
+        const result = cli(['doctor', '--json'])
+        expect(result.status, result.stderr).toBe(0)
+        const report = JSON.parse(result.stdout)
+        expect(report).toMatchObject({
+            platform: process.platform,
+            arch: process.arch,
+            h264: {
+                supported: expect.arrayContaining(['libx264', 'videotoolbox', 'nvenc', 'vaapi', 'qsv', 'amf']),
+            },
+        })
+        expect(report.cpuCores).toBeGreaterThan(0)
+    }, 30_000)
     it.skipIf(!hasFfmpeg).each(['narration', 'narrated'])('renders intact synthetic %s captions into WebVTT and MP4', async (caller) => {
         const directory = await tempDirectory()
         const samples = [

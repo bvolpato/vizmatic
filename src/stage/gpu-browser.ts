@@ -115,7 +115,7 @@ export class GpuBrowser {
     }
 }
 
-async function findBrowser(): Promise<string> {
+export async function findBrowser(): Promise<string> {
     const configured = process.env.VIZMATIC_BROWSER_EXECUTABLE_PATH
     const names = process.platform === 'win32' ? ['chrome.exe', 'msedge.exe', 'chromium.exe']
         : ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser', 'microsoft-edge', 'microsoft-edge-stable']
