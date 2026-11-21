@@ -601,6 +601,7 @@
     function setOpen(toggle, open) {
       const navigation = controlledNavigation(toggle)
       toggle.setAttribute('aria-expanded', String(open))
+      toggle.textContent = open ? 'Close' : 'Menu'
       if (navigation) {
         navigation.dataset.open = String(open)
         navigation.classList.toggle('is-open', open)
@@ -610,6 +611,7 @@
     toggles.forEach((toggle) => {
       const navigation = controlledNavigation(toggle)
       const initiallyOpen = toggle.getAttribute('aria-expanded') === 'true'
+      toggle.textContent = initiallyOpen ? 'Close' : 'Menu'
       if (navigation) {
         navigation.dataset.open = String(initiallyOpen)
         navigation.classList.toggle('is-open', initiallyOpen)
@@ -618,6 +620,14 @@
       navigation?.addEventListener('click', (event) => {
         const link = event.target instanceof Element ? event.target.closest('a') : null
         if (link) setOpen(toggle, false)
+      })
+    })
+
+    document.addEventListener('click', (event) => {
+      const target = event.target instanceof Element ? event.target : null
+      if (!target || target.closest('.nav-shell')) return
+      toggles.forEach((toggle) => {
+        if (toggle.getAttribute('aria-expanded') === 'true') setOpen(toggle, false)
       })
     })
 
