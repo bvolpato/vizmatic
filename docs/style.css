@@ -190,9 +190,9 @@ html:not(.js) .scrub-film, html:not(.js) .scrub-progress, html:not(.js) .scrub-c
 .lab-readout { font-family: var(--serif); font-size: clamp(36px, 3.6vw, 56px); line-height: 1.1; font-variant-numeric: tabular-nums; }
 .lab-matrix { display: inline-grid; grid-template-columns: auto auto; gap: 0 22px; padding: 2px 16px; border-left: 1.5px solid currentColor; border-right: 1.5px solid currentColor; border-radius: 10px / 50%; }
 .lab-matrix span { text-align: right; }
-.lab-matrix .i { color: var(--lab-i, #5cc4f0); }
-.lab-matrix .j { color: var(--lab-j, #ffd75e); }
-:root[data-site-theme="light"] { --lab-i: #1f6fb2; --lab-j: #a86f00; }
+.lab-matrix .i { color: var(--lab-i, #4fd8c4); }
+.lab-matrix .j { color: var(--lab-j, #ff9d57); }
+:root[data-site-theme="light"] { --lab-i: #0b7d70; --lab-j: #c96c00; }
 .lab-stat { display: flex; justify-content: space-between; gap: 16px; padding: 9px 0; border-top: 1px solid var(--border); font: 13px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
 .lab-stat b { color: var(--text); font-weight: 400; }
 .lab-presets { display: flex; flex-wrap: wrap; gap: 6px; }

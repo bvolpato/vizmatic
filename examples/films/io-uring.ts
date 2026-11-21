@@ -42,7 +42,7 @@ export default film(
     look: 'midnight',
     font: 'text-serif',
     fps: 60,
-    poster: 22.8,
+    poster: 21.8,
   },
   (s) => {
     const kit = sceneKit({ size: 38 })
@@ -109,7 +109,7 @@ export default film(
     const wallWidth = Math.round(ch1LeftPane.width - 16)
     const syscallWall = boundary({
       width: wallWidth,
-      label: 'privilege wall (ring 3 <-> ring 0)',
+      label: 'privilege wall (ring 3 ↔ ring 0)',
       above: 'user space',
       below: 'kernel VFS',
       color: 'orange',
@@ -120,7 +120,7 @@ export default film(
 
     const driverWall = boundary({
       width: wallWidth,
-      label: 'block queue <-> NVMe IRQ',
+      label: 'block queue ↔ NVMe IRQ',
       below: 'NVMe SSD',
       color: 'blue',
       weight: 3,

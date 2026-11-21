@@ -47,7 +47,8 @@ export async function loadFilmCatalog(): Promise<FilmEntry[]> {
 
 export function formatDuration(seconds: number | undefined): string {
     if (!seconds) return ''
-    return `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, '0')}`
+    const total = Math.round(seconds)
+    return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
 }
 
 /** A wide film spans two rows beside two small ones. Every third row flips sides, so the wall reads as a layout. */
@@ -76,13 +77,14 @@ export async function renderFilmWall(films: readonly FilmEntry[], root: string, 
     const wide = options.emphasize === false ? new Map<number, 'left' | 'right'>() : wideIndexes(shown.length)
     const items = await Promise.all(shown.map(async (film, index) => {
         const hasPoster = await exists(`docs/assets/site/posters/${film.id}_dark.webp`)
-        const meta = [film.topic, formatDuration(film.duration), film.stepped ? 'Interactive deck' : ''].filter(Boolean).join(' \u00b7 ')
+        const meta = [film.topic, formatDuration(film.duration), film.audio ? 'Narrated' : '', film.stepped ? 'Interactive deck' : ''].filter(Boolean).join(' \u00b7 ')
         const lookLabel = film.look && film.look !== 'midnight' ? film.look[0]!.toUpperCase() + film.look.slice(1) : ''
         const lookBadge = lookLabel ? `<span class="wall-look" data-palette="${escapeHtml(film.look!)}" title="Original film look: ${escapeHtml(lookLabel)}"><i aria-hidden="true"></i>${escapeHtml(lookLabel)} look</span>` : ''
+        const lookAttr = film.look && film.look !== 'midnight' ? ` data-look="${escapeHtml(film.look)}"` : ''
         const poster = hasPoster ? `<img data-theme-image src="${root}assets/site/posters/${film.id}_dark.webp" alt="" width="960" height="540" loading="lazy" decoding="async">` : ''
         const side = wide.get(index)
         const topicAttr = ` data-topic="${escapeHtml(film.topic ?? '')}"`
-        return `<a class="wall-item${side ? ` is-wide is-${side}` : ''}"${topicAttr} href="${root}film/${film.id}.html"><span class="wall-frame" data-live-src="assets/stage/films/${film.id}.js"${film.posterTime !== undefined ? ` data-poster-time="${film.posterTime}"` : ''} data-label="${escapeHtml(film.summary || film.title)}">${poster}</span><h3>${escapeHtml(film.title)}</h3><p>${escapeHtml(film.summary)}</p><span class="wall-meta">${meta ? `<span class="meta">${escapeHtml(meta)}</span>` : ''}${lookBadge}</span></a>`
+        return `<a class="wall-item${side ? ` is-wide is-${side}` : ''}"${topicAttr} href="${root}film/${film.id}.html"><span class="wall-frame" data-live-src="assets/stage/films/${film.id}.js"${film.posterTime !== undefined ? ` data-poster-time="${film.posterTime}"` : ''}${lookAttr} data-label="${escapeHtml(film.summary || film.title)}">${poster}</span><h3>${escapeHtml(film.title)}</h3><p>${escapeHtml(film.summary)}</p><span class="wall-meta">${meta ? `<span class="meta">${escapeHtml(meta)}</span>` : ''}${lookBadge}</span></a>`
     }))
     return `<div class="wall">${items.join('')}</div>`
 }

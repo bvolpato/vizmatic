@@ -324,7 +324,7 @@ await Promise.all(films.map(async (film, index) => {
     const code = await highlight(source, sourcePath.endsWith('x') ? 'tsx' : 'ts')
     const previous = films[index - 1]
     const next = films[index + 1]
-    const meta = [film.topic, formatDuration(film.duration), film.stepped ? 'Interactive deck' : ''].filter(Boolean).join(' \u00b7 ')
+    const meta = [film.topic, formatDuration(film.duration), film.audio ? 'Narrated' : '', film.stepped ? 'Interactive deck' : ''].filter(Boolean).join(' \u00b7 ')
     const modeAttr = film.stepped ? 'stepped' : 'autoplay'
     const lookAttr = film.look && film.look !== 'midnight' ? ` data-fixed-look look="${escapeHtml(film.look)}"` : ''
     const audioHref = film.audio ? (/^(https?:|\.\.\/)/.test(film.audio) ? film.audio : `../${film.audio.replace(/^\.?\//, '')}`) : ''
@@ -383,9 +383,9 @@ const heroFilm = (await exists('examples/films/vizmatic-title.ts')) ? 'assets/st
 const figures = await renderFigures([
     { name: 'production-system-map', label: 'System map', alt: 'A dense production system map with services, data stores, regions, ports, and live metrics', caption: 'A production system on one page: services, boundaries, ports, protocols, and live numbers.' },
     { name: 'production-system-map-presentation', label: 'Same source, larger', alt: 'The same production system map rendered at presentation density, with larger type and strokes', caption: 'The same source at presentation density. One prop changes, and nothing else does.' },
-    { name: 'system-architecture', label: 'Architecture', alt: 'System architecture diagram with nested production boundaries and labeled relationships', caption: 'Nested boundaries, typed relationships, and labeled protocols.' },
-    { name: 'checkout-incident', label: 'Incident room', alt: 'A fictional reliability drill with routed services, recovery signals, and a timeline', caption: 'Routing, recovery metrics, and a response timeline on one page.' },
-    { name: 'eval-dashboard', label: 'Dashboard', alt: 'An evaluation dashboard with charts and tables', caption: 'Charts and tables that share one scale of type and rule.' },
+    { name: 'llm-serving-stack', label: 'LLM serving', alt: 'Disaggregated LLM serving stack with prefill, decode, KV cache store, and live telemetry', caption: 'Disaggregated prefill and decode pools, shared KV cache, and live throughput on one page.' },
+    { name: 'engineering-dashboard', label: 'Dashboard', alt: 'An engineering platform health dashboard with small multiples, latency heatmap, charts, and endpoint tables', caption: 'Small multiples, heatmaps, charts, and tables that share one scale of type and rule.' },
+    { name: 'data-pipeline-lineage', label: 'Data lineage', alt: 'End-to-end revenue data lineage across bronze, silver, and gold tables with freshness and schemas', caption: 'Column-level schemas, streaming and batch flows, and SLA freshness from event to board metric.' },
 ])
 const landingWall = await renderFilmWall(films, '', { limit: 6 })
 const fullWall = await renderFilmWall(films, '')

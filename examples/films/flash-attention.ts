@@ -145,7 +145,7 @@ export default film(
         look: 'blueprint',
         font: 'text-serif',
         fps: 60,
-        poster: 21.5,
+        poster: 22.8,
     },
     (s) => {
         const kit = sceneKit({ size: 38, source: { y: -420 } })
@@ -202,7 +202,7 @@ export default film(
             lanes(
                 ['Cores', 'HBM'],
                 [
-                    { lane: 'Cores', start: 0, end: 1.6, label: 'Q K^T', color: 'blue' },
+                    { lane: 'Cores', start: 0, end: 1.6, label: 'Q Kᵀ', color: 'blue' },
                     { lane: 'Cores', start: 1.6, end: 6.2, idle: true, color: 'dim' },
                     { lane: 'HBM', start: 1.6, end: 6.2, label: 'write+read S', color: 'red' },
                     { lane: 'Cores', start: 6.2, end: 7.6, label: 'softmax', color: 'teal' },
@@ -220,7 +220,7 @@ export default film(
         )
         place(wallLanes, timelineSlot!, 'center')
 
-        const matrixTitle = kit.label('Attention score matrix  S = Q K^T / sqrt(d)', { color: 'ink' })
+        const matrixTitle = kit.label('Attention score matrix  S = Q Kᵀ / √d', { color: 'ink' })
         const scoreGrid = heatmap(SCORES, {
             cell: 52,
             gap: 5,
@@ -231,11 +231,11 @@ export default film(
             rowLabels: ['q0', 'q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7'],
             columnLabels: ['k0', 'k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7'],
         })
-        const matrixNote = kit.note('Naive pass materializes all N^2 scores in HBM', {
+        const matrixNote = kit.note('Naive pass materializes all N² scores in HBM', {
             color: 'orange',
             align: 'center',
         })
-        const matrixNoteTiled = kit.note('Only one 4 x 4 tile lives in fast SRAM at a time', {
+        const matrixNoteTiled = kit.note('Only one 4×4 tile lives in fast SRAM at a time', {
             color: 'teal',
             align: 'center',
         })
@@ -247,7 +247,7 @@ export default film(
         const tileCard = infoBox({
             title: 'Fused on-chip SRAM loop',
             rows: [
-                { label: 'streamed', value: 'K_j, V_j from HBM', tone: 'teal' },
+                { label: 'streamed', value: 'Kⱼ, Vⱼ from HBM', tone: 'teal' },
                 { label: 'HBM writes', value: '0 intermediate scores', tone: 'green' },
             ],
             accent: 'teal',
@@ -335,7 +335,7 @@ export default film(
         const [left3, right3] = kit.area.inset(8, 8).columns([1.08, 1], 44)
         const [tilesArea, stateArea] = left3!.rows([1.15, 1], 20)
 
-        const rowLabel = kit.label('Query row q0 streamed in two 1 x 4 tiles', { color: 'ink' })
+        const rowLabel = kit.label('Query row q0 streamed in two 1×4 tiles', { color: 'ink' })
         const tile1Scores = [SCORES[0]!.slice(0, 4)]
         const tile2Scores = [SCORES[0]!.slice(4, 8)]
         const tile1Heat = heatmap(tile1Scores, {
@@ -463,7 +463,7 @@ export default film(
             lanes(
                 ['Standard HBM', 'FlashAttention'],
                 [
-                    { lane: 'Standard HBM', start: 0, end: 1.5, label: 'Q K^T', color: 'blue' },
+                    { lane: 'Standard HBM', start: 0, end: 1.5, label: 'Q Kᵀ', color: 'blue' },
                     { lane: 'Standard HBM', start: 1.5, end: 7.4, label: 'HBM write + read S', color: 'red' },
                     { lane: 'Standard HBM', start: 7.4, end: 8.7, label: 'softmax', color: 'teal' },
                     { lane: 'Standard HBM', start: 8.7, end: 14.5, label: 'HBM write + read P', color: 'orange' },
