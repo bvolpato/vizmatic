@@ -1222,3 +1222,56 @@ describe('the clock of a scene: show, hide and swap', () => {
         await expect(onClock((c) => { c.clear([undefined as unknown as Node]) })).rejects.toThrow('narration: scene "one": clear: item 0 is undefined. Give nodes, blocks of the layout, and values')
     })
 })
+
+describe('layout, clone, and checker regressions', () => {
+    it('adapts sceneKit and sceneArea defaults to non-16:9 stage dimensions', async () => {
+        const vertical = film({ aspect: '9:16', fps: 10 }, (s) => {
+            const kit = V.sceneKit()
+            expect(kit.area.left).toBe(-480)
+            expect(kit.area.right).toBe(480)
+            expect(kit.area.top).toBe(-820)
+            expect(kit.area.bottom).toBe(860)
+            s.add(kit.heading('Portrait title'))
+            s.wait(0.5)
+        })
+        const report = await checkFilm(vertical)
+        expect(report.diagnostics).toEqual([])
+    })
+
+    it('rebinds nested clones inside groups for ringBuffer, terminal, eventLog, counter, and connector', async () => {
+        const compiled = await compileFilm(film({ fps: 10 }, (s) => {
+            const ring = V.ringBuffer(4)
+            const term = V.terminal([{ kind: 'command', text: 'echo hi' }], { shown: false })
+            const log = eventLog([{ id: 'a', name: 'first' }], { visible: 2 })
+            const cnt = V.counter(0)
+            const left = rect(60, 40, { stroke: 'blue' }).at(-200, 0)
+            const right = rect(60, 40, { stroke: 'teal' }).at(200, 0)
+            const wire = V.connector(left, right)
+            const bundle = group(ring, term, log, cnt, left, right, wire)
+            const copy = bundle.clone()
+            s.add(bundle, copy.at(0, 300))
+            s.play(ring.push({ label: 'A' }), term.type(0), log.append({ id: 'b', name: 'second' }), V.countUp(cnt, 42))
+            const copiedRing = copy.children[0] as typeof ring
+            const copiedLog = copy.children[2] as typeof log
+            const copiedCounter = copy.children[3] as typeof cnt
+            expect(copiedRing.length).toBe(0)
+            expect(copiedLog.count).toBe(1)
+            expect(copiedCounter.value.value).toBe(0)
+        }))
+        expect(compiled.frame(1).ops.length).toBeGreaterThan(0)
+    })
+
+    it('ignores clipped-away marks and recognizes opaque rounded backing plates in checkFilm', async () => {
+        const clipped = film({ fps: 10 }, (s) => {
+            const holder = group(text('Clipped far off-canvas text', { size: 40 }).at(1200, 0))
+            holder.clipPath = V.rectPath(-200, -100, 400, 200)
+            s.add(holder)
+            // Small label completely covered by an opaque rounded card.
+            s.add(text('tiny', { size: 12 }).at(0, 0))
+            s.add(rect(300, 120, { fill: 'surface', stroke: 'blue', radius: 16 }).at(0, 0))
+            s.wait(0.5)
+        })
+        const report = await checkFilm(clipped, { textSize: 26 })
+        expect(report.diagnostics.filter((d) => d.code === 'film.off_canvas' || d.code === 'film.text_small')).toEqual([])
+    })
+})

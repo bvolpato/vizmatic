@@ -1180,6 +1180,84 @@ function crowdedText({ time, width, height, background, blocks, outlines, plates
     return findings
 }
 
+/** Intersect a bounding box with an op's clip paths, returning null when clipped completely away. */
+function clipBounds(box: Bounds, clips?: readonly Path[]): Bounds | null {
+    if (!clips || clips.length === 0) return box
+    let current = box
+    for (const clip of clips) {
+        const clipBox = pathBounds(clip)
+        if (!clipBox) return null
+        const shared = intersection(current, clipBox)
+        if (!shared) return null
+        current = shared
+    }
+    return current
+}
+
+/** True when two frames carry identical draw operations by reference and paint values. */
+function sameFrameOps(a: Frame, b: Frame): boolean {
+    if (a.ops.length !== b.ops.length || a.width !== b.width || a.height !== b.height || a.background !== b.background) return false
+    for (let i = 0; i < a.ops.length; i++) {
+        const oa = a.ops[i]!, ob = b.ops[i]!
+        if (oa.kind !== ob.kind || oa.node !== ob.node || oa.clips?.length !== ob.clips?.length) return false
+        if (oa.clips && ob.clips) {
+            for (let c = 0; c < oa.clips.length; c++) if (oa.clips[c] !== ob.clips[c]) return false
+        }
+        if (oa.kind === 'image' && ob.kind === 'image') {
+            if (oa.image !== ob.image || oa.alpha !== ob.alpha || oa.dim !== ob.dim) return false
+            for (let k = 0; k < 6; k++) if (oa.matrix[k] !== ob.matrix[k]) return false
+        } else if (oa.kind === 'path' && ob.kind === 'path') {
+            if (oa.path !== ob.path || oa.strokePath !== ob.strokePath
+                || oa.fill !== ob.fill || oa.fillAlpha !== ob.fillAlpha
+                || oa.stroke !== ob.stroke || oa.strokeAlpha !== ob.strokeAlpha
+                || oa.strokeWidth !== ob.strokeWidth) return false
+        }
+    }
+    return true
+}
+
+/**
+ * Collect sorted active motion spans and discrete change timestamps for a purely keyframed film.
+ * Returns null if the film contains dynamic drawings, rawOps, or per-frame updaters.
+ */
+function staticSchedule(compiled: CompiledFilm): { spans: [number, number][]; steps: number[] } | null {
+    const stage = compiled.stage
+    if (stage.updaters.length > 0) return null
+    const spans: [number, number][] = []
+    const steps: number[] = []
+    for (const node of [stage.camera, ...stage.root.all()]) {
+        if (node.draw !== null || node.rawOps !== null) return null
+        if (!node.tracks) continue
+        for (const track of node.tracks.values()) {
+            for (const key of track.keys) {
+                if (key.at !== null && key.t1 > key.t0) spans.push([key.t0, key.t1])
+                else steps.push(key.t0)
+            }
+        }
+    }
+    spans.sort((a, b) => a[0] - b[0])
+    const merged: [number, number][] = []
+    for (const [t0, t1] of spans) {
+        const last = merged[merged.length - 1]
+        if (last && t0 <= last[1]) last[1] = Math.max(last[1], t1)
+        else merged.push([t0, t1])
+    }
+    steps.sort((a, b) => a - b)
+    return { spans: merged, steps }
+}
+
+function unchangedBetween(schedule: { spans: [number, number][]; steps: number[] }, prevTime: number, time: number): boolean {
+    for (const [t0, t1] of schedule.spans) {
+        if (t0 > time) break
+        if (t1 >= prevTime) return false
+    }
+    for (const step of schedule.steps) {
+        if (step > time) break
+        if (step > prevTime) return false
+    }
+    return true
+}
+
 function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean, limits: Limits): Finding[] {
     const { margin } = limits
     const findings: Finding[] = []
@@ -1188,7 +1266,7 @@ function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean, li
     const canvas: Bounds = { x: 0, y: 0, width, height }
     const blocks = new Map<Node, TextBlock>()
     const fills: { order: number; bounds: Bounds }[] = []
-    const strokes: { op: PathOp; order: number; contrast: number }[] = []
+    const strokes: { op: PathOp; order: number; contrast: number; box: Bounds }[] = []
     const outlines: Mark[] = []
     const plates: Plate[] = []
     // The faces of a 3D scene. They are one surface for this rule, and not a mark each.
@@ -1200,7 +1278,8 @@ function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean, li
     ops.forEach((op: DrawOp, order) => {
         if (op.kind === 'image') {
             if (op.alpha < MIN_ALPHA || !imageHasVisiblePixels(op.image.asset, op.image.crop)) return
-            const box = imageOpBounds(op)
+            const box = clipBounds(imageOpBounds(op), op.clips)
+            if (!box) return
             const outside = box.x < -EDGE_TOLERANCE || box.y < -EDGE_TOLERANCE
                 || box.x + box.width > width + EDGE_TOLERANCE || box.y + box.height > height + EDGE_TOLERANCE
             if (outside && !zoomed && !bleed) findings.push({
@@ -1222,9 +1301,11 @@ function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean, li
         const glyph = isGlyph(op)
         const alpha = Math.max(op.fillAlpha, op.strokeAlpha)
         if (alpha < MIN_ALPHA) return
-        const shape = pathBounds(op.path)
+        const rawShape = pathBounds(op.path)
+        if (!rawShape) return
+        const shape = clipBounds(rawShape, op.clips)
         if (!shape) return
-        const box = op.stroke ? pad(shape, op.strokeWidth / 2) : shape
+        const box = op.stroke ? (clipBounds(pad(rawShape, op.strokeWidth / 2), op.clips) ?? shape) : shape
         const block = glyph ? textBlockOf(op.node!) : null
 
         // Off the canvas. A mark that spans the whole frame is deliberate overscan, such as a grid line.
@@ -1280,7 +1361,8 @@ function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean, li
             if (opaque && op.node) plates.push({ order, bounds: shape, path: op.path, node: op.node, image: false })
             const stroked = !!op.stroke && op.strokeAlpha >= MIN_ALPHA && op.strokePath.length > 0
             const contrast = stroked ? contrastOver(solid(op.stroke!), op.strokeAlpha, background) : 0
-            if (contrast >= MIN_STROKE_CONTRAST) strokes.push({ op, order, contrast })
+            const reach = stroked ? (op.strokePath === op.path ? rawShape : pathBounds(op.strokePath)) : null
+            if (contrast >= MIN_STROKE_CONTRAST && reach) strokes.push({ op, order, contrast, box: reach })
             if (limits.gap > 0) {
                 if (op.fill && op.fillAlpha >= MIN_ALPHA) tints.push({ order, bounds: shape, path: op.path, color: solid(op.fill), alpha: op.fillAlpha, face: !op.node })
                 if (!op.node && op.fill) {
@@ -1290,7 +1372,6 @@ function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean, li
                 } else {
                     // The contrast of a mark is with what is behind it, which is known when a text is near. So each line
                     // and each fill that shows at all is a mark for now.
-                    const reach = stroked ? pathBounds(op.strokePath) : null
                     const lined: Mark | undefined = reach ? { path: op.strokePath, order, line: op, half: op.strokeWidth / 2, bounds: reach, node: op.node, closed: op.strokePath.every((r) => r.closed),
                         image: false, opaque: false, paint: solid(op.stroke!), alpha: op.strokeAlpha, crossed: contrast >= MIN_STROKE_CONTRAST } : undefined
                     if (lined) outlines.push(lined)
@@ -1315,13 +1396,19 @@ function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean, li
     if ((limits.size ?? 0) > 0) {
         const coversText = plates.filter((plate) => {
             const op = ops[plate.order]!
-            if (op.kind !== 'path' || !op.fill || isGradient(op.fill) || op.fillAlpha * op.fill[3] < 1 - ROUNDING) return false
-            const area = plate.bounds.width * plate.bounds.height
-            return Math.abs(Math.abs(plate.path.reduce((sum, ring) => sum + signedArea(ring), 0)) - area) <= area * ROUNDING
+            return op.kind === 'path' && !!op.fill && !isGradient(op.fill) && op.fillAlpha * op.fill[3] >= 1 - ROUNDING
         })
+        const plateHides = (plate: Plate, box: Bounds): boolean => {
+            if (!contains(plate.bounds, box)) return false
+            return encloses(plate.path, box.x, box.y)
+                && encloses(plate.path, box.x + box.width, box.y)
+                && encloses(plate.path, box.x + box.width, box.y + box.height)
+                && encloses(plate.path, box.x, box.y + box.height)
+                && encloses(plate.path, box.x + box.width / 2, box.y + box.height / 2)
+        }
         for (const block of list) {
             if (block.size <= 0 || block.size >= limits.size! - SIZE_TOLERANCE) continue
-            const hidden = block.glyphs.every((glyph) => coversText.some((plate) => plate.order > glyph.order && contains(plate.bounds, glyph.box)))
+            const hidden = block.glyphs.every((glyph) => coversText.some((plate) => plate.order > glyph.order && plateHides(plate, glyph.box)))
             if (hidden) continue
             const owner = layoutOwner(block.id)
             const name = owner ? nameOf(owner.node) : ''
@@ -1355,13 +1442,13 @@ function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean, li
      * a line under a backing. `film.text_crossed` reports what this returns, and `film.text_crowded` reports a line
      * that enters a letter and is not here, so the two rules meet.
      */
-    const crossing = (block: TextBlock, op: PathOp, order: number): Bounds | null => {
-        const strokeBox = pathBounds(op.strokePath)
-        if (!strokeBox || !intersects(pad(strokeBox, op.strokeWidth), block.bounds)) return null
+    const crossing = (block: TextBlock, op: PathOp, order: number, strokeBox?: Bounds): Bounds | null => {
+        const box = strokeBox ?? pathBounds(op.strokePath)
+        if (!box || !intersects(pad(box, op.strokeWidth), block.bounds)) return null
         let hit: Bounds | null = null
         for (const glyph of block.glyphs) {
             const target = inset(glyph.box, GLYPH_INSET)
-            if (!intersects(strokeBox, target)) continue
+            if (!intersects(box, target)) continue
             if (!strokeHitsBox(op.strokePath, target)) continue
             if (order < glyph.order && occluded(order, glyph.order, glyph.box)) continue
             hit = hit ? union(hit, glyph.box) : glyph.box
@@ -1399,8 +1486,8 @@ function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean, li
     }
 
     for (const block of list) {
-        for (const { op, order, contrast } of strokes) {
-            const hit = crossing(block, op, order)
+        for (const { op, order, contrast, box: strokeBox } of strokes) {
+            const hit = crossing(block, op, order, strokeBox)
             if (hit) {
                 const strong = op.strokeWidth >= CROSSING_ERROR_WIDTH && contrast >= CROSSING_ERROR_CONTRAST
                 findings.push({
@@ -1419,14 +1506,15 @@ function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean, li
 function hasContent(frame: Frame, top: number): boolean {
     return frame.ops.some((op: DrawOp) => {
         if (op.kind === 'image') {
-            const box = imageOpBounds(op)
-            return op.alpha >= BLANK_ALPHA && imageHasVisiblePixels(op.image.asset, op.image.crop)
+            const box = clipBounds(imageOpBounds(op), op.clips)
+            return box !== null && op.alpha >= BLANK_ALPHA && imageHasVisiblePixels(op.image.asset, op.image.crop)
                 && box.y + box.height > top && box.y < frame.height && box.x + box.width > 0 && box.x < frame.width
         }
         const filled = op.fill !== null && op.fillAlpha >= BLANK_ALPHA
         const stroked = op.stroke !== null && op.strokeAlpha >= BLANK_ALPHA && op.strokeWidth > 0
         if (!filled && !stroked) return false
-        const box = pathBounds(filled ? op.path : op.strokePath)
+        const raw = pathBounds(filled ? op.path : op.strokePath)
+        const box = raw ? clipBounds(raw, op.clips) : null
         return box !== null && box.y + box.height > top && box.y < frame.height && box.x + box.width > 0 && box.x < frame.width
     })
 }
@@ -1476,7 +1564,8 @@ function occupied(frame: Frame): boolean[] {
     for (const op of frame.ops as DrawOp[]) {
         if (op.kind === 'image') {
             if (op.alpha < BLANK_ALPHA || !imageHasVisiblePixels(op.image.asset, op.image.crop)) continue
-            const box = imageOpBounds(op), asset = op.image.asset
+            const box = clipBounds(imageOpBounds(op), op.clips), asset = op.image.asset
+            if (!box) continue
             if (!asset) { markBox(box); continue }
             const inverse = invert(op.matrix)
             const crop = op.image.crop ?? { x: 0, y: 0, width: asset.width, height: asset.height }
@@ -1497,7 +1586,8 @@ function occupied(frame: Frame): boolean[] {
             continue
         }
         if (op.kind !== 'path' || op.path.length === 0) continue
-        const shape = pathBounds(op.path)
+        const rawShape = pathBounds(op.path)
+        const shape = rawShape ? clipBounds(rawShape, op.clips) : null
         if (!shape) continue
         // A solid fill over the whole frame is a backdrop. An opaque one also hides earlier content.
         if (op.fill && !isGradient(op.fill) && op.fillAlpha >= BLANK_ALPHA
@@ -1642,7 +1732,8 @@ function shownTexts(frame: Frame, names: WeakMap<Node, { source: string; words: 
             names.set(block, name)
         }
         if (!name) continue
-        const box = pathBounds(op.path)
+        const raw = pathBounds(op.path)
+        const box = raw ? clipBounds(raw, op.clips) : null
         if (!box || !intersects(box, canvas)) continue
         const bright = alpha >= BLANK_ALPHA ? 1 : 0
         const seen = blocks.get(block)
@@ -1799,6 +1890,7 @@ async function inspectFilm(film: FilmDefinition | CompiledFilm, options: FilmChe
 
     const frameCount = options.motion ? Math.max(1, Math.round(compiled.duration * compiled.fps)) : 0
     const step = 1 / compiled.fps
+    const emptyByIndex = new Map<number, boolean[]>()
     if (options.motion) {
         const top = options.contentTop ?? 0
         const moving = new Map<string, MovingRun[]>()
@@ -1822,13 +1914,57 @@ async function inspectFilm(film: FilmDefinition | CompiledFilm, options: FilmChe
         // A stepped film waits on the first frame of each chapter after the start, and on its last frame.
         // The player shows those frames.
         const stops = new Set(options.stepped ? [...compiled.chapters.filter((chapter) => chapter.time > 0).map((chapter) => Math.round(chapter.time * compiled.fps)), frameCount - 1] : [])
+        const schedule = staticSchedule(compiled)
+        let prevFrame: Frame | null = null
+        let prevTime = -1
+        let prevZoomed = false
+        let prevFindingsNoGap: Finding[] | null = null
+        let prevFindingsWithGap: Finding[] | null = null
+        let prevShown: Map<string, ShownText> | null = null
+        let prevHasContent: boolean | null = null
+        const emptyIndices = new Set<number>()
+        if (emptyLimit > 0) {
+            const end = compiled.duration - BLANK_EDGE_SECONDS
+            for (let t = BLANK_EDGE_SECONDS; t <= end + ROUNDING; t += SPACE_STEP) {
+                const idx = Math.round(t * compiled.fps)
+                if (idx >= 0 && idx < frameCount && Math.abs(idx * step - t) < 1e-6) emptyIndices.add(idx)
+            }
+        }
         for (let index = 0; index < frameCount; index++) {
             const time = index * step
-            const frame = await frameAt(compiled, time)
+            const zoomed = zoomAt(compiled, time) !== 1
+            const unchangedStatic: boolean = prevFrame !== null && schedule !== null && zoomed === prevZoomed && unchangedBetween(schedule, prevTime, time)
+            const frame: Frame = unchangedStatic ? prevFrame! : await frameAt(compiled, time)
+            const identical = unchangedStatic || (prevFrame !== null && zoomed === prevZoomed && sameFrameOps(prevFrame, frame))
+            if (!identical) {
+                prevFrame = frame
+                prevZoomed = zoomed
+                prevFindingsNoGap = null
+                prevFindingsWithGap = null
+                prevShown = null
+                prevHasContent = null
+            }
+            prevTime = time
             // Text may pass an edge or a mark on its way in or out, so the rule for an edge looks only at rest. The rule for
             // a mark also looks a few times in one second, for a text and a mark that stay too near while things move.
             const look = limits.gap > 0 ? lookAt(index) : -1
-            for (const finding of inspect(frame, time, zoomAt(compiled, time) !== 1, compiled.bleed, { margin: 0, gap: look >= 0 ? limits.gap : 0, places: limits.places })) {
+            const wantGap = look >= 0
+            let found: Finding[]
+            if (wantGap) {
+                if (!prevFindingsWithGap) {
+                    prevFindingsWithGap = inspect(frame, time, zoomed, compiled.bleed, { margin: 0, gap: limits.gap, places: limits.places })
+                }
+                found = prevFindingsWithGap
+            } else {
+                if (!prevFindingsNoGap) {
+                    prevFindingsNoGap = prevFindingsWithGap
+                        ? prevFindingsWithGap.filter((entry) => entry.code !== 'film.text_crowded')
+                        : inspect(frame, time, zoomed, compiled.bleed, { margin: 0, gap: 0, places: limits.places })
+                }
+                found = prevFindingsNoGap
+            }
+            for (const entry of found) {
+                const finding = entry.time === time ? entry : { ...entry, time }
                 // A problem that also shows at rest is already reported, with its own severity.
                 if (merged.has(finding.key)) continue
                 if (finding.code === 'film.text_crowded') {
@@ -1849,7 +1985,7 @@ async function inspectFilm(film: FilmDefinition | CompiledFilm, options: FilmChe
                 else runs.push({ from: index, to: index, first: finding })
             }
             if (speed > 0) {
-                const shown = shownTexts(frame, names)
+                const shown = prevShown ?? (prevShown = shownTexts(frame, names))
                 for (const [words, run] of open) {
                     if (shown.has(words)) continue
                     open.delete(words)
@@ -1894,10 +2030,17 @@ async function inspectFilm(film: FilmDefinition | CompiledFilm, options: FilmChe
                 }
             }
             const edge = time < BLANK_EDGE_SECONDS || time > compiled.duration - BLANK_EDGE_SECONDS
-            if (!edge && !hasContent(frame, top)) {
-                const last = blanks[blanks.length - 1]
-                if (last && last.to === index - 1) last.to = index
-                else blanks.push({ from: index, to: index })
+            if (!edge) {
+                const visibleNow = prevHasContent ?? (prevHasContent = hasContent(frame, top))
+                if (!visibleNow) {
+                    const last = blanks[blanks.length - 1]
+                    if (last && last.to === index - 1) last.to = index
+                    else blanks.push({ from: index, to: index })
+                }
+            }
+            if (emptyIndices.has(index)) {
+                const prevEmpty = identical && emptyByIndex.get(index - 1)
+                emptyByIndex.set(index, prevEmpty || occupied(frame))
             }
         }
         const seconds = (frames: number) => Math.round(frames * step * 100) / 100
@@ -1979,24 +2122,24 @@ async function inspectFilm(film: FilmDefinition | CompiledFilm, options: FilmChe
         const two = (value: number) => Math.round(value * 100) / 100
         // The same words, up too briefly at several times of the film, are one finding too.
         const repeats = new Map<string, Brief[]>()
-        for (const chain of chains) {
+        chains.forEach((chain, chainIndex) => {
             const first = chain.items[0]!
             if (chain.items.length === 1) {
                 const seen = repeats.get(first.run.words)
                 if (seen) seen.push(first)
                 else repeats.set(first.run.words, [first])
-                continue
+                return
             }
             const names = chain.items.slice(0, 3).map((item) => quote(item.run.source)).join(', ')
             const more = chain.items.length > 3 ? `, and ${chain.items.length - 3} more` : ''
-            merged.set(`film.text_brief:row:${first.run.from}`, {
+            merged.set(`film.text_brief:row:${first.run.from}:${chainIndex}`, {
                 code: 'film.text_brief', severity: 'warning',
                 message: `${chain.items.length} texts follow each other here, and each leaves before a viewer can read it: ${names}${more}.`,
                 time: first.run.from * step, until: chain.to * step,
                 box: chain.area, stage: { x: 0, y: 0 }, text: first.run.source,
                 motion: { spans: chain.items.length, seconds: two(chain.items.reduce((sum, item) => sum + item.up, 0)) },
             })
-        }
+        })
         for (const [words, items] of repeats) {
             const { run, up, needs, characters } = items[0]!
             const times = items.length > 1 ? ` It comes ${items.length} times, each time too briefly.` : ''
@@ -2048,7 +2191,9 @@ async function inspectFilm(film: FilmDefinition | CompiledFilm, options: FilmChe
         for (let time = BLANK_EDGE_SECONDS; time <= end + ROUNDING; time += SPACE_STEP) looks.push(time)
         if (end >= BLANK_EDGE_SECONDS && end - looks[looks.length - 1]! > ROUNDING) looks.push(end)
         for (const time of looks) {
-            const taken = occupied(await frameAt(compiled, time))
+            const idx = Math.round(time * compiled.fps)
+            const cached = options.motion && Math.abs(idx * step - time) < 1e-6 ? emptyByIndex.get(idx) : undefined
+            const taken = cached ?? occupied(await frameAt(compiled, time))
             recent.push({ time, taken })
             // Keep the look just before the window starts. Earlier content cannot block a later window.
             while (recent.length > 1 && recent[1]!.time <= time - emptySeconds + ROUNDING) recent.shift()

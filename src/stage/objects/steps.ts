@@ -50,7 +50,7 @@ const NOTE_LEADING = 1.25
 const AHEAD_DIM = 0.4
 
 /** The advance width of a line of text. It includes the side bearings, which the bounds of the ink do not. */
-const advance = (node: Node) => node.get('px') * 2
+const advance = (node: TextNode) => node.advanceWidth
 
 /** A value as the film wrote it, for an error. */
 const shown = (value: unknown) => (typeof value === 'string' ? JSON.stringify(value) : String(value))

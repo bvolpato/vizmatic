@@ -1,7 +1,7 @@
-import { Node, ownLabels, type NodeProps, type PropName } from '../node'
+import { Node, ownLabels, rebindCloneParts, type NodeProps, type PropName } from '../node'
 import { toPaint, type ColorInput, type Paint } from '../color'
 import { circle, dot, line, polyline, rect, svgPath } from '../shapes'
-import { filmFont, text, type TextOptions } from '../text'
+import { filmFont, text, type TextNode, type TextOptions } from '../text'
 import { fontFor } from '../font'
 import type { Ease } from '../ease'
 import type { Key } from '../track'
@@ -240,8 +240,8 @@ const seconds = (time: number) => `${Math.round(time * 100) / 100} s`
 const called = (ids: readonly Id[]) => (ids.length > 1 ? `the fold from ${show(ids[0]!)} to ${show(ids[ids.length - 1]!)}` : `row ${show(ids[0]!)}`)
 /** The right end of the ink of a text that starts at its origin. */
 const reach = (node: Node) => { const box = node.bounds(); return box.x + box.width }
-/** The advance width of a text with its anchor at the right. It includes the side bearings, so digits line up. */
-const advance = (node: Node) => node.get('px')
+/** The advance width of a text. It includes the side bearings, so digits line up. */
+const advance = (node: TextNode) => node.advanceWidth
 /** A property of a node at a time, with no change of the clock: a key reads it while the clock is at a frame. */
 const readAt = <K extends PropName>(node: Node, prop: K, time: number): NodeProps[K] => {
     const track = node.tracks?.get(prop)
@@ -616,12 +616,8 @@ export class EventLog extends Node {
         return this.lines.filter((entry) => test(this.rowOf(entry))).flatMap((entry) => entry.recs.map((rec) => rec.id))
     }
 
-    /** A copy with its own rows and its own bookkeeping, so a change of the copy does not change the list. */
-    override clone(): this {
-        const copy = super.clone()
-        const mine = this.all(), theirs = copy.all()
-        const twin = new Map<Node, Node>()
-        mine.forEach((node, index) => twin.set(node, theirs[index]!))
+    /** Rebind rows and bookkeeping when cloned directly or inside a parent container. */
+    protected override [rebindCloneParts](copy: this, twin: ReadonlyMap<Node, Node>): void {
         const lines = new Map<Line, Line>()
         // The copy is a still of the list: each line is where it is now, with no change behind it.
         const lineOf = (entry: Line): Line => {
@@ -663,7 +659,6 @@ export class EventLog extends Node {
         copy.spots = this.lit ? [{ time: 0, line: lineOf(this.lit) }] : []
         copy.glows = this.lit ? [{ t0: 0, t1: 0, to: 1, ease: (share) => share }] : []
         if (this.lit) copy.wire(0)
-        return copy
     }
 
     /** The panel, the title and the footer arrive, and then the rows of the window. */

@@ -193,7 +193,8 @@ export function stillTimes(timing: NarrationTiming, scenes: readonly string[] = 
     for (const id of scenes) voice.scene(id)
     return voice.scenes.filter((scene) => scenes.length === 0 || scenes.includes(scene.id)).flatMap((scene) => scene.beats.map((beat, index) => {
         const last = index === scene.beats.length - 1
-        return Math.round((beat.end - (last ? 0.45 : 0.05)) * 100) / 100
+        const target = Math.max(beat.start, beat.end - (last ? 0.45 : 0.05))
+        return Math.round(target * 100) / 100
     }))
 }
 
@@ -404,10 +405,14 @@ export function checkOutcome(report: CheckReport, allowFindings: boolean): { lin
 function runCheck(step: Extract<NarratedStep, { kind: 'check' }>, request: NarratedRequest): void {
     const result = spawnSync(step.command, [...step.args, '--json'], { cwd: request.folder, stdio: ['inherit', 'pipe', 'inherit'], encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, env: stepEnvironment(request) })
     let report: CheckReport | undefined
-    try {
-        report = JSON.parse(result.stdout.slice(result.stdout.indexOf('{'))) as CheckReport
-    } catch {
-        // The check did not get as far as its report: its own message is on the error stream.
+    const stdout = result.stdout ?? ''
+    for (let start = stdout.indexOf('{'); start >= 0; start = stdout.indexOf('{', start + 1)) {
+        try {
+            const parsed = JSON.parse(stdout.slice(start)) as CheckReport
+            if (parsed && Array.isArray(parsed.files)) { report = parsed; break }
+        } catch {
+            // Skip earlier braces printed by user code before the JSON report.
+        }
     }
     if (!report) throw failure(step, result) ?? new Error('the check printed no report')
     const outcome = checkOutcome(report, step.allowFindings)

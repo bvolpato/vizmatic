@@ -1,4 +1,4 @@
-import { Node, ownLabels, type PropName } from '../node'
+import { Node, ownLabels, rebindCloneParts, type PropName } from '../node'
 import { arcPath, polyPath, ring as contour, type Path, type Vec } from '../geometry'
 import { toPaint, type ColorInput } from '../color'
 import { text, type TextOptions } from '../text'
@@ -388,12 +388,10 @@ export class RingBuffer extends Node {
         return [Math.cos(angle) * middle, Math.sin(angle) * middle]
     }
 
-    /** A copy with its own entries and pointers, at rest in the state that the ring has now. */
-    override clone(): this {
-        const copy = super.clone()
+    /** Rebind entries and pointers at rest when cloned directly or inside a parent container. */
+    protected override [rebindCloneParts](copy: this): void {
         copy.unpublished = [...this.unpublished]
         copy.motion = { head: copy.settled('head', this.reached('head')), tail: copy.settled('tail', this.reached('tail')), writer: copy.settled('writer', this.reached('writer')) }
-        return copy
     }
 
     /**

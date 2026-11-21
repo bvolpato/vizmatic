@@ -23,6 +23,7 @@ import { namedBox, type NamedBox, type NamedBoxOptions } from './objects/named-b
 import { tag, tagTrack, type TagState } from './objects/tag'
 import { filmFont, text, type TextNode, type TextOptions } from './text'
 import { advanceWidth, fittedSize, type TextMeasureOptions } from './text-fit'
+import { clock } from './track'
 
 /**
  * The area that the content of a scene may fill, between the heading and the source line. It is a `Box`: it has
@@ -144,7 +145,10 @@ const STATE_FIELDS = ['at', 'word', 'note', 'color', 'noteColor', 'size', 'font'
  * over a source line: x from -900 to 900, and y from -400 to 440. Give the edges that differ.
  */
 export function sceneArea(edges: SceneKitOptions['area'] = {}): Box {
-    const left = edges.left ?? -900, right = edges.right ?? 900, top = edges.top ?? -400, bottom = edges.bottom ?? 440
+    const w = clock.canvas?.width ?? 1920
+    const h = clock.canvas?.height ?? 1080
+    const left = edges.left ?? (-w / 2 + 60), right = edges.right ?? (w / 2 - 60)
+    const top = edges.top ?? (-h / 2 + 140), bottom = edges.bottom ?? (h / 2 - 100)
     if (!(right > left && bottom > top)) throw new Error(`sceneKit: the area must have its right edge after its left edge and its bottom under its top, and it is x ${left} to ${right}, y ${top} to ${bottom}`)
     return new Box(left, top, right, bottom)
 }
@@ -179,8 +183,9 @@ export function sceneKit(options: SceneKitOptions = {}): SceneKit {
     const size = options.size ?? 36
     const scaled = (part: number) => Math.round(size * part)
     const area = sceneArea(options.area)
-    const head = { size: scaled(SCALE.heading), y: -474, align: 'left' as const, ...options.heading }
-    const foot = { size: scaled(SCALE.source), y: 492, ...options.source }
+    const h = clock.canvas?.height ?? 1080
+    const head = { size: scaled(SCALE.heading), y: -h / 2 + 66, align: 'left' as const, ...options.heading }
+    const foot = { size: scaled(SCALE.source), y: h / 2 - 48, ...options.source }
     const plain = (of: number): TextOptions => ({ font: fontOf(), size: of, color: 'ink' })
     // The look of the chips of the film: its font and its size first, so that the film can choose others for its chips.
     const chipLook = (): ChipOptions => ({ font: fontOf(), size: scaled(SCALE.chip), ...options.chip })

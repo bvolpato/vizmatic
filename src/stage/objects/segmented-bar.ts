@@ -868,7 +868,7 @@ export class SegmentedBar extends Node {
     private widthOf(content: string, font: TextOptions['font']): number {
         const made = text(content, { size: this.size, font })
         // The advance width holds the side bearings, and the ink can pass it with a slanted letter.
-        return Math.max(made.get('px') * 2, made.bounds().width)
+        return Math.max(made.advanceWidth, made.bounds().width)
     }
 
     private entryOf(spec: SegmentedBarPart, node: Node, amount: number, show: number): Entry {
