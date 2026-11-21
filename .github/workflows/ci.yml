@@ -64,6 +64,7 @@ jobs:
           pnpm exec vitest run
           tests/narrated-tools-checks.test.ts
           tests/narrated-tools-mix.test.ts
+          tests/narrated-tools-effects.test.ts
           tests/narrated-tools-draft.test.ts
           tests/narrated-tools-resound.test.ts
           tests/narrated-cli.test.ts

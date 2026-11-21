@@ -148,7 +148,7 @@
     "sync:skill": "node scripts/sync-skill.mjs",
     "security:audit": "pnpm audit --audit-level low",
     "deps:check": "pnpm security:audit && pnpm assets:check && publint && tsx scripts/check-package.ts && node scripts/check-consumer.mjs",
-    "verify": "pnpm lint && pnpm build && VIZMATIC_TEST_USE_EXISTING_BUILD=1 vitest run && tsx scripts/render-examples.ts && pnpm site:build && pnpm check:examples && pnpm check:films && pnpm docs:check && pnpm deps:check",
+    "verify": "node scripts/verify.mjs",
     "prepublishOnly": "pnpm verify",
     "site:posters": "tsx scripts/build-film-posters.ts",
     "site:measure": "tsx scripts/measure-site.ts",

@@ -105,19 +105,30 @@ try {
     // Partition regular examples across parallel worker batches so Node, fonts, and Satori stay warm
     // and every batch writes its own temp manifest without contending on docs/assets/examples/manifest.json.
     const workerCount = Math.min(4, Math.max(1, cpus().length))
-    const batches: Array<{ sources: string[]; extraArgs: string[] }> = []
+    type RenderBatch = { kind: 'png'; sources: string[]; extraArgs: string[] } | { kind: 'gif'; sources: string[] }
+    const batches: RenderBatch[] = []
+    // Queue animated GIF jobs first so the longest renders start immediately and PNG batches fill behind them.
+    for (const source of animatedSources) {
+        batches.push({ kind: 'gif', sources: [source] })
+    }
     if (regularSources.length > 0) {
         const chunkCount = Math.min(workerCount, regularSources.length)
         const chunks: string[][] = Array.from({ length: chunkCount }, () => [])
         regularSources.forEach((source, index) => chunks[index % chunkCount]!.push(source))
-        for (const chunk of chunks) batches.push({ sources: chunk, extraArgs: ['--background', 'theme'] })
+        for (const chunk of chunks) batches.push({ kind: 'png', sources: chunk, extraArgs: ['--background', 'theme'] })
     }
     if (ncclSources.length > 0) {
-        batches.push({ sources: ncclSources, extraArgs: ['--no-crop', '--background', 'theme'] })
+        batches.push({ kind: 'png', sources: ncclSources, extraArgs: ['--no-crop', '--background', 'theme'] })
     }
     if (transparentSources.length > 0) {
-        batches.push({ sources: transparentSources, extraArgs: [] })
+        batches.push({ kind: 'png', sources: transparentSources, extraArgs: [] })
     }
+
+    const gifManifestPath = join(outDir, 'gif-manifest.json')
+    const previousGifs: Array<{ name: string }> = animatedSources.length > 0 && selected
+        ? JSON.parse(await readFile(gifManifestPath, 'utf8'))
+        : []
+    const updatedGifs: Array<{ name: string }> = []
 
     const renderTasks: Promise<void>[] = []
     let nextBatch = 0
@@ -127,61 +138,64 @@ try {
             const batch = batches[index]
             if (!batch) return
             const batchOut = join(scratchRoot, `batch-${workerId}-${index}`)
-            await runCli([
-                'dist/cli.js',
-                'render',
-                ...batch.sources,
-                '--out',
-                batchOut,
-                '--theme',
-                themes.join(','),
-                ...batch.extraArgs,
-            ])
-            const files = await readdir(batchOut)
-            await Promise.all(
-                files
-                    .filter((file) => file.endsWith('.png'))
-                    .map((file) => copyFile(join(batchOut, file), join(outDir, file))),
-            )
+            if (batch.kind === 'png') {
+                await runCli([
+                    'dist/cli.js',
+                    'render',
+                    ...batch.sources,
+                    '--out',
+                    batchOut,
+                    '--theme',
+                    themes.join(','),
+                    ...batch.extraArgs,
+                ])
+                const files = await readdir(batchOut)
+                await Promise.all(
+                    files
+                        .filter((file) => file.endsWith('.png'))
+                        .map((file) => copyFile(join(batchOut, file), join(outDir, file))),
+                )
+            } else {
+                await runCli([
+                    'dist/cli.js',
+                    'gif',
+                    ...batch.sources,
+                    '--out',
+                    batchOut,
+                    '--theme',
+                    themes.join(','),
+                    '--watermark',
+                    'Vizmatic',
+                    '--scale',
+                    '1',
+                ])
+                const files = await readdir(batchOut)
+                await Promise.all(
+                    files
+                        .filter((file) => file.endsWith('.gif'))
+                        .map((file) => copyFile(join(batchOut, file), join(outDir, file))),
+                )
+                const batchGifs: Array<{ name: string }> = JSON.parse(await readFile(join(batchOut, 'gif-manifest.json'), 'utf8'))
+                updatedGifs.push(...batchGifs)
+            }
         }
     }
 
     const activeWorkers = Math.min(workerCount, batches.length)
     for (let i = 0; i < activeWorkers; i++) renderTasks.push(runWorker(i))
+    await Promise.all(renderTasks)
 
     if (animatedSources.length > 0) {
-        const gifManifestPath = join(outDir, 'gif-manifest.json')
-        const previousGifs: Array<{ name: string }> = selected
-            ? JSON.parse(await readFile(gifManifestPath, 'utf8'))
-            : []
-        renderTasks.push((async () => {
-            await runCli([
-                'dist/cli.js',
-                'gif',
-                ...animatedSources,
-                '--out',
-                outDir,
-                '--theme',
-                themes.join(','),
-                '--watermark',
-                'Vizmatic',
-                '--scale',
-                '1',
-            ])
-            if (selected) {
-                const updatedGifs: Array<{ name: string }> = JSON.parse(await readFile(gifManifestPath, 'utf8'))
-                const gifsByName = new Map([...previousGifs, ...updatedGifs].map(entry => [entry.name, entry]))
-                const completeGifs = manifest.filter(entry => entry.outputs.some(output => output.endsWith('.gif'))).map(entry => {
-                    const gif = gifsByName.get(entry.name)
-                    if (!gif) throw new Error(`Missing ${entry.name} GIF metadata; run the full example render`)
-                    return gif
-                })
-                await writeFile(gifManifestPath, `${JSON.stringify(completeGifs, null, 2)}\n`)
-            }
-        })())
+        const gifsByName = new Map([...previousGifs, ...updatedGifs].map((entry) => [entry.name, entry]))
+        const completeGifs = manifest
+            .filter((entry) => entry.outputs.some((output) => output.endsWith('.gif')))
+            .map((entry) => {
+                const gif = gifsByName.get(entry.name)
+                if (!gif) throw new Error(`Missing ${entry.name} GIF metadata; run the full example render`)
+                return gif
+            })
+        await writeFile(gifManifestPath, `${JSON.stringify(completeGifs, null, 2)}\n`)
     }
-
-    await Promise.all(renderTasks)
 } finally {
     await rm(scratchRoot, { recursive: true, force: true })
 }
