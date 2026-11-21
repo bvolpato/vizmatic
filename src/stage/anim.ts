@@ -1,4 +1,4 @@
-import { smooth, thereAndBack, wiggle as wiggleEase, type Ease } from './ease'
+import { easeOutCubic, linear, smooth, spring, thereAndBack, wiggle as wiggleEase, type Ease } from './ease'
 import { encloses } from './enclose'
 import {
     apply, compose, matScale, pathBounds, pointAt, subdivideEach, tangentAt, transformPath, warpPath, circlePath, linePath, rectPath,
@@ -101,6 +101,15 @@ export function lagged(anims: readonly Anim[], options: { lag?: number; duration
             })
         },
     }
+}
+
+/** Build and stagger an animation across a list of nodes, blocks, or values. */
+export function stagger<T>(
+    items: readonly T[],
+    build: (item: T, index: number) => Anim,
+    options: { lag?: number; duration?: number } = {},
+): Anim {
+    return lagged(items.map((item, index) => build(item, index)), options)
 }
 
 export function delay(anim: Anim, seconds: number): Anim {
@@ -356,6 +365,159 @@ export function appear(target: Target): Anim {
 export function vanish(target: Target): Anim {
     const nodes = list(target)
     return { label: 'vanish', duration: 0, schedule: (ctx) => { for (const node of nodes) hideAt(node, ctx.t0) } }
+}
+
+export interface PopOptions extends AnimOptions {
+    /** Starting scale for popIn, or ending scale for popOut. Defaults to 0.84. */
+    scale?: number
+    /** Spring bounce amount for popIn (0.05..0.6). Defaults to 0.24. */
+    bounce?: number
+}
+
+/** Crisp spring-eased scale and opacity entrance. */
+export function popIn(target: Target, options: PopOptions = {}): Anim {
+    return fadeIn(target, {
+        duration: options.duration ?? 0.65,
+        ease: options.ease ?? spring({ bounce: options.bounce ?? 0.24, frequency: 1.6 }),
+        scale: options.scale ?? 0.84,
+        lag: options.lag,
+    })
+}
+
+/** Crisp scale-down and opacity exit. */
+export function popOut(target: Target, options: PopOptions = {}): Anim {
+    return fadeOut(target, {
+        duration: options.duration ?? 0.45,
+        ease: options.ease ?? smooth,
+        scale: options.scale ?? 0.86,
+    })
+}
+
+export type SlideDirection = 'left' | 'right' | 'top' | 'bottom'
+
+function slideVector(direction: SlideDirection, distance: number): Vec {
+    switch (direction) {
+        case 'left': return [-distance, 0]
+        case 'right': return [distance, 0]
+        case 'top': return [0, -distance]
+        case 'bottom': return [0, distance]
+    }
+}
+
+/** Directional slide and fade entrance without manual [dx, dy] vectors. */
+export function slideIn(target: Target, options: AnimOptions & { from?: SlideDirection; distance?: number } = {}): Anim {
+    const shift = slideVector(options.from ?? 'bottom', options.distance ?? 36)
+    return fadeIn(target, {
+        duration: options.duration ?? 0.65,
+        ease: options.ease ?? easeOutCubic,
+        shift,
+        lag: options.lag,
+    })
+}
+
+/** Directional slide and fade exit. */
+export function slideOut(target: Target, options: AnimOptions & { to?: SlideDirection; distance?: number } = {}): Anim {
+    const shift = slideVector(options.to ?? 'top', options.distance ?? 36)
+    return fadeOut(target, {
+        duration: options.duration ?? 0.5,
+        ease: options.ease ?? smooth,
+        shift,
+    })
+}
+
+/** Crossfade from one set of nodes to another with configurable overlap and optional shift. */
+export function crossfade(
+    outTarget: Target,
+    inTarget: Target,
+    options: AnimOptions & { shift?: Vec; overlap?: number } = {},
+): Anim {
+    const duration = options.duration ?? 0.9
+    const overlap = Math.max(0, Math.min(1, options.overlap ?? 0.45))
+    const outShift = options.shift
+    const inShift: Vec | undefined = outShift ? [-outShift[0], -outShift[1]] : undefined
+    const each = duration / (2 - overlap)
+    const inDelay = each * (1 - overlap)
+    return par(
+        fadeOut(outTarget, { duration: each, ease: options.ease ?? smooth, shift: outShift }),
+        delay(fadeIn(inTarget, { duration: each, ease: options.ease ?? easeOutCubic, shift: inShift }), inDelay),
+    )
+}
+
+/** Gentle sinusoidal vertical hover that starts and ends at the node's original position. */
+export function float(target: Target, options: AnimOptions & { amplitude?: number; cycles?: number } = {}): Anim {
+    const nodes = list(target)
+    const amplitude = options.amplitude ?? 10
+    const cycles = options.cycles ?? 1
+    return {
+        label: 'float', duration: options.duration ?? 2.4, ease: options.ease ?? linear,
+        schedule(ctx) {
+            for (const node of nodes) {
+                ensureVisible(node, ctx.t0, ctx.stage)
+                const y0 = valueAt(node, 'y', ctx.t0)
+                node.track('y').add({
+                    t0: ctx.t0, t1: ctx.t1, ease: ctx.ease, to: y0,
+                    at: (a) => y0 - Math.sin(a * Math.PI * 2 * cycles) * amplitude,
+                })
+            }
+        },
+    }
+}
+
+/** Gentle sinusoidal scale pulse around each node's center that returns cleanly to original scale. */
+export function breathe(target: Target, options: AnimOptions & { scale?: number; cycles?: number } = {}): Anim {
+    const nodes = list(target)
+    const factor = options.scale ?? 1.04
+    const cycles = options.cycles ?? 1
+    return {
+        label: 'breathe', duration: options.duration ?? 2.2, ease: options.ease ?? linear,
+        schedule(ctx) {
+            for (const node of nodes) {
+                ensureVisible(node, ctx.t0, ctx.stage)
+                clock.now = ctx.t0
+                node.pivotAt(node.center)
+                const sx0 = node.get('sx'), sy0 = node.get('sy')
+                const delta = factor - 1
+                const scaleAt = (base: number) => (a: number) => base * (1 + delta * 0.5 * (1 - Math.cos(a * Math.PI * 2 * cycles)))
+                node.track('sx').add({ t0: ctx.t0, t1: ctx.t1, ease: ctx.ease, to: sx0, at: scaleAt(sx0) })
+                node.track('sy').add({ t0: ctx.t0, t1: ctx.t1, ease: ctx.ease, to: sy0, at: scaleAt(sy0) })
+            }
+        },
+    }
+}
+
+/** Smooth circular orbit around a stage point or anchor node. */
+export function orbit(node: Node, center: Vec | Node, options: AnimOptions & { angle?: number } = {}): Anim {
+    oneNode('orbit', node, 'the first argument')
+    nodeOrPoint('orbit', center, 'the second argument')
+    const sweep = options.angle ?? Math.PI * 2
+    return {
+        label: 'orbit', duration: options.duration ?? 2.4, ease: options.ease ?? smooth,
+        schedule(ctx) {
+            ensureVisible(node, ctx.t0, ctx.stage)
+            clock.now = ctx.t0
+            const [cx, cy] = center instanceof Node ? center.center : center
+            const [nx, ny] = node.center
+            const rx = nx - cx, ry = ny - cy
+            const x0 = node.get('x'), y0 = node.get('y')
+            const endCos = Math.cos(sweep), endSin = Math.sin(sweep)
+            const endX = x0 + (rx * endCos - ry * endSin) - rx
+            const endY = y0 + (rx * endSin + ry * endCos) - ry
+            node.track('x').add({
+                t0: ctx.t0, t1: ctx.t1, ease: ctx.ease, to: endX,
+                at: (a) => {
+                    const theta = sweep * a
+                    return x0 + (rx * Math.cos(theta) - ry * Math.sin(theta)) - rx
+                },
+            })
+            node.track('y').add({
+                t0: ctx.t0, t1: ctx.t1, ease: ctx.ease, to: endY,
+                at: (a) => {
+                    const theta = sweep * a
+                    return y0 + (rx * Math.sin(theta) + ry * Math.cos(theta)) - ry
+                },
+            })
+        },
+    }
 }
 
 // ── Change ──────────────────────────────────────────────────────────────────
@@ -1125,6 +1287,30 @@ export function pulse(line: Node, options: AnimOptions & { color?: ColorInput; l
             hideAt(lit, ctx.t1)
         },
     }
+}
+
+/**
+ * Send a staggered stream of glowing signal pulses along any connector or stroked path.
+ */
+export function flowStream(
+    edge: Node & { pulse?: (options?: AnimOptions & { color?: ColorInput; length?: number; width?: number; glow?: number }) => Anim },
+    options: AnimOptions & { count?: number; color?: ColorInput; length?: number; width?: number; glow?: number } = {},
+): Anim {
+    oneNode('flowStream', edge, 'the first argument')
+    const count = Math.max(1, Math.floor(options.count ?? 3))
+    const lag = options.lag ?? 0.35
+    const pulseOptions = {
+        duration: options.duration ?? 0.9,
+        ease: options.ease ?? smooth,
+        color: options.color ?? 'yellow',
+        length: options.length ?? 0.2,
+        width: options.width,
+        glow: options.glow ?? 10,
+    }
+    const items = Array.from({ length: count }, () =>
+        typeof edge.pulse === 'function' ? edge.pulse(pulseOptions) : pulse(edge, pulseOptions),
+    )
+    return lagged(items, { lag })
 }
 
 // ── Values ──────────────────────────────────────────────────────────────────
