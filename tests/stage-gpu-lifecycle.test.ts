@@ -8,7 +8,10 @@ import * as sourceBundle from '../src/stage/gpu-source'
 vi.mock('../src/stage/gpu-browser', () => ({ GpuBrowser: { launch: vi.fn() } }))
 vi.mock('../src/stage/display-canvas', () => ({ paintFrame: vi.fn() }))
 vi.mock('../src/stage/bloom-canvas', () => ({ paintCanvasBloom: vi.fn() }))
-vi.mock('../src/stage/bloom-webgl', () => ({ supportsWebGLBloom: () => true }))
+vi.mock('../src/stage/bloom-webgl', () => ({
+    supportsWebGLBloom: () => true,
+    WebGLSubframeAccumulator: class { begin() { return false } add() { return false } resolveTo() { return false } },
+}))
 vi.mock('node:fs/promises', async importOriginal => {
     const fs = await importOriginal<typeof import('node:fs/promises')>()
     return { ...fs, readFile: (...args: Parameters<typeof fs.readFile>) =>

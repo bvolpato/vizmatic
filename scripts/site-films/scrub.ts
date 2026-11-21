@@ -51,6 +51,7 @@ export default film({
     const phase = s.value(0)
     const terms = s.value(1)
     const waveShown = s.value(0)
+    const introActive = s.value(1)
 
     // ── A point goes around ─────────────────────────────────────────────
     s.chapter('A point goes around')
@@ -59,6 +60,7 @@ export default film({
     s.add(axisX, axisY)
 
     const arms = dynamic(() => {
+        if (introActive.value <= 0.001) return null
         const out: Node[] = []
         let x = HUB[0], y = HUB[1]
         const n = terms.value
@@ -83,7 +85,7 @@ export default film({
     s.chapter('Its height is a wave')
     const wave = dynamic(() => {
         const shown = waveShown.value
-        if (shown <= 0) return null
+        if (shown <= 0 || introActive.value <= 0.001) return null
         const n = terms.value
         const sample = (u: number): Vec => {
             let y = 0
@@ -126,7 +128,7 @@ export default film({
 
     // ── Any shape ───────────────────────────────────────────────────────
     s.chapter('Enough circles can draw anything')
-    s.play(fadeOut([arms, wave, heading, axisX, axisY]), { duration: 0.9 })
+    s.play(fadeOut([arms, wave, heading, axisX, axisY]), introActive.to(0), { duration: 0.9 })
 
     // The outline of a serif letter, sampled and turned into rotating circles.
     const letter = text('v', { font: 'text-serif', size: 900 })
@@ -149,23 +151,37 @@ export default film({
         }
         return [x, y]
     }
+    const CURVE_SAMPLES = 520
+    const precomputedCurve: Vec[] = Array.from(
+        { length: CURVE_SAMPLES + 1 },
+        (_, i) => position(i / CURVE_SAMPLES, coefficients.length),
+    )
+    const armRadii = coefficients.slice(0, 60).map((c) => Math.hypot(c.re, c.im))
     const pen = s.value(0)
     const fill = s.value(0)
     const penDrawing = dynamic(() => {
         const u = pen.value
+        if (u <= 0) return null
         const out: Node[] = []
-        const steps = Math.max(2, Math.round(u * 520))
-        const traced: Vec[] = []
-        for (let i = 0; i <= steps; i++) traced.push(position((i / steps) * u, coefficients.length))
+        const exactIndex = u * CURVE_SAMPLES
+        const count = Math.min(CURVE_SAMPLES, Math.floor(exactIndex))
+        const traced = precomputedCurve.slice(0, Math.max(1, count) + 1)
+        if (exactIndex > count && count < CURVE_SAMPLES) {
+            const frac = exactIndex - count
+            const a = precomputedCurve[count]!
+            const b = precomputedCurve[count + 1]!
+            traced.push([a[0] + (b[0] - a[0]) * frac, a[1] + (b[1] - a[1]) * frac])
+        }
         out.push(new Node(curveThrough(traced)).stroke(colorAlong('blue', 'teal', 'yellow'), 3.5).glow(10))
         if (u < 0.999) {
             let x = 0, y = 0
             for (let k = 0; k < 60; k++) {
                 const c = coefficients[k]!
                 const a = 2 * Math.PI * c.freq * u
-                const nx = x + c.re * Math.cos(a) - c.im * Math.sin(a)
-                const ny = y + c.re * Math.sin(a) + c.im * Math.cos(a)
-                const r = Math.hypot(c.re, c.im)
+                const cos = Math.cos(a), sin = Math.sin(a)
+                const nx = x + c.re * cos - c.im * sin
+                const ny = y + c.re * sin + c.im * cos
+                const r = armRadii[k]!
                 if (r > 1.5) out.push(circle(r, { stroke: 'blue', width: 1, opacity: 0.22 }).at(x, y))
                 out.push(line([x, y], [nx, ny], { stroke: 'ink', width: 1.2, opacity: 0.8 }))
                 x = nx

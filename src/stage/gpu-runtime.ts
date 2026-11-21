@@ -1,6 +1,6 @@
 import { paintFrame } from './display-canvas'
 import { paintCanvasBloom, type CanvasBloom } from './bloom-canvas'
-import { supportsWebGLBloom } from './bloom-webgl'
+import { supportsWebGLBloom, WebGLSubframeAccumulator } from './bloom-webgl'
 import { decodeGpuJob, type GpuFrameJob } from './gpu-wire'
 import type { StageImage } from './node'
 import { isSuspend, type CompiledFilm, type CompileOverrides } from './stage'
@@ -10,6 +10,7 @@ const canvas = document.createElement('canvas')
 const context = canvas.getContext('2d', { willReadFrequently: false })!
 const accumulated = document.createElement('canvas')
 const average = accumulated.getContext('2d', { willReadFrequently: false })!
+let floatAccum: WebGLSubframeAccumulator | null = null
 const images = new Map<string, ImageBitmap>()
 let bloom: CanvasBloom | null = null
 let film: CompiledFilm | undefined
@@ -67,27 +68,41 @@ async function paint(job: GpuFrameJob): Promise<{ pixels: Promise<Uint8Array<Arr
     }
     await prepareImages(job)
     const started = performance.now()
-    average.resetTransform()
-    average.globalAlpha = 1
-    average.globalCompositeOperation = 'source-over'
-    average.clearRect(0, 0, width, height)
-    for (let i = 0; i < frames.length; i++) {
-        paintFrame(context, frames[i], width / frames[i].width, lookup)
-        if (frames.length === 1) continue
-        if (i === 0) {
-            average.globalCompositeOperation = 'copy'
-            average.drawImage(canvas, 0, 0)
-        } else {
-            average.globalCompositeOperation = 'destination-in'
-            average.globalAlpha = i / (i + 1)
-            average.fillRect(0, 0, width, height)
-            average.globalCompositeOperation = 'lighter'
-            average.globalAlpha = 1 / (i + 1)
-            average.drawImage(canvas, 0, 0)
+    let usedFloatAccum = false
+    if (frames.length > 1) {
+        if (!floatAccum && typeof WebGLSubframeAccumulator === 'function') floatAccum = new WebGLSubframeAccumulator()
+        if (floatAccum?.begin(canvas)) {
+            usedFloatAccum = true
+            for (let i = 0; i < frames.length; i++) {
+                paintFrame(context, frames[i], width / frames[i].width, lookup)
+                if (!floatAccum.add(canvas)) { usedFloatAccum = false; break }
+            }
+            if (usedFloatAccum && !floatAccum.resolveTo(average)) usedFloatAccum = false
         }
     }
-    average.globalAlpha = 1
-    average.globalCompositeOperation = 'source-over'
+    if (!usedFloatAccum) {
+        average.resetTransform()
+        average.globalAlpha = 1
+        average.globalCompositeOperation = 'source-over'
+        average.clearRect(0, 0, width, height)
+        for (let i = 0; i < frames.length; i++) {
+            paintFrame(context, frames[i], width / frames[i].width, lookup)
+            if (frames.length === 1) continue
+            if (i === 0) {
+                average.globalCompositeOperation = 'copy'
+                average.drawImage(canvas, 0, 0)
+            } else {
+                average.globalCompositeOperation = 'destination-in'
+                average.globalAlpha = i / (i + 1)
+                average.fillRect(0, 0, width, height)
+                average.globalCompositeOperation = 'lighter'
+                average.globalAlpha = 1 / (i + 1)
+                average.drawImage(canvas, 0, 0)
+            }
+        }
+        average.globalAlpha = 1
+        average.globalCompositeOperation = 'source-over'
+    }
     const target = frames.length === 1 ? canvas : accumulated
     const ctx = frames.length === 1 ? context : average
     const rasterMs = performance.now() - started

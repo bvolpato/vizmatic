@@ -64,6 +64,8 @@ export class Timeline {
     private gestureCount = 0
     private readOnlyClips: ReadOnlyClip[] | null = null
     private readOnlyDuration = 0
+    private rulerKey = ''
+    private rulerColors: { dim: string; faint: string; accent: string } | null = null
 
     constructor(private readonly app: App) {
         this.ruler = h('canvas', { class: 'tl-ruler', 'data-test': 'ruler' })
@@ -143,13 +145,17 @@ export class Timeline {
         this.drawRuler()
     }
 
-    /** Fit the whole film in the visible width. */
-    fit(explicit = true): void {
-        if (explicit) this.autoFit = true
+    private updateFitPps(): void {
         this.fittedDuration = this.duration
         const span = Math.max(this.duration, 4)
         this.pps = Math.max(4, Math.min(420, (this.viewWidth - 24) / span))
         this.zoomSlider.value = String(this.pps)
+    }
+
+    /** Fit the whole film in the visible width. */
+    fit(explicit = true): void {
+        if (explicit) this.autoFit = true
+        this.updateFitPps()
         this.layoutContent()
         this.render()
         this.scroller.scrollLeft = 0
@@ -165,7 +171,7 @@ export class Timeline {
         this.readOnlyClips = clips
         this.readOnlyDuration = duration
         this.element.classList.toggle('is-readonly', clips !== null)
-        if (this.autoFit) this.fit(false)
+        if (this.autoFit) this.updateFitPps()
         this.render()
     }
 
@@ -179,7 +185,7 @@ export class Timeline {
     render(): void {
         const project = this.app.store.project
         // Refit as the film changes length, but never under a drag that is in progress.
-        if (this.autoFit && !this.gesture && Math.abs(this.duration - this.fittedDuration) > 1e-3) this.fit(false)
+        if (this.autoFit && !this.gesture && Math.abs(this.duration - this.fittedDuration) > 1e-3) this.updateFitPps()
         this.layoutContent()
         clear(this.rows)
         if (this.readOnlyClips) {
@@ -267,9 +273,11 @@ export class Timeline {
         if (this.app.playing) {
             const left = this.scroller.scrollLeft, width = this.viewWidth
             const local = time * this.pps
-            if (local < left || local > left + width - 30) this.scroller.scrollLeft = Math.max(0, local - width * 0.15)
+            if (local < left || local > left + width - 30) {
+                this.scroller.scrollLeft = Math.max(0, local - width * 0.15)
+                this.drawRuler()
+            }
         }
-        this.drawRuler()
     }
 
     private commitTimeInput(): void {
@@ -283,20 +291,34 @@ export class Timeline {
         const ruler = this.ruler
         const width = this.viewWidth
         const ratio = Math.min(2, window.devicePixelRatio || 1)
+        const scroll = this.scroller.scrollLeft
+        const pps = this.pps
+        const duration = this.duration
+        const project = this.app.store.project
+        const chapters = this.readOnlyClips ? this.app.codeChapters : project.markers.map((marker) => ({ title: marker.title, time: marker.time }))
+        const loopKey = project.loop ? `${project.loop.from}:${project.loop.to}:${this.app.looping}` : ''
+        const markersKey = chapters.map((marker) => `${marker.time}:${marker.title}`).join(',')
+        const nextKey = `${width}|${ratio}|${scroll}|${pps}|${duration}|${loopKey}|${markersKey}`
+        if (nextKey === this.rulerKey) return
+        this.rulerKey = nextKey
         if (ruler.width !== Math.round(width * ratio) || ruler.height !== Math.round(RULER_HEIGHT * ratio)) {
             ruler.width = Math.round(width * ratio)
             ruler.height = Math.round(RULER_HEIGHT * ratio)
             ruler.style.width = `${width}px`
             ruler.style.height = `${RULER_HEIGHT}px`
+            this.rulerColors = null
         }
         const ctx = ruler.getContext('2d')
         if (!ctx) return
-        const style = getComputedStyle(this.element)
-        const dim = style.getPropertyValue('--text-dim') || '#8b8e96'
-        const faint = style.getPropertyValue('--line-strong') || '#3a3c44'
-        const accent = style.getPropertyValue('--accent') || '#ffd75e'
-        const scroll = this.scroller.scrollLeft
-        const pps = this.pps
+        if (!this.rulerColors) {
+            const style = getComputedStyle(this.element)
+            this.rulerColors = {
+                dim: style.getPropertyValue('--text-dim') || '#8b8e96',
+                faint: style.getPropertyValue('--line-strong') || '#3a3c44',
+                accent: style.getPropertyValue('--accent') || '#ffd75e',
+            }
+        }
+        const { dim, faint, accent } = this.rulerColors
         ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
         ctx.clearRect(0, 0, width, RULER_HEIGHT)
         const step = TICK_STEPS.find((candidate) => candidate * pps >= 56) ?? 600
@@ -304,7 +326,6 @@ export class Timeline {
         const first = Math.floor(scroll / pps / minor) * minor
         ctx.font = '10px "JetBrains Mono", ui-monospace, monospace'
         ctx.textBaseline = 'top'
-        const duration = this.duration
         // Everything past the end of the film is dimmed.
         const endX = duration * pps - scroll
         if (endX < width) {
@@ -326,7 +347,6 @@ export class Timeline {
                 ctx.fillText(seconds >= 60 ? `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, '0')}` : `${seconds}s`, x + 3, 5)
             }
         }
-        const project = this.app.store.project
         if (project.loop) {
             const x0 = project.loop.from * pps - scroll, x1 = project.loop.to * pps - scroll
             ctx.fillStyle = this.app.looping ? 'rgba(255,215,94,0.2)' : 'rgba(255,255,255,0.08)'
@@ -335,7 +355,6 @@ export class Timeline {
             ctx.fillRect(x0, 0, 1, RULER_HEIGHT)
             ctx.fillRect(x1 - 1, 0, 1, RULER_HEIGHT)
         }
-        const chapters = this.readOnlyClips ? this.app.codeChapters : project.markers.map((marker) => ({ title: marker.title, time: marker.time }))
         for (const marker of chapters) {
             const x = marker.time * pps - scroll
             if (x < -120 || x > width + 8) continue

@@ -329,14 +329,172 @@ class BloomRenderer {
         return true
     }
 
-    dispose(): void {
-        for (const program of this.programs) this.gl.deleteProgram(program.value)
-        for (const framebuffer of this.framebuffers) this.gl.deleteFramebuffer(framebuffer)
-        for (const texture of this.textures) this.gl.deleteTexture(texture)
+    dispose(loseContext = true): void {
+        if (!this.gl.isContextLost()) {
+            for (const program of this.programs) this.gl.deleteProgram(program.value)
+            for (const framebuffer of this.framebuffers) this.gl.deleteFramebuffer(framebuffer)
+            for (const texture of this.textures) this.gl.deleteTexture(texture)
+        }
+        this.programs.length = 0
         this.sizes.clear()
         this.framebuffers.clear()
         this.textures.clear()
-        this.gl.getExtension('WEBGL_lose_context')?.loseContext()
+        if (loseContext) this.gl.getExtension('WEBGL_lose_context')?.loseContext()
+    }
+}
+
+const ACCUM_ADD = `#version 300 es
+precision highp float;
+precision highp sampler2D;
+uniform sampler2D source;
+out vec4 color;
+void main() {
+    ivec2 p = ivec2(gl_FragCoord.xy);
+    color = texelFetch(source, p, 0);
+}`
+
+const ACCUM_RESOLVE = `#version 300 es
+precision highp float;
+precision highp sampler2D;
+uniform sampler2D source;
+uniform float scale;
+out vec4 color;
+void main() {
+    ivec2 p = ivec2(gl_FragCoord.x, float(textureSize(source, 0).y) - gl_FragCoord.y);
+    color = clamp(texelFetch(source, p, 0) * scale, 0.0, 1.0);
+}`
+
+/** Float32 WebGL2 subframe accumulator for lossless motion-blur averaging on dark scenes. */
+export class WebGLSubframeAccumulator {
+    private canvas: HTMLCanvasElement | null = null
+    private gl: WebGL2RenderingContext | null = null
+    private addProgram: WebGLProgram | null = null
+    private resolveProgram: WebGLProgram | null = null
+    private resolveScale: WebGLUniformLocation | null = null
+    private srcTex: WebGLTexture | null = null
+    private accumTex: WebGLTexture | null = null
+    private accumFbo: WebGLFramebuffer | null = null
+    private width = 0
+    private height = 0
+    private count = 0
+    private broken = false
+
+    private ensure(source: HTMLCanvasElement): boolean {
+        if (this.broken) return false
+        const { width, height } = source
+        if (width < 1 || height < 1) return false
+        if (!this.gl) {
+            const canvas = source.ownerDocument.createElement('canvas')
+            const gl = canvas.getContext('webgl2', {
+                alpha: true, premultipliedAlpha: true, antialias: false, depth: false, stencil: false,
+                preserveDrawingBuffer: false, failIfMajorPerformanceCaveat: true,
+            })
+            if (!gl || !gl.getExtension('EXT_color_buffer_float')) { this.broken = true; return false }
+            const link = (frag: string) => {
+                const p = gl.createProgram()!
+                const vs = gl.createShader(gl.VERTEX_SHADER)!
+                const fs = gl.createShader(gl.FRAGMENT_SHADER)!
+                gl.shaderSource(vs, VERTEX); gl.compileShader(vs)
+                gl.shaderSource(fs, frag); gl.compileShader(fs)
+                gl.attachShader(p, vs); gl.attachShader(p, fs); gl.linkProgram(p)
+                gl.deleteShader(vs); gl.deleteShader(fs)
+                if (!gl.getProgramParameter(p, gl.LINK_STATUS)) { gl.deleteProgram(p); return null }
+                return p
+            }
+            const addProgram = link(ACCUM_ADD)
+            const resolveProgram = link(ACCUM_RESOLVE)
+            if (!addProgram || !resolveProgram) { this.broken = true; return false }
+            gl.disable(gl.DITHER)
+            gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true)
+            gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE)
+            this.canvas = canvas
+            this.gl = gl
+            this.addProgram = addProgram
+            this.resolveProgram = resolveProgram
+            this.resolveScale = gl.getUniformLocation(resolveProgram, 'scale')
+        }
+        const gl = this.gl
+        if (gl.isContextLost()) { this.broken = true; return false }
+        if (this.width !== width || this.height !== height) {
+            if (this.srcTex) gl.deleteTexture(this.srcTex)
+            if (this.accumTex) gl.deleteTexture(this.accumTex)
+            if (this.accumFbo) gl.deleteFramebuffer(this.accumFbo)
+            const makeTex = (internalFormat: number) => {
+                const tex = gl.createTexture()!
+                gl.bindTexture(gl.TEXTURE_2D, tex)
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+                gl.texStorage2D(gl.TEXTURE_2D, 1, internalFormat, width, height)
+                return tex
+            }
+            this.srcTex = makeTex(gl.RGBA8)
+            this.accumTex = makeTex(gl.RGBA32F)
+            this.accumFbo = gl.createFramebuffer()!
+            gl.bindFramebuffer(gl.FRAMEBUFFER, this.accumFbo)
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.accumTex, 0)
+            if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) { this.broken = true; return false }
+            this.canvas!.width = width
+            this.canvas!.height = height
+            this.width = width
+            this.height = height
+        }
+        return true
+    }
+
+    begin(source: HTMLCanvasElement): boolean {
+        if (!this.ensure(source)) return false
+        const gl = this.gl!
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.accumFbo)
+        gl.viewport(0, 0, this.width, this.height)
+        gl.disable(gl.BLEND)
+        gl.clearColor(0, 0, 0, 0)
+        gl.clear(gl.COLOR_BUFFER_BIT)
+        this.count = 0
+        return true
+    }
+
+    add(source: HTMLCanvasElement): boolean {
+        if (!this.gl || this.broken || this.gl.isContextLost()) return false
+        const gl = this.gl
+        gl.activeTexture(gl.TEXTURE0)
+        gl.bindTexture(gl.TEXTURE_2D, this.srcTex)
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, source)
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.accumFbo)
+        gl.viewport(0, 0, this.width, this.height)
+        gl.useProgram(this.addProgram)
+        gl.enable(gl.BLEND)
+        gl.blendEquation(gl.FUNC_ADD)
+        gl.blendFunc(gl.ONE, gl.ONE)
+        gl.drawArrays(gl.TRIANGLES, 0, 3)
+        gl.disable(gl.BLEND)
+        this.count++
+        return !gl.isContextLost()
+    }
+
+    resolveTo(targetCtx: CanvasRenderingContext2D): boolean {
+        if (!this.gl || !this.canvas || this.broken || this.count <= 0 || this.gl.isContextLost()) return false
+        const gl = this.gl
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+        gl.viewport(0, 0, this.width, this.height)
+        gl.disable(gl.BLEND)
+        gl.useProgram(this.resolveProgram)
+        gl.activeTexture(gl.TEXTURE0)
+        gl.bindTexture(gl.TEXTURE_2D, this.accumTex)
+        gl.uniform1f(this.resolveScale, 1 / this.count)
+        gl.drawArrays(gl.TRIANGLES, 0, 3)
+        if (gl.isContextLost()) return false
+        targetCtx.save()
+        try {
+            targetCtx.resetTransform()
+            targetCtx.globalAlpha = 1
+            targetCtx.globalCompositeOperation = 'copy'
+            targetCtx.filter = 'none'
+            targetCtx.shadowColor = 'transparent'
+            targetCtx.drawImage(this.canvas, 0, 0)
+        } finally { targetCtx.restore() }
+        return true
     }
 }
 
@@ -352,7 +510,14 @@ export function supportsWebGLBloom(target: HTMLCanvasElement): boolean {
             if (gl) {
                 renderer = new BloomRenderer(canvas, gl)
                 renderer.init()
-                canvas.addEventListener('webglcontextlost', () => { renderer?.dispose(); renderer = null }, { once: true })
+                canvas.addEventListener('webglcontextlost', (event) => {
+                    event.preventDefault()
+                    renderer?.dispose(false)
+                    renderer = null
+                })
+                canvas.addEventListener('webglcontextrestored', () => {
+                    renderer = undefined
+                })
             }
         }
         return renderer !== null

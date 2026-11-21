@@ -55,6 +55,7 @@ const transport = new Transport(canvas, {
     onState: (playing) => post({ t: 'state', playing }),
 })
 let film: CompiledFilm | null = null
+let latestRunId = 0
 const exports_ = new Map<number, AbortController>()
 
 function errorPosition(error: unknown): { line?: number; column?: number } {
@@ -64,6 +65,7 @@ function errorPosition(error: unknown): { line?: number; column?: number } {
 }
 
 async function run(code: string, runId: number, look: LookName | null): Promise<void> {
+    latestRunId = Math.max(latestRunId, runId)
     try {
         const module = { exports: {} as Record<string, unknown> }
         const require = (name: string) => {
@@ -77,6 +79,7 @@ async function run(code: string, runId: number, look: LookName | null): Promise<
         const definition = module.exports['default']
         if (!isFilm(definition)) throw new Error("Export a film as the default export: export default film({ ... }, (s) => { ... })")
         const compiled = await compileFilm(definition, look ? { look } : {})
+        if (runId !== latestRunId) return
         film = compiled
         transport.setFilm(compiled)
         post({
@@ -88,6 +91,7 @@ async function run(code: string, runId: number, look: LookName | null): Promise<
             },
         })
     } catch (error) {
+        if (runId !== latestRunId) return
         post({ t: 'error', runId, message: describe(error), ...errorPosition(error) })
     }
 }
@@ -104,7 +108,9 @@ async function runExport(id: number, settings: ExportSettings): Promise<void> {
             signal: controller.signal,
             onProgress: (progress) => post({ t: 'progress', id, ...progress }),
         })
-        const bytes = result.bytes.slice().buffer as ArrayBuffer
+        const bytes = result.bytes.byteOffset === 0 && result.bytes.byteLength === result.bytes.buffer.byteLength
+            ? result.bytes.buffer as ArrayBuffer
+            : result.bytes.slice().buffer as ArrayBuffer
         post({ t: 'exported', id, bytes, type: result.type, extension: result.extension, note: result.note }, [bytes])
     } catch (error) {
         post({ t: 'export-error', id, message: describe(error), cancelled: error instanceof ExportCancelled })

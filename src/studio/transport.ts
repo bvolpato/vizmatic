@@ -94,7 +94,7 @@ export class Transport {
 
     private readonly tick = (now: number): void => {
         if (!this.playing || !this.player) return
-        const delta = Math.min(0.1, (now - this.last) / 1000)
+        const delta = Math.max(0, Math.min(0.1, (now - this.last) / 1000))
         this.last = now
         let next = this.time + delta * this.speed
         if (this.stopAt !== null && next >= this.stopAt) {

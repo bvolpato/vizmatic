@@ -120,14 +120,15 @@ class PlaygroundRenderer {
 
     private onMessage(response: PlaygroundRenderResponse): void {
         if (!this.pending || response.id !== this.pending.id) return
-        if (!response.ok) {
-            this.restart(new Error(response.error))
-            return
-        }
-
         const pending = this.pending
         this.pending = undefined
         window.clearTimeout(pending.timeout)
+        if (!response.ok) {
+            // Keep the warm WASM worker alive across ordinary syntax and runtime errors.
+            pending.reject(new Error(response.error))
+            return
+        }
+
         this.hasRendered = true
         pending.resolve(response)
     }

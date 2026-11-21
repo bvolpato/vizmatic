@@ -262,12 +262,14 @@ export class Inspector {
         const beat = selectedBeat ? project.beats.find((entry) => entry.id === selectedBeat) : undefined
         const object = selection.length === 1 ? objectById(project, selection[0]!) : undefined
         const signature = [
-            beat ? `beat:${beat.id}:${beat.kind}:${beat.ease}` : '',
+            beat ? `beat:${beat.id}:${beat.target}:${beat.kind}:${beat.ease}` : '',
             object ? `object:${object.id}:${object.kind}` : '',
             selection.length,
             object ? project.beats.filter((entry) => entry.target === object.id).map((entry) => `${entry.id}${entry.kind}`).join() : '',
             !object && !beat && selection.length === 0 ? project.variables.map((variable) => variable.name).join() : '',
             project.objects.length,
+            project.look,
+            project.codeLook ?? '',
         ].join('|')
         if (signature !== this.signature) {
             this.signature = signature

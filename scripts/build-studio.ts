@@ -42,8 +42,25 @@ async function copyFilmCatalog(): Promise<number> {
             const specifier = statement.moduleSpecifier
             return specifier && isStringLiteral(specifier) ? [specifier.text] : []
         })
-        if (imports.some((name) => name !== 'vizmatic/stage')) continue
-        await writeFile(`${out}/films/${stem}.tsx`, source)
+        const externalImports = imports.filter((name) => name !== 'vizmatic/stage' && !name.startsWith('./') && !name.startsWith('../'))
+        if (externalImports.length > 0) continue
+        let studioSource = source
+        if (imports.some((name) => name.startsWith('./') || name.startsWith('../'))) {
+            // Inline local helper modules (e.g. ./_planetary-orbits/model) so science films open live in the Studio sandbox.
+            const bundled = await build({
+                entryPoints: [`examples/films/${file}`],
+                bundle: true,
+                write: false,
+                format: 'esm',
+                target: 'es2022',
+                external: ['vizmatic/stage'],
+                minify: false,
+                logLevel: 'warning',
+            })
+            studioSource = bundled.outputFiles[0]?.text ?? ''
+            if (!studioSource) continue
+        }
+        await writeFile(`${out}/films/${stem}.tsx`, studioSource)
         // Prefer compact site posters, then fall back to rendered film stills if present.
         const poster = await access(`docs/assets/site/posters/${stem}_dark.webp`).then(
             () => `assets/site/posters/${stem}_dark.webp`,

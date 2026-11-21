@@ -146,7 +146,7 @@ vz-film:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 .hero-strap { width: var(--page); margin: 0 auto; padding: 14px 0 18px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; gap: 24px; color: var(--faint); font: 12px/1.5 var(--mono); }
 
 /* ── Scroll-scrubbed film ───────────────────────────────────────────────── */
-.scrub { position: relative; height: 620vh; border-top: 1px solid var(--border); }
+.scrub { position: relative; height: 460vh; border-top: 1px solid var(--border); }
 html:not(.js) .scrub { height: auto; }
 html:not(.js) .scrub-pin { position: static; height: auto; }
 html:not(.js) .scrub-notes li { position: static; opacity: 1; transform: none; margin-bottom: 18px; }
@@ -561,7 +561,7 @@ h3 + .demo.is-paired { padding-top: 0; border-top: 0; margin-top: 16px; }
   .hero h1 { font-size: clamp(40px, 10.6vw, 60px); }
   .hero-aside { margin-top: 18px; }
   .hero-strap { flex-direction: column; gap: 2px; }
-  .scrub { height: 560vh; }
+  .scrub { height: 420vh; }
   .scrub-pin { top: 57px; height: calc(100svh - 57px); }
   .scrub-head { flex-direction: column; gap: 2px; padding: 12px 0 6px; }
   .scrub-notes { min-height: 132px; padding-top: 4px; }

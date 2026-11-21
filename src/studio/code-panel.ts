@@ -16,7 +16,7 @@ export class CodeEditor {
     private readonly gutter: HTMLElement
     private problem: CodeProblem | null = null
 
-    constructor(private readonly options: { readOnly?: boolean; onChange?: (value: string) => void } = {}) {
+    constructor(private readonly options: { readOnly?: boolean; onChange?: (value: string) => void; onBlur?: () => void } = {}) {
         this.textarea = h('textarea', {
             class: 'code-input', spellcheck: 'false', autocapitalize: 'off', autocomplete: 'off', wrap: 'off', 'aria-label': 'Film source',
             'data-test': options.readOnly ? 'generated-code' : 'code-editor', readOnly: options.readOnly ?? false,
@@ -28,15 +28,21 @@ export class CodeEditor {
             this.paint()
             this.options.onChange?.(this.textarea.value)
         })
+        this.textarea.addEventListener('blur', () => {
+            this.options.onBlur?.()
+        })
         this.textarea.addEventListener('scroll', () => this.syncScroll())
         this.textarea.addEventListener('keydown', (event) => {
-            if (event.key === 'Tab') {
+            if (event.key === 'Tab' && !this.textarea.readOnly) {
                 event.preventDefault()
-                const { selectionStart: start, selectionEnd: end, value } = this.textarea
-                this.textarea.value = `${value.slice(0, start)}    ${value.slice(end)}`
-                this.textarea.selectionStart = this.textarea.selectionEnd = start + 4
-                this.paint()
-                this.options.onChange?.(this.textarea.value)
+                const inserted = typeof document.execCommand === 'function' && document.execCommand('insertText', false, '    ')
+                if (!inserted) {
+                    const { selectionStart: start, selectionEnd: end, value } = this.textarea
+                    this.textarea.value = `${value.slice(0, start)}    ${value.slice(end)}`
+                    this.textarea.selectionStart = this.textarea.selectionEnd = start + 4
+                    this.paint()
+                    this.options.onChange?.(this.textarea.value)
+                }
             }
         })
     }
@@ -102,7 +108,10 @@ export class CodePanel {
                 h('button', { type: 'button', class: 'text-button', 'data-test': 'copy-code', onClick: () => this.copyGenerated() }, icon('copy', 14), 'Copy'),
                 h('button', { type: 'button', class: 'text-button', 'data-test': 'edit-as-code', onClick: () => this.app.setMode('code') }, icon('code', 14), 'Edit')),
             this.generated.element)
-        this.writer = new CodeEditor({ onChange: (value) => this.app.onSourceEdited(value) })
+        this.writer = new CodeEditor({
+            onChange: (value) => this.app.onSourceEdited(value),
+            onBlur: () => this.app.store.settle(),
+        })
         this.problemLine = h('div', { class: 'code-problem', role: 'alert', hidden: true, 'data-test': 'code-error' })
         this.logs = h('div', { class: 'code-logs', role: 'log', 'aria-label': 'Film output', 'data-test': 'code-logs' })
         this.pausedBanner = h('div', { class: 'code-paused', hidden: true, 'data-test': 'code-paused' },

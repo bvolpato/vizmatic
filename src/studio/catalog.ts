@@ -632,7 +632,7 @@ const fieldKind: KindDef = {
     code(p, ctx) {
         const scope = ['x', 'y', 't', ...ctx.variables]
         const fx = parseExpr(String(p['fx'] || '0'), scope), fy = parseExpr(String(p['fy'] || '0'), scope)
-        const name = (variable: string) => ctx.variables.includes(variable) ? `${ctx.variableName(variable)}.value` : variable
+        const name = (variable: string) => !['x', 'y', 't'].includes(variable) && ctx.variables.includes(variable) ? `${ctx.variableName(variable)}.value` : variable
         const moves = [...fx.variables, ...fy.variables].some((entry) => entry !== 'x' && entry !== 'y')
         return {
             expr: call('vectorField', `(x, y, t) => [${fx.js(name)}, ${fy.js(name)}]`, options([
@@ -1959,7 +1959,7 @@ const curve3dKind: KindDef = {
         const fx = parseExpr(String(p['fx'] || '0'), scope)
         const fy = parseExpr(String(p['fy'] || '0'), scope)
         const fz = parseExpr(String(p['fz'] || '0'), scope)
-        const name = (variable: string) => ctx.variables.includes(variable) ? `${ctx.variableName(variable)}.value` : variable
+        const name = (variable: string) => variable !== 'u' && ctx.variables.includes(variable) ? `${ctx.variableName(variable)}.value` : variable
         const setup = [
             `const ${ctx.name} = scene3d({ phi: ${num(p['phi'] as number)} * Math.PI / 180, theta: ${num(p['theta'] as number)} * Math.PI / 180, unit: ${num(p['unit'] as number)} })`,
             `${ctx.name}.add(${call('curve3d', `(u) => [${fx.js(name)}, ${fy.js(name)}, ${fz.js(name)}]`, num(u0), num(u1), options([['color', p['color'] as string], ['width', p['width'] as number], ['halo', p['halo'] as boolean]]))})`,

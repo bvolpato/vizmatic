@@ -68,7 +68,21 @@ export function disableUserCodeCapabilities(
     lockChain(storageBucketsApi, ['delete', 'keys', 'open'])
     lockChain(locksApi, ['request', 'query'])
     lockChain(fontsApi, ['add', 'load', 'clear', 'delete'])
-    lockChain(navigatorApi, ['sendBeacon', 'storage', 'storageBuckets', 'locks', 'serviceWorker'])
+    lockChain(navigatorApi, [
+        'sendBeacon',
+        'storage',
+        'storageBuckets',
+        'locks',
+        'serviceWorker',
+        'usb',
+        'gpu',
+        'permissions',
+        'credentials',
+        'hid',
+        'serial',
+        'bluetooth',
+        'mediaDevices',
+    ])
 
     for (const name of [
         'fetch',
@@ -84,6 +98,8 @@ export function disableUserCodeCapabilities(
         'Worker',
         'SharedWorker',
         'ServiceWorkerContainer',
+        'cookieStore',
+        'CookieStore',
         'indexedDB',
         'IDBFactory',
         'IDBDatabase',
@@ -95,6 +111,11 @@ export function disableUserCodeCapabilities(
         'FontFaceSet',
         'fonts',
         'postMessage',
+        'onmessage',
+        'onmessageerror',
+        'addEventListener',
+        'removeEventListener',
+        'dispatchEvent',
         'close',
         'eval',
         'Function',
@@ -106,10 +127,16 @@ export function disableUserCodeCapabilities(
     // WorkerGlobalScope / DedicatedWorkerGlobalScope prototypes; lock the whole chain.
     lockChain(Object.getPrototypeOf(globals), [
         'fetch',
+        'cookieStore',
         'indexedDB',
         'caches',
         'importScripts',
         'postMessage',
+        'onmessage',
+        'onmessageerror',
+        'addEventListener',
+        'removeEventListener',
+        'dispatchEvent',
         'close',
         'fonts',
         'webkitRequestFileSystem',

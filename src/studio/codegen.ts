@@ -121,14 +121,46 @@ export function projectToSource(project: StudioProject): string {
     out(`s.at(${num(projectDuration(project))}, () => {})`)
 
     const body = lines.join('\n')
-    // Import exactly what the body names, in a stable order.
-    for (const name of IMPORTABLE) if (new RegExp(`(^|[^.\\w'])${name}\\(?\\b`).test(body)) used.add(name)
+    const maskedBody = maskStringsAndComments(body)
+    // Import exactly what the body names in code (ignoring string literals and comments), in a stable order.
+    for (const name of IMPORTABLE) if (new RegExp(`(^|[^.\\w'])${name}\\(?\\b`).test(maskedBody)) used.add(name)
     const imports = IMPORTABLE.filter((name, i) => used.has(name) && IMPORTABLE.indexOf(name) === i)
     const wrapped = wrapImports(imports)
     const optionParts = [`title: ${str(project.name)}`, `look: ${str(project.look)}`]
     if (project.aspect !== '16:9') optionParts.push(`aspect: ${str(project.aspect)}`)
     optionParts.push(`fps: ${project.fps}`)
     return `${wrapped}\n\nexport default film({ ${optionParts.join(', ')} }, (s) => {\n${body}\n})\n`
+}
+
+function maskStringsAndComments(source: string): string {
+    const out: string[] = []
+    let mode: 'code' | 'line' | 'block' | 'string' = 'code'
+    let quote = ''
+    let escaped = false
+    for (let i = 0; i < source.length; i++) {
+        const ch = source[i]!
+        const next = source[i + 1]
+        if (mode === 'line') {
+            if (ch === '\n') { mode = 'code'; out.push(ch) } else out.push(' ')
+        } else if (mode === 'block') {
+            if (ch === '*' && next === '/') { out.push(' ', ' '); i++; mode = 'code' }
+            else out.push(ch === '\n' ? '\n' : ' ')
+        } else if (mode === 'string') {
+            out.push(ch === '\n' ? '\n' : ' ')
+            if (escaped) escaped = false
+            else if (ch === '\\') escaped = true
+            else if (ch === quote) mode = 'code'
+        } else if (ch === '/' && next === '/') {
+            out.push(' ', ' '); i++; mode = 'line'
+        } else if (ch === '/' && next === '*') {
+            out.push(' ', ' '); i++; mode = 'block'
+        } else if (ch === '"' || ch === "'" || ch === '`') {
+            out.push(' '); quote = ch; mode = 'string'
+        } else {
+            out.push(ch)
+        }
+    }
+    return out.join('')
 }
 
 function wrapImports(names: readonly string[]): string {

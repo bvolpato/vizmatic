@@ -274,6 +274,7 @@ async function exportGif(request: PlaygroundRenderRequest): Promise<PlaygroundGi
 // timeout or a superseding edit, so an infinite expression cannot freeze UI.
 interface PlaygroundWorkerScope {
     onmessage: ((event: MessageEvent<PlaygroundRenderRequest>) => void) | null
+    addEventListener?: (type: 'message', listener: (event: MessageEvent<PlaygroundRenderRequest>) => void) => void
     postMessage(message: unknown, transfer?: Transferable[]): void
 }
 
@@ -283,7 +284,7 @@ const postWorkerMessage = workerScope && typeof workerScope.postMessage === 'fun
     : null
 
 if (workerScope && postWorkerMessage) {
-    workerScope.onmessage = async (event: MessageEvent<PlaygroundRenderRequest>) => {
+    const onMessage = async (event: MessageEvent<PlaygroundRenderRequest>) => {
         const request = event.data
         try {
             const response = request.exportGif ? await exportGif(request) : await render(request)
@@ -296,5 +297,10 @@ if (workerScope && postWorkerMessage) {
             }
             postWorkerMessage(response)
         }
+    }
+    if (typeof workerScope.addEventListener === 'function') {
+        workerScope.addEventListener('message', onMessage)
+    } else {
+        workerScope.onmessage = onMessage
     }
 }
