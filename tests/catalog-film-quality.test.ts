@@ -191,6 +191,22 @@ it('tracks imported data, module-relative assets and companion assets in a film 
     await expect(key()).rejects.toThrow('Cannot hash dependency ./data.json')
 })
 
+it('includes catalog audio bytes in the film cache key when audio is configured', async () => {
+    const root = await tempDirectory()
+    const films = join(root, 'examples/films')
+    const audio = join(root, 'docs/assets/audio/sample.m4a')
+    await mkdir(films, { recursive: true })
+    await mkdir(join(root, 'docs/assets/audio'), { recursive: true })
+    await writeFile(join(films, 'sample.ts'), 'export default 1\n')
+    await writeFile(audio, 'audio-v1')
+    const silentKey = await computeFilmCacheKey({ id: 'sample', look: 'midnight' }, 'standard', 'engine', films)
+    const audioKey1 = await computeFilmCacheKey({ id: 'sample', look: 'midnight', audio: 'assets/audio/sample.m4a' }, 'standard', 'engine', films)
+    expect(audioKey1).not.toBe(silentKey)
+    await writeFile(audio, 'audio-v2')
+    const audioKey2 = await computeFilmCacheKey({ id: 'sample', look: 'midnight', audio: 'assets/audio/sample.m4a' }, 'standard', 'engine', films)
+    expect(audioKey2).not.toBe(audioKey1)
+})
+
 it.skipIf(process.platform === 'win32')('assembles four CPU shards from verified caches and refuses an incomplete assembly', async () => {
     const directory = await tempDirectory()
     const films = join(directory, 'examples/films'), bin = join(directory, 'bin')

@@ -12,7 +12,7 @@ interface PackResult {
 const limits = {
     size: 7_750_000,
     unpackedSize: 22_500_000,
-    entryCount: 277,
+    entryCount: 281,
 }
 
 // Inspect the existing build. npm also runs prepare for a dry run unless suppressed.

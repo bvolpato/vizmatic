@@ -10,6 +10,17 @@
     "look": "midnight"
   },
   {
+    "id": "kv-cache",
+    "title": "KV Cache: why decoding stays fast",
+    "summary": "Narrated walkthrough of autoregressive KV caching: why naive decoding repeats 512× projection work, how linear cache growth hits a 24 GiB GPU wall, and how Grouped-Query Attention cuts VRAM 8×.",
+    "topic": "Machine learning",
+    "duration": 67.8,
+    "posterTime": 64.8,
+    "featured": true,
+    "look": "midnight",
+    "audio": "assets/audio/kv-cache.m4a"
+  },
+  {
     "id": "flash-attention",
     "title": "FlashAttention: tiling beats memory bandwidth",
     "summary": "Online running-max softmax streams K and V blocks through fast on-chip SRAM without materializing the N by N attention matrix in HBM.",
@@ -40,13 +51,43 @@
     "look": "chalk"
   },
   {
+    "id": "retry-storm",
+    "title": "Retry storms: why naive retries keep outages alive",
+    "summary": "A two-second brownout triggers synchronized fixed retries that pin a recovered service above saturation, while full-jitter exponential backoff with a 10% retry budget restores steady load.",
+    "topic": "Systems",
+    "duration": 30,
+    "posterTime": 26.2,
+    "featured": true,
+    "look": "neon"
+  },
+  {
+    "id": "transformer-residual",
+    "title": "The residual stream: how layers refine a prediction",
+    "summary": "A 4D residual stream flows up a transformer stack while attention and MLP branches add deltas, sharpening live logit-lens next-token probabilities.",
+    "topic": "Machine learning",
+    "duration": 27.6,
+    "posterTime": 24.5,
+    "featured": false,
+    "look": "paper"
+  },
+  {
+    "id": "fp8-quantization",
+    "title": "FP8 quantization: shrinking 32 bits down to 8",
+    "summary": "Compare FP32, BF16, and FP8 E4M3 bit budgets, snap real weights onto non-uniform floating-point levels, and see per-tensor AbsMax scaling cut quantization error 12×.",
+    "topic": "Machine learning",
+    "duration": 29.6,
+    "posterTime": 26.5,
+    "featured": false,
+    "look": "blueprint"
+  },
+  {
     "id": "io-uring",
     "title": "io_uring: shared rings, fewer syscalls",
     "summary": "Userspace and the kernel exchange requests through shared submission and completion rings. Batching reduces submission syscalls; an awake SQPOLL thread can avoid them until a wakeup is needed.",
     "topic": "Systems",
     "duration": 45,
     "posterTime": 21.8,
-    "featured": true,
+    "featured": false,
     "look": "midnight"
   },
   {
@@ -56,7 +97,7 @@
     "topic": "Distributed systems",
     "duration": 39.4,
     "posterTime": 26.5,
-    "featured": true,
+    "featured": false,
     "look": "neon"
   },
   {
