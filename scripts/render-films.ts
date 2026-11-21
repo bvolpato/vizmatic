@@ -27,6 +27,7 @@ export interface CatalogEntry {
     posterTime: number
     featured: boolean
     look: 'midnight' | 'paper' | 'blueprint' | 'chalk' | 'neon'
+    audio?: string
 }
 
 const OUT = 'docs/assets/films'
@@ -220,13 +221,19 @@ async function collectFilmFiles(entryFiles: string[], rootDir: string): Promise<
 }
 
 export async function computeFilmCacheKey(
-    entry: Pick<CatalogEntry, 'id' | 'look'>,
+    entry: Pick<CatalogEntry, 'id' | 'look' | 'audio'>,
     quality: Quality,
     engineHash: string,
     filmsDir = resolve('examples/films'),
 ): Promise<string> {
     const hash = createHash('sha256')
     hash.update(`engine:${engineHash}\nid:${entry.id}\nlook:${entry.look}\nquality:${quality}\ndither:${CATALOG_DITHER}\nbackend:cpu\nencoder:libx264\n`)
+    if (entry.audio) {
+        const audioPath = resolve(filmsDir, '../../docs', entry.audio.replace(/^\.?\//, ''))
+        hash.update(`audio:${entry.audio}\n`)
+        hash.update(await readFile(audioPath))
+        hash.update('\n')
+    }
     const entryFile = join(filmsDir, `${entry.id}.ts`)
     const files = await collectFilmFiles([entryFile], resolve(filmsDir, '../..'))
     const companionDir = [...await listFilesSorted(join(filmsDir, entry.id)), ...await listFilesSorted(join(filmsDir, `_${entry.id}`))]
@@ -325,7 +332,11 @@ async function main(): Promise<void> {
             }
         }
         const started = performance.now()
-        const video = await renderFilmVideo(film, outputMp4, { quality, workers, dither: CATALOG_DITHER, backend: 'cpu', h264Encoder: 'libx264' })
+        const audio = entry.audio ? resolve('docs', entry.audio.replace(/^\.?\//, '')) : undefined
+        const video = await renderFilmVideo(film, outputMp4, {
+            quality, workers, dither: CATALOG_DITHER, backend: 'cpu', h264Encoder: 'libx264',
+            ...(audio ? { audio } : {}),
+        })
         if (cacheDir) await saveCachedFilm(cacheDir, entry.id, cacheKey, outputMp4)
         const seconds = (performance.now() - started) / 1000
         console.log(`video ${entry.id} ${video.frameCount} frames ${(video.bytes / 1e6).toFixed(1)} MB in ${seconds.toFixed(0)}s (${(video.frameCount / seconds).toFixed(0)} fps)`)
