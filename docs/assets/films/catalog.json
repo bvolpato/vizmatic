@@ -1,45 +1,5 @@
 [
   {
-    "id": "vizmatic-title",
-    "title": "Vizmatic",
-    "summary": "Lit curves gather into the wordmark and let go again, as a seamless ten-second loop.",
-    "topic": "Brand",
-    "duration": 10,
-    "posterTime": 0.8,
-    "featured": false,
-    "look": "midnight"
-  },
-  {
-    "id": "gradient-descent",
-    "title": "Downhill, one step at a time",
-    "summary": "Real gradient descent on a two-basin loss surface: two starts 0.12 apart travel together, then finish in different minima.",
-    "topic": "Machine learning",
-    "duration": 38.5,
-    "posterTime": 28,
-    "featured": true,
-    "look": "midnight"
-  },
-  {
-    "id": "lorenz",
-    "title": "The rules are exact, the future is not",
-    "summary": "The Lorenz system integrated with real numbers: two starts a hair apart part ways, then 72 fill the butterfly.",
-    "topic": "Physics",
-    "duration": 40.2,
-    "posterTime": 39,
-    "featured": true,
-    "look": "midnight"
-  },
-  {
-    "id": "central-limit",
-    "title": "Twelve coin flips, nine hundred times",
-    "summary": "A Galton board settles into a histogram that meets the Gaussian curve, with mean and deviation measured from the balls.",
-    "topic": "Statistics",
-    "duration": 36.6,
-    "posterTime": 35,
-    "featured": true,
-    "look": "midnight"
-  },
-  {
     "id": "planetary-orbits",
     "title": "Eight worlds, one gravity",
     "summary": "Eight planets follow Keplerian orbits under one clock. Sweep past the giants, move into Saturn’s tilted rings, and return to the whole system. Enlarged worlds and compressed spacing keep every orbit visible.",
@@ -50,84 +10,15 @@
     "look": "midnight"
   },
   {
-    "id": "maxwell",
-    "title": "Maxwell: the shape of light",
-    "summary": "A traveling electromagnetic wave meets a fixed observer. Electric and magnetic vectors reveal linear, elliptical and circular polarization, then the direction of energy flow.",
-    "topic": "Physics",
-    "duration": 42,
-    "posterTime": 29,
+    "id": "kv-cache",
+    "title": "KV Cache: why decoding stays fast",
+    "summary": "Narrated walkthrough of autoregressive KV caching: why naive decoding repeats 512× projection work, how linear cache growth hits a 24 GiB GPU wall, and how Grouped-Query Attention cuts VRAM 8×.",
+    "topic": "Machine learning",
+    "duration": 67.8,
+    "posterTime": 64.8,
     "featured": true,
-    "look": "midnight"
-  },
-  {
-    "id": "reaction-diffusion",
-    "title": "Two chemicals. Endless patterns.",
-    "summary": "A Gray–Scott simulation grows and divides from one seed. Local reaction and diffusion create a field of patterns, shown on one fixed concentration scale.",
-    "topic": "Chemistry",
-    "duration": 40.6,
-    "posterTime": 33,
-    "featured": true,
-    "look": "midnight"
-  },
-  {
-    "id": "gravitational-waves",
-    "title": "Gravitational waves: a changing separation",
-    "summary": "Rings of freely falling test particles reveal plus and cross polarization, then a traveling wave. Local displacements are magnified; the rings are measuring arrangements.",
-    "topic": "Physics",
-    "duration": 42,
-    "posterTime": 35,
-    "featured": true,
-    "look": "midnight"
-  },
-  {
-    "id": "stationary-action",
-    "title": "Stationary action: a path among neighbors",
-    "summary": "A ballistic path sits among nearby alternatives with the same endpoints. Their calculated actions reveal stationarity and quadratic changes under small variations.",
-    "topic": "Physics",
-    "duration": 42,
-    "posterTime": 30,
-    "featured": true,
-    "look": "midnight"
-  },
-  {
-    "id": "quantum-tunneling",
-    "title": "A barrier is not a wall",
-    "summary": "Exact stationary quantum scattering links complex amplitude, phase and probability density. Wider barriers transmit less current while reflection and transmission still sum to one.",
-    "topic": "Physics",
-    "duration": 40,
-    "posterTime": 23,
-    "featured": true,
-    "look": "midnight"
-  },
-  {
-    "id": "heat-equation",
-    "title": "Heat: why the ripples disappear",
-    "summary": "A temperature profile, a heat strip and its Fourier modes share one analytic solution. Higher frequencies decay faster, leaving the broadest shape behind.",
-    "topic": "Physics",
-    "duration": 40,
-    "posterTime": 17,
-    "featured": true,
-    "look": "midnight"
-  },
-  {
-    "id": "catalysis",
-    "title": "A catalyst changes the route",
-    "summary": "A lower reaction pathway shares the same endpoints. Explicit molecular geometry and chemical notation connect net hydrogenation with unchanged overall energy.",
-    "topic": "Chemistry",
-    "duration": 40,
-    "posterTime": 33,
-    "featured": true,
-    "look": "midnight"
-  },
-  {
-    "id": "boltzmann-entropy",
-    "title": "Entropy counts hidden arrangements",
-    "summary": "Twenty labeled particles change compartments. Exact binomial counts link each arrangement to coarse-grained entropy, including the fluctuations of a small system.",
-    "topic": "Physics",
-    "duration": 40,
-    "posterTime": 18.5,
-    "featured": true,
-    "look": "midnight"
+    "look": "midnight",
+    "audio": "assets/audio/kv-cache.m4a"
   },
   {
     "id": "flash-attention",
@@ -135,39 +26,9 @@
     "summary": "Online running-max softmax streams K and V blocks through fast on-chip SRAM without materializing the N by N attention matrix in HBM.",
     "topic": "Machine learning",
     "duration": 46.6,
-    "posterTime": 22.5,
-    "featured": true,
-    "look": "blueprint"
-  },
-  {
-    "id": "io-uring",
-    "title": "io_uring: shared rings, fewer syscalls",
-    "summary": "Userspace and the kernel exchange requests through shared submission and completion rings. Batching reduces submission syscalls; an awake SQPOLL thread can avoid them until a wakeup is needed.",
-    "topic": "Systems",
-    "duration": 45,
     "posterTime": 22.8,
     "featured": true,
-    "look": "midnight"
-  },
-  {
-    "id": "svd-3d",
-    "title": "SVD: reorient, stretch, reorient",
-    "summary": "A unit sphere becomes an ellipsoid under a real 3D matrix, then collapses exactly to rank two. SVD separates orthogonal factors, which may rotate or reflect, from singular-value scaling.",
-    "topic": "Mathematics",
-    "duration": 41.6,
-    "posterTime": 25,
-    "featured": true,
-    "look": "chalk"
-  },
-  {
-    "id": "fourier-epicycles",
-    "title": "A drawing is a sum of circles",
-    "summary": "A real Fourier transform of an ampersand, redrawn by a chain of rotating arrows as the term count grows from 1 to 200.",
-    "topic": "Mathematics",
-    "duration": 48.2,
-    "posterTime": 30.5,
-    "featured": true,
-    "look": "midnight"
+    "look": "blueprint"
   },
   {
     "id": "rag-citations",
@@ -180,24 +41,74 @@
     "look": "paper"
   },
   {
+    "id": "svd-3d",
+    "title": "SVD: reorient, stretch, reorient",
+    "summary": "A unit sphere becomes an ellipsoid under a real 3D matrix, then collapses exactly to rank two. SVD separates orthogonal factors, which may rotate or reflect, from singular-value scaling.",
+    "topic": "Mathematics",
+    "duration": 41.6,
+    "posterTime": 26,
+    "featured": true,
+    "look": "chalk"
+  },
+  {
+    "id": "retry-storm",
+    "title": "Retry storms: why naive retries keep outages alive",
+    "summary": "A two-second brownout triggers synchronized fixed retries that pin a recovered service above saturation, while full-jitter exponential backoff with a 10% retry budget restores steady load.",
+    "topic": "Systems",
+    "duration": 30,
+    "posterTime": 26.2,
+    "featured": true,
+    "look": "neon"
+  },
+  {
+    "id": "transformer-residual",
+    "title": "The residual stream: how layers refine a prediction",
+    "summary": "A 4D residual stream flows up a transformer stack while attention and MLP branches add deltas, sharpening live logit-lens next-token probabilities.",
+    "topic": "Machine learning",
+    "duration": 27.6,
+    "posterTime": 24.5,
+    "featured": false,
+    "look": "paper"
+  },
+  {
+    "id": "fp8-quantization",
+    "title": "FP8 quantization: shrinking 32 bits down to 8",
+    "summary": "Compare FP32, BF16, and FP8 E4M3 bit budgets, snap real weights onto non-uniform floating-point levels, and see per-tensor AbsMax scaling cut quantization error 12×.",
+    "topic": "Machine learning",
+    "duration": 29.6,
+    "posterTime": 26.5,
+    "featured": false,
+    "look": "blueprint"
+  },
+  {
+    "id": "io-uring",
+    "title": "io_uring: shared rings, fewer syscalls",
+    "summary": "Userspace and the kernel exchange requests through shared submission and completion rings. Batching reduces submission syscalls; an awake SQPOLL thread can avoid them until a wakeup is needed.",
+    "topic": "Systems",
+    "duration": 45,
+    "posterTime": 21.8,
+    "featured": false,
+    "look": "midnight"
+  },
+  {
     "id": "ring-allreduce",
     "title": "Eight GPUs, one ring, bounded transfer",
     "summary": "An ideal eight-GPU ring combines seven reduce-scatter hops with seven all-gather hops. Per-rank transfer volume stays bounded, while latency and utilization depend on topology and workload.",
     "topic": "Distributed systems",
     "duration": 39.4,
-    "posterTime": 23,
-    "featured": true,
+    "posterTime": 26.5,
+    "featured": false,
     "look": "neon"
   },
   {
-    "id": "cache-miss",
-    "title": "One expired key can take down the database",
-    "summary": "An illustrative one-process batch model turns 480 cache misses into duplicate database queries, then coalesces them with an in-memory key lock. A linear timeline compares the assumed latencies.",
-    "topic": "Systems",
-    "duration": 43.2,
-    "posterTime": 18.5,
-    "featured": true,
-    "look": "blueprint"
+    "id": "hydrogen-orbitals",
+    "title": "Hydrogen: seeing a wavefunction",
+    "summary": "Signed orbital surfaces meet moving probability slices. The normalized 1s, 2p and 3d wavefunctions reveal lobes and nodal planes, with no electron orbits.",
+    "topic": "Physics",
+    "duration": 52,
+    "posterTime": 40,
+    "featured": false,
+    "look": "midnight"
   },
   {
     "id": "paxos",
@@ -206,17 +117,38 @@
     "topic": "Distributed systems",
     "duration": 55.6,
     "posterTime": 33.2,
-    "featured": true,
+    "featured": false,
     "look": "midnight"
   },
   {
-    "id": "attention",
-    "title": "Attention routes context where grammar alone cannot",
-    "summary": "Hand-authored 4D query, key, and value vectors illustrate attention. Matrix and bars share the same ten-key softmax distribution, with omitted keys grouped explicitly.",
-    "topic": "Machine learning",
-    "duration": 37.6,
-    "posterTime": 28.5,
-    "featured": true,
+    "id": "deck-example",
+    "title": "Why we rebuilt the renderer",
+    "summary": "A five-slide engineering talk about per-frame layout and timeline sampling. Historical measurements use different demos on one laptop, not a controlled speedup comparison.",
+    "topic": "Presentation",
+    "duration": 33.9,
+    "posterTime": 24.5,
+    "featured": false,
+    "look": "paper",
+    "stepped": true
+  },
+  {
+    "id": "cache-miss",
+    "title": "One expired key can take down the database",
+    "summary": "An illustrative one-process batch model turns 480 cache misses into duplicate database queries, then coalesces them with an in-memory key lock. A linear timeline compares the assumed latencies.",
+    "topic": "Systems",
+    "duration": 43.2,
+    "posterTime": 18.5,
+    "featured": false,
+    "look": "blueprint"
+  },
+  {
+    "id": "lorenz",
+    "title": "The rules are exact, the future is not",
+    "summary": "The Lorenz system integrated with real numbers: two starts a hair apart part ways, then 72 fill the butterfly.",
+    "topic": "Physics",
+    "duration": 40.2,
+    "posterTime": 39,
+    "featured": false,
     "look": "midnight"
   },
   {
@@ -226,7 +158,57 @@
     "topic": "Time series",
     "duration": 46.4,
     "posterTime": 34.5,
-    "featured": true,
+    "featured": false,
+    "look": "midnight"
+  },
+  {
+    "id": "reaction-diffusion",
+    "title": "Two chemicals. Endless patterns.",
+    "summary": "A Gray–Scott simulation grows and divides from one seed. Local reaction and diffusion create a field of patterns, shown on one fixed concentration scale.",
+    "topic": "Chemistry",
+    "duration": 40.6,
+    "posterTime": 33,
+    "featured": false,
+    "look": "midnight"
+  },
+  {
+    "id": "gradient-descent",
+    "title": "Downhill, one step at a time",
+    "summary": "Real gradient descent on a two-basin loss surface: two starts 0.12 apart travel together, then finish in different minima.",
+    "topic": "Machine learning",
+    "duration": 38.5,
+    "posterTime": 28,
+    "featured": false,
+    "look": "midnight"
+  },
+  {
+    "id": "central-limit",
+    "title": "Twelve coin flips, nine hundred times",
+    "summary": "A Galton board settles into a histogram that meets the Gaussian curve, with mean and deviation measured from the balls.",
+    "topic": "Statistics",
+    "duration": 36.6,
+    "posterTime": 35,
+    "featured": false,
+    "look": "midnight"
+  },
+  {
+    "id": "fourier-epicycles",
+    "title": "A drawing is a sum of circles",
+    "summary": "A real Fourier transform of an ampersand, redrawn by a chain of rotating arrows as the term count grows from 1 to 200.",
+    "topic": "Mathematics",
+    "duration": 48.2,
+    "posterTime": 30.5,
+    "featured": false,
+    "look": "midnight"
+  },
+  {
+    "id": "attention",
+    "title": "Attention routes context where grammar alone cannot",
+    "summary": "Hand-authored 4D query, key, and value vectors illustrate attention. Matrix and bars share the same ten-key softmax distribution, with omitted keys grouped explicitly.",
+    "topic": "Machine learning",
+    "duration": 37.6,
+    "posterTime": 28.5,
+    "featured": false,
     "look": "midnight"
   },
   {
@@ -236,7 +218,97 @@
     "topic": "Mathematics",
     "duration": 40.1,
     "posterTime": 38,
-    "featured": true,
+    "featured": false,
+    "look": "midnight"
+  },
+  {
+    "id": "maxwell",
+    "title": "Maxwell: the shape of light",
+    "summary": "A traveling electromagnetic wave meets a fixed observer. Electric and magnetic vectors reveal linear, elliptical and circular polarization, then the direction of energy flow.",
+    "topic": "Physics",
+    "duration": 42,
+    "posterTime": 29,
+    "featured": false,
+    "look": "midnight"
+  },
+  {
+    "id": "pythagoras",
+    "title": "Move the pieces, keep the square",
+    "summary": "A proof by rearrangement: four triangles slide inside a square, and the leftover area writes the theorem.",
+    "topic": "Mathematics",
+    "duration": 27.8,
+    "posterTime": 26,
+    "featured": false,
+    "look": "chalk"
+  },
+  {
+    "id": "catalysis",
+    "title": "A catalyst changes the route",
+    "summary": "A lower reaction pathway shares the same endpoints. Explicit molecular geometry and chemical notation connect net hydrogenation with unchanged overall energy.",
+    "topic": "Chemistry",
+    "duration": 40,
+    "posterTime": 33,
+    "featured": false,
+    "look": "midnight"
+  },
+  {
+    "id": "gravitational-waves",
+    "title": "Gravitational waves: a changing separation",
+    "summary": "Rings of freely falling test particles reveal plus and cross polarization, then a traveling wave. Local displacements are magnified; the rings are measuring arrangements.",
+    "topic": "Physics",
+    "duration": 42,
+    "posterTime": 35,
+    "featured": false,
+    "look": "midnight"
+  },
+  {
+    "id": "quantum-tunneling",
+    "title": "A barrier is not a wall",
+    "summary": "Exact stationary quantum scattering links complex amplitude, phase and probability density. Wider barriers transmit less current while reflection and transmission still sum to one.",
+    "topic": "Physics",
+    "duration": 40,
+    "posterTime": 23,
+    "featured": false,
+    "look": "midnight"
+  },
+  {
+    "id": "heat-equation",
+    "title": "Heat: why the ripples disappear",
+    "summary": "A temperature profile, a heat strip and its Fourier modes share one analytic solution. Higher frequencies decay faster, leaving the broadest shape behind.",
+    "topic": "Physics",
+    "duration": 40,
+    "posterTime": 17,
+    "featured": false,
+    "look": "midnight"
+  },
+  {
+    "id": "stationary-action",
+    "title": "Stationary action: a path among neighbors",
+    "summary": "A ballistic path sits among nearby alternatives with the same endpoints. Their calculated actions reveal stationarity and quadratic changes under small variations.",
+    "topic": "Physics",
+    "duration": 42,
+    "posterTime": 30,
+    "featured": false,
+    "look": "midnight"
+  },
+  {
+    "id": "boltzmann-entropy",
+    "title": "Entropy counts hidden arrangements",
+    "summary": "Twenty labeled particles change compartments. Exact binomial counts link each arrangement to coarse-grained entropy, including the fluctuations of a small system.",
+    "topic": "Physics",
+    "duration": 40,
+    "posterTime": 18.5,
+    "featured": false,
+    "look": "midnight"
+  },
+  {
+    "id": "beam-search",
+    "title": "A beam keeps more than one path",
+    "summary": "In a normalized three-token toy model, greedy decoding picks a sequence with probability 0.18. A beam of two keeps an alternative prefix and finds one with probability 0.324.",
+    "topic": "Machine learning",
+    "duration": 34.9,
+    "posterTime": 30.5,
+    "featured": false,
     "look": "midnight"
   },
   {
@@ -260,26 +332,6 @@
     "look": "midnight"
   },
   {
-    "id": "beam-search",
-    "title": "A beam keeps more than one path",
-    "summary": "In a normalized three-token toy model, greedy decoding picks a sequence with probability 0.18. A beam of two keeps an alternative prefix and finds one with probability 0.324.",
-    "topic": "Machine learning",
-    "duration": 34.9,
-    "posterTime": 30.5,
-    "featured": false,
-    "look": "midnight"
-  },
-  {
-    "id": "pythagoras",
-    "title": "Move the pieces, keep the square",
-    "summary": "A proof by rearrangement: four triangles slide inside a square, and the leftover area writes the theorem.",
-    "topic": "Mathematics",
-    "duration": 27.8,
-    "posterTime": 26,
-    "featured": false,
-    "look": "chalk"
-  },
-  {
     "id": "taylor-series",
     "title": "Sine, from what it does at zero",
     "summary": "Polynomials hug the sine curve further out as each term grows in, with the trusted range measured live.",
@@ -288,17 +340,6 @@
     "posterTime": 16.5,
     "featured": false,
     "look": "midnight"
-  },
-  {
-    "id": "deck-example",
-    "title": "Why we rebuilt the renderer",
-    "summary": "A five-slide engineering talk about per-frame layout and timeline sampling. Historical measurements use different demos on one laptop, not a controlled speedup comparison.",
-    "topic": "Presentation",
-    "duration": 33.9,
-    "posterTime": 24.5,
-    "featured": false,
-    "look": "paper",
-    "stepped": true
   },
   {
     "id": "pathlines",
@@ -311,12 +352,12 @@
     "look": "midnight"
   },
   {
-    "id": "hydrogen-orbitals",
-    "title": "Hydrogen: seeing a wavefunction",
-    "summary": "Signed orbital surfaces meet moving probability slices. The normalized 1s, 2p and 3d wavefunctions reveal lobes and nodal planes, with no electron orbits.",
-    "topic": "Physics",
-    "duration": 52,
-    "posterTime": 40,
+    "id": "vizmatic-title",
+    "title": "Vizmatic",
+    "summary": "Lit curves gather into the wordmark and let go again, as a seamless ten-second loop.",
+    "topic": "Brand",
+    "duration": 10,
+    "posterTime": 1.7,
     "featured": false,
     "look": "midnight"
   }
