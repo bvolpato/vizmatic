@@ -8,16 +8,13 @@ import { createRequire, Module } from 'module'
 import { tmpdir } from 'os'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'path'
 import { fileURLToPath, pathToFileURL } from 'url'
-import React, { isValidElement } from 'react'
 import type { ReactNode } from 'react'
-import { Resvg } from '@resvg/resvg-js'
-import * as publicApi from './index'
-import { detectBackgroundColor, detectContentBounds, detectLayoutOverflow, detectOverflow, type CropRegion } from './autocrop'
-import { checkFrame } from './check'
-import { renderAnimatedGifWithOutput, renderAnimationGifWithOutput, type AnimatedScene } from './animate'
+import type { CropRegion } from './autocrop'
+import type { AnimatedScene } from './animate'
 import type { WatermarkImageOptions, WatermarkInput, WatermarkOptions, WatermarkPosition } from './brand'
 import { extractRootJsx, findBareRootJsxStart } from './bare-source'
 import { diagnosticFromMessage, type CheckDiagnostic } from './diagnostics'
+import { planMediaExcerpt } from './media-excerpt'
 import { readAnimationLine, readPresetLine as readSharedPresetLine } from './playground-settings'
 import {
     isBackgroundMetadataLine,
@@ -29,19 +26,56 @@ import {
     type PlaygroundThemeColors,
 } from './frame-theme'
 import { validatePlaygroundAnimation } from './playground-animation'
-import { CanvasOverflowError, renderToPngWithOutput, renderToSvg, type RenderBackground } from './render'
+import type { RenderBackground } from './render'
 import type { SatoriNode } from './satori'
 import { parseDensity, setDefaultDensity, type Density } from './density'
 import type { ThemeMode, ThemePreset } from './theme'
 import type { DefinedAnimation } from './timeline'
-import { renderAnimationVideo, type RgbaVideoOutput } from './video'
-import {
-    checkFilmFile, filmFromModule, isLookName, parseFilmArgs, printFilmCheck, runFilmCommand, runLooksCommand,
-    runNewCommand, runObjectsCommand, type FilmCheckFileReport,
-} from './film-cli'
-import { runNarratedCommand, runSoundsCommand } from './narrated-cli'
+import type { RgbaVideoOutput } from './video'
+import type { FilmCheckFileReport } from './film-cli'
 import type { LookName } from './stage/look'
-import { isSuspend } from './stage/stage'
+
+type PublicApiModule = typeof import('./index')
+type FilmCliModule = typeof import('./film-cli')
+type NarratedCliModule = typeof import('./narrated-cli')
+type ReactModule = typeof import('react')
+type ResvgModule = typeof import('@resvg/resvg-js')
+
+let publicApiPromise: Promise<PublicApiModule> | undefined
+let filmCliPromise: Promise<FilmCliModule> | undefined
+let narratedCliPromise: Promise<NarratedCliModule> | undefined
+let reactPromise: Promise<ReactModule> | undefined
+let resvgPromise: Promise<ResvgModule> | undefined
+let cachedReact: ReactModule | undefined
+
+const loadPublicApi = (): Promise<PublicApiModule> => (publicApiPromise ??= import('./index'))
+const loadFilmCli = (): Promise<FilmCliModule> => (filmCliPromise ??= import('./film-cli'))
+const loadNarratedCli = (): Promise<NarratedCliModule> => (narratedCliPromise ??= import('./narrated-cli'))
+const loadResvg = (): Promise<ResvgModule> => (resvgPromise ??= import('@resvg/resvg-js'))
+const loadReact = async (): Promise<ReactModule> => {
+    if (cachedReact) return cachedReact
+    reactPromise ??= import('react').then((mod) => (mod.default ?? mod) as ReactModule)
+    cachedReact = await reactPromise
+    return cachedReact
+}
+
+const REACT_ELEMENT_TYPE = Symbol.for('react.element')
+const REACT_TRANSITIONAL_ELEMENT_TYPE = Symbol.for('react.transitional.element')
+
+function isReactElement(value: unknown): value is import('react').ReactElement {
+    if (cachedReact) return cachedReact.isValidElement(value)
+    if (typeof value !== 'object' || value === null) return false
+    const tag = (value as { $$typeof?: unknown }).$$typeof
+    return tag === REACT_ELEMENT_TYPE || tag === REACT_TRANSITIONAL_ELEMENT_TYPE
+}
+
+function isSuspend(error: unknown): boolean {
+    return typeof error === 'object' && error !== null && (error as { isVizmaticSuspend?: boolean }).isVizmaticSuspend === true
+}
+
+function pixelView(buffer: Uint8Array): Uint8Array {
+    return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength)
+}
 
 interface FrameModule {
     width?: number
@@ -179,10 +213,16 @@ const BARE_FRAME_EXTRA_EXPORTS = new Set([
     'typography',
     'wrapWithWatermark',
 ])
-const BARE_FRAME_EXPORTS = Object.keys(publicApi)
-    .filter((name) => /^[A-Za-z_$][\w$]*$/.test(name))
-    .filter((name) => /^[A-Z]/.test(name) || BARE_FRAME_EXTRA_EXPORTS.has(name))
-    .sort()
+let cachedBareFrameExports: string[] | undefined
+async function getBareFrameExports(): Promise<string[]> {
+    if (cachedBareFrameExports) return cachedBareFrameExports
+    const publicApi = await loadPublicApi()
+    cachedBareFrameExports = Object.keys(publicApi)
+        .filter((name) => /^[A-Za-z_$][\w$]*$/.test(name))
+        .filter((name) => /^[A-Z]/.test(name) || BARE_FRAME_EXTRA_EXPORTS.has(name))
+        .sort()
+    return cachedBareFrameExports
+}
 
 type ResolveFilename = (request: string, parent: unknown, isMain: boolean, options?: unknown) => string
 const framesNeedingGlobalReact = new WeakSet<object>()
@@ -276,7 +316,7 @@ async function imageSourceToDataUri(source: string): Promise<string> {
 
 async function resolveWatermarkAssets(watermark: WatermarkInput | undefined): Promise<WatermarkInput | undefined> {
     if (watermark == null || typeof watermark !== 'object') return watermark
-    if (isValidElement(watermark) || !('image' in watermark) || !watermark.image) return watermark
+    if (isReactElement(watermark) || !('image' in watermark) || !watermark.image) return watermark
 
     if (typeof watermark.image === 'string') {
         return {
@@ -459,11 +499,11 @@ function containsJsx(source: string): boolean {
     return /<[A-Za-z][A-Za-z0-9.:-]*(\s|\/|>)/.test(source)
 }
 
-function installTemporaryGlobalReactBinding(): () => void {
-    const globalScope = globalThis as typeof globalThis & { React?: typeof React }
+function installTemporaryGlobalReactBinding(react: ReactModule): () => void {
+    const globalScope = globalThis as typeof globalThis & { React?: ReactModule }
     const hadOwnBinding = Object.prototype.hasOwnProperty.call(globalScope, 'React')
     const previousBinding = globalScope.React
-    globalScope.React = React
+    globalScope.React = react
     return () => {
         if (hadOwnBinding) globalScope.React = previousBinding
         else Reflect.deleteProperty(globalScope, 'React')
@@ -471,7 +511,8 @@ function installTemporaryGlobalReactBinding(): () => void {
 }
 
 async function withTemporaryGlobalReact<T>(callback: () => Promise<T>): Promise<T> {
-    const restore = installTemporaryGlobalReactBinding()
+    const react = await loadReact()
+    const restore = installTemporaryGlobalReactBinding(react)
     try {
         return await callback()
     } finally {
@@ -480,7 +521,8 @@ async function withTemporaryGlobalReact<T>(callback: () => Promise<T>): Promise<
 }
 
 function withTemporaryGlobalReactSync<T>(callback: () => T): T {
-    const restore = installTemporaryGlobalReactBinding()
+    if (!cachedReact) throw new Error('React runtime was not initialized before executing a JSX frame.')
+    const restore = installTemporaryGlobalReactBinding(cachedReact)
     try {
         return callback()
     } finally {
@@ -636,8 +678,9 @@ function escapeRegExp(value: string): string {
     return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-function bareFrameExportsForSource(source: string): string[] {
-    return BARE_FRAME_EXPORTS.filter((name) => {
+async function bareFrameExportsForSource(source: string): Promise<string[]> {
+    const exportsList = await getBareFrameExports()
+    return exportsList.filter((name) => {
         if (name === 'getThemeColors') return true
         const escapedName = escapeRegExp(name)
         if (/^[A-Z]/.test(name)) return new RegExp(`<\\/?${escapedName}(?:\\s|>|/)|\\b${escapedName}\\s*\\(`).test(source)
@@ -662,7 +705,7 @@ function buildAutoImportDeclarations(names: string[], preset: ThemePreset): stri
     }).join('\n')
 }
 
-function buildBareFrameModule(framePath: string, source: string): string | undefined {
+async function buildBareFrameModule(framePath: string, source: string): Promise<string | undefined> {
     const imports: string[] = []
     const bodyLines: string[] = []
     let width: number | undefined
@@ -779,7 +822,7 @@ function buildBareFrameModule(framePath: string, source: string): string | undef
     }
     width ??= frameWidth ?? DEFAULT_FRAME_WIDTH
     height ??= frameHeight ?? DEFAULT_FRAME_HEIGHT
-    const autoImports = bareFrameExportsForSource(body)
+    const autoImports = await bareFrameExportsForSource(body)
     // Keep injected values outside the source scope, as in the browser renderer. Source bindings then shadow them naturally.
     const createBody = hasAnimationMetadata
         ? `    const c = __theme
@@ -891,7 +934,7 @@ function isBareFrameSource(source: string): boolean {
 
 async function importBareFrame(filePath: string, source?: string): Promise<FrameModule | undefined> {
     source ??= await readFile(filePath, 'utf8')
-    const moduleSource = buildBareFrameModule(filePath, source)
+    const moduleSource = await buildBareFrameModule(filePath, source)
     if (!moduleSource) return undefined
 
     const tempDir = await mkdtemp(join(tmpdir(), 'vizmatic-frame-'))
@@ -938,7 +981,7 @@ function parseRenderArgs(argv: string[], defaults: { maxFps?: number; outDir?: s
 
     function mutableWatermark(): WatermarkOptions {
         if (!watermarkOptions) {
-            watermarkOptions = typeof watermark === 'object' && watermark !== null && !isValidElement(watermark)
+            watermarkOptions = typeof watermark === 'object' && watermark !== null && !isReactElement(watermark)
                 ? { ...watermark }
                 : {}
             if (typeof watermark === 'string') watermarkOptions.text = watermark
@@ -1071,7 +1114,7 @@ function parseVideoArgs(argv: string[]): VideoArgs {
     return { ...parseRenderArgs(common, { maxFps: 120, outDir: 'dist/videos' }), ...video }
 }
 
-function parseCheckArgs(argv: string[]): CheckArgs {
+async function parseCheckArgs(argv: string[]): Promise<CheckArgs> {
     const inputs: string[] = []
     let themes: ThemeMode[] = ['dark', 'light']
     let background: RenderBackground | undefined
@@ -1100,6 +1143,7 @@ function parseCheckArgs(argv: string[]): CheckArgs {
         } else if (arg === '--look') {
             const raw = argv[++index] ?? usage()
             looks = raw.split(',').map((look) => look.trim()).filter(Boolean) as LookName[]
+            const { isLookName } = await loadFilmCli()
             const unknown = looks.find((look) => !isLookName(look))
             if (unknown || looks.length === 0) throw new Error(`Unknown look ${JSON.stringify(unknown ?? raw)}. Run "vizmatic looks" to see all looks.`)
         } else if (arg === '--transparent' || arg === '--transparent-background') {
@@ -1296,7 +1340,7 @@ function normalizeAutoSize(value: FrameModule['autoSize'] | FrameModule['__vizma
 function normalizeFrameModule(mod: FrameModule): NormalizedFrameModule {
     const defaultObject = typeof mod.default === 'object'
         && mod.default
-        && !isValidElement(mod.default)
+        && !isReactElement(mod.default)
         && ('create' in mod.default || 'createAnimation' in mod.default || 'default' in mod.default)
         ? mod.default as Exclude<FrameModule['default'], ReactNode>
         : undefined
@@ -1339,8 +1383,9 @@ function frameElement(mod: FrameModule, theme: ThemeMode, background?: RenderBac
         throw new Error('frame module must export create(theme) or default React element')
     })
     if (!background || (mod.__vizmaticRootComponent !== 'Board' && mod.__vizmaticRootComponent !== 'Scene')
-        || !isValidElement(element) || Object.hasOwn(element.props as Record<string, unknown>, 'background')) return element
-    return React.cloneElement(element as React.ReactElement<Record<string, unknown>>, { background })
+        || !isReactElement(element) || Object.hasOwn(element.props as Record<string, unknown>, 'background')) return element
+    if (!cachedReact) throw new Error('React runtime was not initialized before cloning a frame element.')
+    return cachedReact.cloneElement(element as React.ReactElement<Record<string, unknown>>, { background })
 }
 
 function sourceFrameBackground(mod: FrameModule, theme: ThemeMode, requested?: RenderBackground): RenderBackground | undefined {
@@ -1356,8 +1401,9 @@ function sourceFrameBackground(mod: FrameModule, theme: ThemeMode, requested?: R
 type OverflowEdge = 'top' | 'right' | 'bottom' | 'left'
 
 function overflowEdges(error: unknown): OverflowEdge[] | undefined {
-    if (error instanceof CanvasOverflowError) {
-        return (Object.entries(error.overflow.edges) as Array<[OverflowEdge, boolean]>)
+    if (error && typeof error === 'object' && 'overflow' in error && (error as { name?: unknown }).name === 'CanvasOverflowError') {
+        const overflow = (error as { overflow: { edges: Record<OverflowEdge, boolean> } }).overflow
+        return (Object.entries(overflow.edges) as Array<[OverflowEdge, boolean]>)
             .filter(([, overflows]) => overflows)
             .map(([edge]) => edge)
     }
@@ -1390,8 +1436,9 @@ function nextAutoSize(width: number, height: number, autoSize: AutoSizeAxes, edg
 async function renderFrameToPng(
     mod: NormalizedFrameModule,
     theme: ThemeMode,
-    options: Omit<Parameters<typeof renderToPngWithOutput>[1], 'width' | 'height' | 'onNodeDetected'> & { width: number; height: number; inspectLayout?: boolean },
+    options: Omit<Parameters<PublicApiModule['renderToPngWithOutput']>[1], 'width' | 'height' | 'onNodeDetected'> & { width: number; height: number; inspectLayout?: boolean },
 ): Promise<{ width: number; height: number; outputWidth: number; outputHeight: number; logicalOutputWidth: number; logicalOutputHeight: number; contentBounds?: { x: number; y: number; width: number; height: number }; layoutNodes: SatoriNode[] }> {
+    const [, { renderToPngWithOutput }] = await Promise.all([loadReact(), loadPublicApi()])
     let width = options.width
     let height = options.height
     const { inspectLayout, ...renderOptions } = options
@@ -1432,7 +1479,8 @@ async function renderFrameToPng(
     return { width, height, outputWidth: width, outputHeight: height, logicalOutputWidth: width, logicalOutputHeight: height, layoutNodes: [] }
 }
 
-function rasterizeSvgForBounds(svg: string, width: number) {
+async function rasterizeSvgForBounds(svg: string, width: number) {
+    const { Resvg } = await loadResvg()
     return new Resvg(svg, {
         fitTo: { mode: 'width', value: width },
         background: 'rgba(0, 0, 0, 0)',
@@ -1471,12 +1519,17 @@ async function renderFrameToSvg(
         background?: RenderBackground
     },
 ): Promise<{ width: number; height: number; outputWidth: number; outputHeight: number; svg: string }> {
+    const [, { CanvasOverflowError, detectBackgroundColor, detectContentBounds, detectLayoutOverflow, detectOverflow, renderToSvg }] = await Promise.all([
+        loadReact(),
+        loadPublicApi(),
+    ])
     let width = options.width
     let height = options.height
     const frameBackground = sourceFrameBackground(mod, theme, options.background)
     let originalElement: ReactNode = frameElement(mod, theme, frameBackground)
     let originalSvg = ''
     let initialBounds: CropRegion | undefined
+    let initialRasterHeight = height
 
     for (let attempt = 0; attempt < AUTO_SIZE_ATTEMPTS; attempt += 1) {
         originalElement = frameElement(mod, theme, frameBackground)
@@ -1496,8 +1549,8 @@ async function renderFrameToSvg(
             continue
         }
 
-        const initialRaster = rasterizeSvgForBounds(originalSvg, width)
-        const pixels = new Uint8Array(initialRaster.pixels.buffer)
+        const initialRaster = await rasterizeSvgForBounds(originalSvg, width)
+        const pixels = pixelView(initialRaster.pixels)
         const background = detectBackgroundColor(pixels)
         const rasterOverflow = detectOverflow(pixels, initialRaster.width, initialRaster.height, background)
         const overflow = rasterOverflow.overflows ? rasterOverflow : detectLayoutOverflow(layoutNodes, width, height)
@@ -1514,6 +1567,7 @@ async function renderFrameToSvg(
             continue
         }
 
+        initialRasterHeight = initialRaster.height
         initialBounds = detectContentBounds(
             pixels,
             initialRaster.width,
@@ -1530,6 +1584,8 @@ async function renderFrameToSvg(
     let finalHeight = height
     let finalElement = originalElement
     let finalSvg = originalSvg
+    let viewportBounds: CropRegion | undefined = options.watermark ? undefined : initialBounds
+    let viewportRasterHeight = initialRasterHeight
 
     const croppedHeight = initialBounds.y + initialBounds.height
     const heightSavedPercent = ((height - croppedHeight) / height) * 100
@@ -1548,35 +1604,52 @@ async function renderFrameToSvg(
             theme,
         },
     )
-    finalSvg = await renderFinalSvg(finalElement, finalWidth, finalHeight)
+    if (finalHeight < height || options.watermark) {
+        finalSvg = await renderFinalSvg(finalElement, finalWidth, finalHeight)
+        viewportBounds = undefined
+    }
 
     if (finalHeight < height) {
-        const cropRaster = rasterizeSvgForBounds(finalSvg, finalWidth)
-        const cropPixels = new Uint8Array(cropRaster.pixels.buffer)
+        const cropRaster = await rasterizeSvgForBounds(finalSvg, finalWidth)
+        const cropPixels = pixelView(cropRaster.pixels)
         const cropBackground = detectBackgroundColor(cropPixels)
         const cropOverflow = detectOverflow(cropPixels, cropRaster.width, cropRaster.height, cropBackground)
         if (cropOverflow.overflows) {
             finalHeight = height
             finalElement = originalElement
-            finalSvg = await renderFinalSvg(finalElement, finalWidth, finalHeight)
+            finalSvg = options.watermark ? await renderFinalSvg(finalElement, finalWidth, finalHeight) : originalSvg
+            viewportBounds = options.watermark ? undefined : initialBounds
+            viewportRasterHeight = initialRasterHeight
+        } else {
+            viewportRasterHeight = cropRaster.height
+            viewportBounds = detectContentBounds(
+                cropPixels,
+                cropRaster.width,
+                cropRaster.height,
+                cropBackground,
+                SVG_AUTOCROP_PADDING,
+            )
         }
     }
 
     if (options.crop) {
-        const viewportRaster = rasterizeSvgForBounds(finalSvg, finalWidth)
-        const viewportPixels = new Uint8Array(viewportRaster.pixels.buffer)
-        const viewportBackground = detectBackgroundColor(viewportPixels)
-        const viewportBounds = detectContentBounds(
-            viewportPixels,
-            viewportRaster.width,
-            viewportRaster.height,
-            viewportBackground,
-            SVG_AUTOCROP_PADDING,
-        )
+        if (!viewportBounds) {
+            const viewportRaster = await rasterizeSvgForBounds(finalSvg, finalWidth)
+            const viewportPixels = pixelView(viewportRaster.pixels)
+            const viewportBackground = detectBackgroundColor(viewportPixels)
+            viewportRasterHeight = viewportRaster.height
+            viewportBounds = detectContentBounds(
+                viewportPixels,
+                viewportRaster.width,
+                viewportRaster.height,
+                viewportBackground,
+                SVG_AUTOCROP_PADDING,
+            )
+        }
 
         if (
             viewportBounds.width < finalWidth
-            || viewportBounds.height < viewportRaster.height
+            || viewportBounds.height < viewportRasterHeight
         ) {
             const cropped = cropSvgToRegion(finalSvg, viewportBounds)
             finalSvg = cropped.svg
@@ -1602,6 +1675,7 @@ function looksForThemes(themes: readonly ThemeMode[], explicit: boolean): LookNa
 
 /** Show a film's frames from the static commands. A single render writes its poster. */
 async function renderFilmFromFrameCommand(file: string, stem: string, args: RenderArgs, explicitTheme: boolean, formats: Array<'png' | 'svg' | 'mp4'>): Promise<void> {
+    const { parseFilmArgs, runFilmCommand } = await loadFilmCli()
     const filmArgs = parseFilmArgs([file, '--out', args.outDir])
     filmArgs.looks = looksForThemes(args.themes, explicitTheme)
     filmArgs.formats = formats
@@ -1637,7 +1711,7 @@ async function renderCommand(argv: string[]) {
 
     for (const file of files) {
         const rawMod = await importFrame(file)
-        if (filmFromModule(rawMod)) {
+        if (isFilmModule(rawMod)) {
             const formats: Array<'png' | 'svg'> = args.format === 'both' ? ['png', 'svg'] : [args.format]
             await renderFilmFromFrameCommand(file, stems.get(file) ?? basename(file).replace(/\.[^.]+$/, ''), args, explicitTheme, formats)
             continue
@@ -1835,8 +1909,16 @@ function printCheckReport(files: CheckFileReport[]) {
     }
 }
 
+function isFilmModule(mod: unknown): boolean {
+    if (!mod || typeof mod !== 'object') return false
+    const top = mod as { default?: { default?: unknown }; film?: unknown }
+    const isFilmValue = (value: unknown): boolean =>
+        Boolean(value && typeof value === 'object' && (value as { kind?: unknown }).kind === 'vizmatic.film')
+    return isFilmValue(top.default) || isFilmValue(top.default?.default) || isFilmValue(top.film)
+}
+
 async function checkCommand(argv: string[]) {
-    const args = parseCheckArgs(argv)
+    const args = await parseCheckArgs(argv)
     const restoreConsole = args.json ? suppressConsoleOutput() : undefined
     try {
         await checkCommandWithArgs(args)
@@ -1869,7 +1951,8 @@ async function checkCommandWithArgs(args: CheckArgs) {
             continue
         }
 
-        if (filmFromModule(imported.value)) {
+        if (isFilmModule(imported.value)) {
+            const { checkFilmFile, printFilmCheck } = await loadFilmCli()
             const looks = args.looks.length > 0 ? args.looks : looksForThemes(args.themes, args.explicitTheme)
             const module = imported.value
             const filmReports = await checkFilmFile(file, async () => module, looks, { motion: args.motion, contentTop: args.contentTop, textMargin: args.textMargin, textGap: args.textGap, textSize: args.textSize, emptySpace: args.emptySpace, emptySeconds: args.emptySeconds, readingSpeed: args.readingSpeed, stepped: args.stepped })
@@ -1891,26 +1974,32 @@ async function checkCommandWithArgs(args: CheckArgs) {
             continue
         }
 
+        const [, { checkFrame }] = await Promise.all([loadReact(), loadPublicApi()])
         const mod = normalizeFrameModule(imported.value)
-        const checked = await checkFrame({
-            source,
-            width: mod.width,
-            height: mod.height,
-            autoSize: mod.autoSize,
-            create: (theme) => frameElement(mod, theme),
-        }, {
-            themes: args.themes,
-            background: args.background,
-            failOn: 'error',
-        })
+        const themeReports: CheckThemeReport[] = []
+        for (const theme of args.themes) {
+            const background = sourceFrameBackground(mod, theme, args.background)
+            const checked = await checkFrame({
+                source,
+                width: mod.width,
+                height: mod.height,
+                autoSize: mod.autoSize,
+                create: (nextTheme) => frameElement(mod, nextTheme, background),
+            }, {
+                themes: [theme],
+                background,
+                failOn: 'error',
+            })
+            themeReports.push(...checked.themes)
+        }
         const ok = !diagnostics.some((diagnostic) => diagnostic.severity === 'error')
-            && checked.themes.every((theme) => theme.ok)
+            && themeReports.every((theme) => theme.ok)
         reports.push({
             source,
             ok,
             autoSize: mod.autoSize,
             diagnostics,
-            themes: checked.themes,
+            themes: themeReports,
         })
     }
 
@@ -1941,6 +2030,7 @@ async function gifCommand(argv: string[]) {
     if (args.format !== 'png') {
         throw new Error('--format applies to static rendering only; gif always writes GIF output')
     }
+    const [, { renderAnimatedGifWithOutput, renderAnimationGifWithOutput }] = await Promise.all([loadReact(), loadPublicApi()])
     const cliWatermark = await resolveWatermarkAssets(args.watermark)
     const files = await findFrameFiles(args.inputs)
     if (files.length === 0) throw new Error('no frame files found')
@@ -2063,7 +2153,8 @@ async function videoCommand(argv: string[]) {
         await mkdir(args.outDir, { recursive: true })
         for (const file of files) {
             const imported = await importFrame(file)
-            if (filmFromModule(imported)) {
+            if (isFilmModule(imported)) {
+                const { parseFilmArgs, runFilmCommand } = await loadFilmCli()
                 const filmArgs = parseFilmArgs([file, '--out', args.outDir])
                 filmArgs.looks = looksForThemes(args.themes, explicitTheme)
                 filmArgs.formats = ['mp4']
@@ -2073,6 +2164,7 @@ async function videoCommand(argv: string[]) {
                 await runFilmCommand(filmArgs, [file], new Map([[file, stems.get(file) ?? basename(file).replace(/\.[^.]+$/, '')]]), importFrame)
                 continue
             }
+            const [, { renderAnimationVideo }] = await Promise.all([loadReact(), loadPublicApi()])
             const mod = normalizeFrameModule(imported)
             if (!mod.createAnimation) {
                 throw new Error(`${relative(process.cwd(), file)} must export createAnimation(theme) for video rendering`)
@@ -2123,6 +2215,7 @@ async function videoCommand(argv: string[]) {
 }
 
 async function filmCommand(argv: string[]) {
+    const { parseFilmArgs, runFilmCommand } = await loadFilmCli()
     const args = parseFilmArgs(argv)
     const found = await findFrameFiles(args.inputs)
     // A directory can hold helpers beside its films. A file named directly must be a film.
@@ -2178,6 +2271,7 @@ async function main() {
     const args = process.argv.slice(2)
     const [command, ...rest] = args
     if (command === 'sounds') {
+        const { runSoundsCommand } = await loadNarratedCli()
         runSoundsCommand(rest)
     } else if (rest.includes('--help') || rest.includes('-h')) {
         help()
@@ -2195,7 +2289,7 @@ async function main() {
         if (positionals.length !== 2 || !values.fps || !values['sample-rate'])
             throw new Error('Usage: vizmatic plan-excerpt <start-frame> <frame-count> --fps <fps> --sample-rate <hz>')
         const [startFrame, frameCount] = positionals.map(Number)
-        console.log(JSON.stringify(publicApi.planMediaExcerpt({
+        console.log(JSON.stringify(planMediaExcerpt({
             startFrame, frameCount, fps: Number(values.fps), sampleRate: Number(values['sample-rate']),
         })))
     } else if (command === 'film') {
@@ -2203,12 +2297,16 @@ async function main() {
     } else if (command === 'preview') {
         await previewCommand(rest)
     } else if (command === 'new') {
+        const { runNewCommand } = await loadFilmCli()
         await runNewCommand(rest)
     } else if (command === 'narrated') {
+        const { runNarratedCommand } = await loadNarratedCli()
         await runNarratedCommand(rest)
     } else if (command === 'looks') {
+        const { runLooksCommand } = await loadFilmCli()
         runLooksCommand(rest)
     } else if (command === 'objects') {
+        const { runObjectsCommand } = await loadFilmCli()
         runObjectsCommand(rest)
     } else if (!command || command === 'help' || command === '--help' || command === '-h') {
         help()

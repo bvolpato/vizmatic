@@ -1,8 +1,18 @@
-import parseCssColor from 'parse-css-color'
 import { Children, isValidElement, type ReactNode } from 'react'
+import {
+    compositeRgba,
+    contrastRatioLuminance,
+    parseCssRgba,
+    relativeLuminanceRgb,
+    type RgbaColor,
+} from './color-utils'
 import type { SatoriNode } from './satori'
 import type { ThemeMode } from './theme'
 import type { CropRegion } from './autocrop'
+
+export const VIZMATIC_PRIMITIVE_SYMBOL = Symbol.for('vizmatic.primitive')
+export const VIZMATIC_SVG_SHAPE_SYMBOL = Symbol.for('vizmatic.svgShape')
+export const VIZMATIC_SVG_CHILDREN_SYMBOL = Symbol.for('vizmatic.svgChildren')
 
 export type DiagnosticSeverity = 'error' | 'warning' | 'info'
 
@@ -55,13 +65,6 @@ export interface CheckDiagnostic {
     }
 }
 
-interface RgbaColor {
-    r: number
-    g: number
-    b: number
-    alpha: number
-}
-
 interface ContrastContext {
     background?: RgbaColor
     color?: RgbaColor
@@ -85,75 +88,16 @@ export interface SvgContextComponents {
     children: ReadonlyMap<unknown, 'html' | 'svg'>
 }
 
-function hslToRgb(hue: number, saturation: number, lightness: number): [number, number, number] {
-    const h = ((hue % 360) + 360) % 360
-    const s = saturation / 100
-    const l = lightness / 100
-    const chroma = (1 - Math.abs(2 * l - 1)) * s
-    const segment = h / 60
-    const intermediate = chroma * (1 - Math.abs((segment % 2) - 1))
-    let channels: [number, number, number]
-    if (segment < 1) channels = [chroma, intermediate, 0]
-    else if (segment < 2) channels = [intermediate, chroma, 0]
-    else if (segment < 3) channels = [0, chroma, intermediate]
-    else if (segment < 4) channels = [0, intermediate, chroma]
-    else if (segment < 5) channels = [intermediate, 0, chroma]
-    else channels = [chroma, 0, intermediate]
-    const offset = l - chroma / 2
-    return channels.map((channel) => Math.round((channel + offset) * 255)) as [number, number, number]
-}
-
-function colorFromCss(value: unknown): RgbaColor | undefined {
-    if (typeof value !== 'string') return undefined
-    const parsed = parseCssColor(value)
-    if (!parsed || parsed.values.length < 3) return undefined
-    const [r, g, b] = parsed.type === 'hsl'
-        ? hslToRgb(parsed.values[0] ?? 0, parsed.values[1] ?? 0, parsed.values[2] ?? 0)
-        : [parsed.values[0] ?? 0, parsed.values[1] ?? 0, parsed.values[2] ?? 0]
-    return {
-        r,
-        g,
-        b,
-        alpha: parsed.alpha,
-    }
-}
-
-function compositeOver(foreground: RgbaColor, background?: RgbaColor): RgbaColor {
-    if (foreground.alpha >= 1 || !background) return foreground
-
-    const alpha = foreground.alpha + background.alpha * (1 - foreground.alpha)
-    if (alpha <= 0) return { r: 0, g: 0, b: 0, alpha: 0 }
-
-    return {
-        r: (foreground.r * foreground.alpha + background.r * background.alpha * (1 - foreground.alpha)) / alpha,
-        g: (foreground.g * foreground.alpha + background.g * background.alpha * (1 - foreground.alpha)) / alpha,
-        b: (foreground.b * foreground.alpha + background.b * background.alpha * (1 - foreground.alpha)) / alpha,
-        alpha,
-    }
-}
-
 function isUnresolvedColor(value: unknown): boolean {
-    if (typeof value !== 'string' || value.trim() === '' || colorFromCss(value)) return false
+    if (typeof value !== 'string' || value.trim() === '' || parseCssRgba(value)) return false
     return !['inherit', 'initial', 'revert', 'unset'].includes(value.trim().toLowerCase())
 }
 
-function channelLuminance(value: number): number {
-    const normalized = value / 255
-    return normalized <= 0.04045
-        ? normalized / 12.92
-        : ((normalized + 0.055) / 1.055) ** 2.4
-}
-
-function relativeLuminance(color: RgbaColor): number {
-    return 0.2126 * channelLuminance(color.r)
-        + 0.7152 * channelLuminance(color.g)
-        + 0.0722 * channelLuminance(color.b)
-}
-
 function contrastRatio(foreground: RgbaColor, background: RgbaColor): number {
-    const lighter = Math.max(relativeLuminance(foreground), relativeLuminance(background))
-    const darker = Math.min(relativeLuminance(foreground), relativeLuminance(background))
-    return (lighter + 0.05) / (darker + 0.05)
+    return contrastRatioLuminance(
+        relativeLuminanceRgb(foreground.r, foreground.g, foreground.b),
+        relativeLuminanceRgb(background.r, background.g, background.b),
+    )
 }
 
 function numericFontWeight(value: unknown): number | undefined {
@@ -198,13 +142,18 @@ function elementId(props: Record<string, unknown>): string | undefined {
     return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
 }
 
+function isTrustedPrimitive(component: unknown, trustedComponents: ReadonlySet<unknown>): boolean {
+    if (trustedComponents.has(component)) return true
+    if (typeof component !== 'function') return false
+    const tagged = component as unknown as { __vizmaticPrimitive?: boolean } & Record<symbol, unknown>
+    return Boolean(tagged.__vizmaticPrimitive || tagged[VIZMATIC_PRIMITIVE_SYMBOL])
+}
+
 function resolveFunctionComponent(node: ReactNode, trustedComponents: ReadonlySet<unknown>): ReactNode | undefined {
-    if (!isValidElement(node) || typeof node.type !== 'function' || trustedComponents.has(node.type)) return undefined
+    if (!isValidElement(node) || typeof node.type !== 'function' || isTrustedPrimitive(node.type, trustedComponents)) return undefined
     const component = node.type as ((props: unknown) => ReactNode) & {
-        __vizmaticPrimitive?: boolean
         prototype?: { isReactComponent?: boolean }
     }
-    if (component.__vizmaticPrimitive) return undefined
     if (component.prototype?.isReactComponent) return undefined
     try {
         return component(node.props)
@@ -243,7 +192,11 @@ export function analyzeScene(
         }
 
         const props = node.props as Record<string, unknown>
+        const taggedType = typeof node.type === 'function' ? node.type as unknown as Record<symbol, unknown> : undefined
         const svgShape = svgComponents?.shapes.get(node.type)
+            ?? (svgComponents && typeof taggedType?.[VIZMATIC_SVG_SHAPE_SYMBOL] === 'string'
+                ? taggedType[VIZMATIC_SVG_SHAPE_SYMBOL] as string
+                : undefined)
             ?? (svgComponents && typeof node.type === 'string' && SVG_ONLY_ELEMENTS.has(node.type) ? `<${node.type}>` : undefined)
         if (namespace === 'html' && svgShape) {
             diagnostics.push({
@@ -258,10 +211,12 @@ export function analyzeScene(
         }
         // Opaque components may place children in a different namespace. Only
         // known contracts and resolved native elements establish that context.
+        const taggedChildren = taggedType?.[VIZMATIC_SVG_CHILDREN_SYMBOL]
         const childNamespace = typeof node.type === 'string'
             ? node.type === 'svg' ? 'svg' : node.type === 'foreignObject' ? 'html' : namespace
             : typeof node.type === 'function'
                 ? svgComponents?.children.get(node.type)
+                    ?? (svgComponents && (taggedChildren === 'html' || taggedChildren === 'svg') ? taggedChildren : undefined)
                 : namespace
         const style = typeof node.type === 'string' ? styleRecord(props.style) : {}
         const backgroundImage = typeof style.backgroundImage === 'string'
@@ -269,29 +224,28 @@ export function analyzeScene(
             : ''
         const backgroundShorthand = typeof style.background === 'string' ? style.background.trim() : ''
         const isBackgroundWrapper = typeof node.type === 'function'
-            && (trustedComponents.has(node.type)
-                || Boolean((node.type as { __vizmaticPrimitive?: boolean }).__vizmaticPrimitive))
+            && isTrustedPrimitive(node.type, trustedComponents)
         const wrapperBackground = isBackgroundWrapper ? props.background : undefined
         const hasUnresolvedBackground = (backgroundImage !== '' && backgroundImage !== 'none')
             || isUnresolvedColor(style.backgroundColor)
-            || (backgroundShorthand !== '' && backgroundShorthand.toLowerCase() !== 'none' && !colorFromCss(backgroundShorthand))
+            || (backgroundShorthand !== '' && backgroundShorthand.toLowerCase() !== 'none' && !parseCssRgba(backgroundShorthand))
             || isUnresolvedColor(wrapperBackground)
-        const ownBackground = colorFromCss(style.backgroundColor)
-            ?? colorFromCss(style.background)
-            ?? colorFromCss(wrapperBackground)
-        const baseBackground = path === 'root' && isBackgroundWrapper && colorFromCss(wrapperBackground)
+        const ownBackground = parseCssRgba(style.backgroundColor)
+            ?? parseCssRgba(style.background)
+            ?? parseCssRgba(wrapperBackground)
+        const baseBackground = path === 'root' && isBackgroundWrapper && parseCssRgba(wrapperBackground)
             ? undefined
             : inherited.background
         const background = hasUnresolvedBackground
             ? undefined
             : ownBackground
-                ? compositeOver(ownBackground, baseBackground)
+                ? compositeRgba(ownBackground, baseBackground)
                 : baseBackground
         const color = typeof style.color === 'string' && style.color.trim().toLowerCase() === 'currentcolor'
             ? inherited.color
             : isUnresolvedColor(style.color)
                 ? undefined
-                : colorFromCss(style.color) ?? inherited.color
+                : parseCssRgba(style.color) ?? inherited.color
         const fontSize = fontSizePixels(style.fontSize, inherited.fontSize)
         const fontWeight = numericFontWeight(style.fontWeight) ?? inherited.fontWeight
         const context = { background, color, fontSize, fontWeight }
@@ -301,7 +255,7 @@ export function analyzeScene(
             && color
             && background !== undefined
             && background.alpha >= 1) {
-            const renderedColor = compositeOver(color, background)
+            const renderedColor = compositeRgba(color, background)
             const ratio = contrastRatio(renderedColor, background)
             const required = requiredContrast(context)
             if (ratio < required) {
@@ -325,7 +279,7 @@ export function analyzeScene(
         Children.forEach(props.children as ReactNode, (child, index) => visit(child, context, `${path}.${index}`, childNamespace))
     }
 
-    visit(element, { background: colorFromCss(rootBackground) }, 'root', 'html')
+    visit(element, { background: parseCssRgba(rootBackground) }, 'root', 'html')
     return diagnostics
 }
 
@@ -357,9 +311,20 @@ function containsLayoutNode(parent: SatoriNode, child: SatoriNode): boolean {
         && child.top + child.height <= parent.top + parent.height + epsilon
 }
 
+function isWideCharacter(code: number): boolean {
+    return (code >= 0x1100 && code <= 0x115f)
+        || (code >= 0x2e80 && code <= 0xa4cf)
+        || (code >= 0xac00 && code <= 0xd7a3)
+        || (code >= 0xf900 && code <= 0xfaff)
+        || (code >= 0xfe10 && code <= 0xfe6f)
+        || (code >= 0xff00 && code <= 0xff60)
+        || (code >= 0xffe0 && code <= 0xffe6)
+        || code >= 0x1f000
+}
+
 function textUnits(text: string): number {
     return Array.from(text.normalize('NFC')).reduce((sum, character) =>
-        sum + ((character.codePointAt(0) ?? 0) > 0xff ? 1.7 : 1), 0)
+        sum + (isWideCharacter(character.codePointAt(0) ?? 0) ? 1.7 : 1), 0)
 }
 
 function renderedTextNodes(nodes: SatoriNode[]): TextLayoutNode[] {
@@ -505,12 +470,15 @@ export function analyzeRenderedLayout(nodes: SatoriNode[], theme: ThemeMode): Ch
         })
     }
 
-    const maxDataNumber = (attribute: string) => Math.max(0, ...nodes.map((node) => {
-        const value = node.props[attribute]
-        return typeof value === 'number' ? value : Number(value) || 0
-    }))
     for (const source of nodes.filter((node) => Number(node.props['data-vizmatic-unrouted-connectors']) > 0)) {
-        const messages = JSON.parse(String(source.props['data-vizmatic-routing-failures'])) as string[]
+        const rawFailures = source.props['data-vizmatic-routing-failures']
+        let messages: string[]
+        try {
+            const parsed = JSON.parse(String(rawFailures ?? '[]'))
+            messages = Array.isArray(parsed) ? parsed.map(String) : [String(rawFailures ?? 'Connector could not be routed.')]
+        } catch {
+            messages = [String(rawFailures ?? 'Connector could not be routed.')]
+        }
         for (const message of messages.slice(0, MAX_DIAGNOSTICS_PER_RULE)) diagnostics.push({
             code: 'layout.connector_unroutable',
             severity: 'error',
@@ -521,70 +489,68 @@ export function analyzeRenderedLayout(nodes: SatoriNode[], theme: ThemeMode): Ch
             location: { x: source.left, y: source.top, width: source.width, height: source.height },
         })
     }
-    const connectorSource = nodes.find((node) => Number(node.props['data-vizmatic-connector-crossings']) > Number(node.props['data-vizmatic-connector-crossing-budget'] ?? 0))
-    const connectorCrossings = connectorSource ? Number(connectorSource.props['data-vizmatic-connector-crossings']) : 0
-    if (connectorCrossings > 0) {
-        const source = connectorSource
+    const crossingSources = nodes.filter((node) =>
+        Number(node.props['data-vizmatic-connector-crossings']) > Number(node.props['data-vizmatic-connector-crossing-budget'] ?? 0),
+    )
+    for (const source of crossingSources.slice(0, MAX_DIAGNOSTICS_PER_RULE)) {
+        const connectorCrossings = Number(source.props['data-vizmatic-connector-crossings'])
         diagnostics.push({
             code: 'layout.connector_congestion',
             severity: 'warning',
             theme,
             message: `${connectorCrossings} connector crossing${connectorCrossings === 1 ? '' : 's'} detected.`,
             suggestion: 'Use automatic layout, change graph direction, or simplify the edge set.',
-            elementId: source ? elementId(source.props) : undefined,
-            location: source ? { x: source.left, y: source.top, width: source.width, height: source.height } : undefined,
+            elementId: elementId(source.props),
+            location: { x: source.left, y: source.top, width: source.width, height: source.height },
         })
     }
-    const labelCollisions = maxDataNumber('data-vizmatic-connector-label-collisions')
-    if (labelCollisions > 0) {
-        const source = nodes.find((node) => Number(node.props['data-vizmatic-connector-label-collisions']) > 0)
+    const labelCollisionSources = nodes.filter((node) => Number(node.props['data-vizmatic-connector-label-collisions']) > 0)
+    for (const source of labelCollisionSources.slice(0, MAX_DIAGNOSTICS_PER_RULE)) {
+        const labelCollisions = Number(source.props['data-vizmatic-connector-label-collisions'])
         diagnostics.push({
             code: 'layout.connector_congestion',
             severity: 'warning',
             theme,
             message: `${labelCollisions} connector label collision${labelCollisions === 1 ? '' : 's'} detected.`,
             suggestion: 'Change graph direction or spacing, shorten edge labels, or remove nonessential labels.',
-            elementId: source ? elementId(source.props) : undefined,
-            location: source ? { x: source.left, y: source.top, width: source.width, height: source.height } : undefined,
+            elementId: elementId(source.props),
+            location: { x: source.left, y: source.top, width: source.width, height: source.height },
         })
     }
-    const crossedLabels = maxDataNumber('data-vizmatic-connector-label-crossings')
-    if (crossedLabels > 0) {
-        const source = nodes.find((node) => Number(node.props['data-vizmatic-connector-label-crossings']) > 0)
+    for (const source of nodes.filter((node) => Number(node.props['data-vizmatic-connector-label-crossings']) > 0).slice(0, MAX_DIAGNOSTICS_PER_RULE)) {
+        const crossedLabels = Number(source.props['data-vizmatic-connector-label-crossings'])
         diagnostics.push({
             code: 'layout.connector_congestion',
             severity: 'info',
             theme,
             message: `${crossedLabels} connector${crossedLabels === 1 ? ' passes' : 's pass'} behind a label or group title. The label masks it, but the line appears broken.`,
             suggestion: 'Shorten or move the label, change graph direction, or route the connector with routing="orthogonal".',
-            elementId: source ? elementId(source.props) : undefined,
-            location: source ? { x: source.left, y: source.top, width: source.width, height: source.height } : undefined,
+            elementId: elementId(source.props),
+            location: { x: source.left, y: source.top, width: source.width, height: source.height },
         })
     }
-    const crowdedEndpoints = maxDataNumber('data-vizmatic-crowded-connector-endpoints')
-    if (crowdedEndpoints > 0) {
-        const source = nodes.find((node) => Number(node.props['data-vizmatic-crowded-connector-endpoints']) > 0)
+    for (const source of nodes.filter((node) => Number(node.props['data-vizmatic-crowded-connector-endpoints']) > 0).slice(0, MAX_DIAGNOSTICS_PER_RULE)) {
+        const crowdedEndpoints = Number(source.props['data-vizmatic-crowded-connector-endpoints'])
         diagnostics.push({
             code: 'layout.connector_congestion',
             severity: 'warning',
             theme,
             message: `${crowdedEndpoints} node${crowdedEndpoints === 1 ? '' : 's'} connect more than eight edges.`,
             suggestion: 'Group related branches, add an intermediate hub, or change graph direction.',
-            elementId: source ? elementId(source.props) : undefined,
-            location: source ? { x: source.left, y: source.top, width: source.width, height: source.height } : undefined,
+            elementId: elementId(source.props),
+            location: { x: source.left, y: source.top, width: source.width, height: source.height },
         })
     }
-    const parallelGroups = maxDataNumber('data-vizmatic-parallel-connector-groups')
-    if (parallelGroups > 0) {
-        const source = nodes.find((node) => Number(node.props['data-vizmatic-parallel-connector-groups']) > 0)
+    for (const source of nodes.filter((node) => Number(node.props['data-vizmatic-parallel-connector-groups']) > 0).slice(0, MAX_DIAGNOSTICS_PER_RULE)) {
+        const parallelGroups = Number(source.props['data-vizmatic-parallel-connector-groups'])
         diagnostics.push({
             code: 'layout.connector_congestion',
             severity: 'warning',
             theme,
             message: `${parallelGroups} connector route${parallelGroups === 1 ? '' : 's'} contain parallel edges.`,
             suggestion: 'Merge duplicate relationships, label one combined edge, or separate the routes.',
-            elementId: source ? elementId(source.props) : undefined,
-            location: source ? { x: source.left, y: source.top, width: source.width, height: source.height } : undefined,
+            elementId: elementId(source.props),
+            location: { x: source.left, y: source.top, width: source.width, height: source.height },
         })
     }
 

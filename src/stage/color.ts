@@ -1,4 +1,5 @@
 import parseCssColor from 'parse-css-color'
+import { hslToRgb, relativeLuminanceRgb, srgbChannelLuminance } from '../color-utils'
 import { midnight } from './look'
 
 /** r, g, b from 0 to 255 and alpha from 0 to 1. */
@@ -59,15 +60,6 @@ export function parseColor(input: string): Rgba {
     return result
 }
 
-function hslToRgb(h: number, s: number, l: number): [number, number, number] {
-    const a = (s / 100) * Math.min(l / 100, 1 - l / 100)
-    const f = (n: number) => {
-        const k = (n + h / 30) % 12
-        return 255 * (l / 100 - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))
-    }
-    return [f(0), f(8), f(4)]
-}
-
 export function toPaint(input: ColorInput): Paint {
     if (typeof input === 'string') return parseColor(input)
     return input
@@ -79,11 +71,7 @@ export function isGradient(paint: Paint): paint is Gradient {
 
 /** Relative luminance of a color, as WCAG defines it: 0 is black and 1 is white. */
 export function luminance(color: Rgba): number {
-    const channel = (value: number) => {
-        const x = value / 255
-        return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4)
-    }
-    return 0.2126 * channel(color[0]) + 0.7152 * channel(color[1]) + 0.0722 * channel(color[2])
+    return relativeLuminanceRgb(color[0], color[1], color[2])
 }
 
 /** Contrast of two opaque colors, as WCAG defines the ratio: 1 for equal colors, 21 for black on white. */
@@ -111,8 +99,7 @@ export function css(color: Rgba, alpha = 1): string {
 }
 
 function srgbToLinear(v: number): number {
-    const x = v / 255
-    return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4)
+    return srgbChannelLuminance(v)
 }
 
 function linearToSrgb(v: number): number {

@@ -3353,4 +3353,62 @@ export default create('dark')
             await rm(outDir, { recursive: true, force: true })
         }
     }, 30_000)
+
+    it('preserves stroke-width="0" and handles primitive edge cases cleanly', async () => {
+        const c = getThemeColors('light')
+        const svg = await renderToSvg(
+            <div style={{ display: 'flex', width: 120, height: 60 }}>
+                <svg width={120} height={60} viewBox="0 0 120 60">
+                    <rect x={10} y={10} width={100} height={40} fill={c.primary} stroke={c.border} strokeWidth={0} />
+                </svg>
+            </div>,
+            120,
+            60,
+        )
+        expect(svg).not.toContain('stroke-width="1"')
+
+        const hiddenFormula = LayeredNetwork({
+            c,
+            layers: [{ title: 'In', nodes: ['x'] }, { title: 'Out', nodes: ['y'] }],
+            formula: 'y = Wx',
+            showFormula: false,
+        })
+        const formulaWrap = collectElements(hiddenFormula, (el) => el.key === 'formula-wrap')
+        expect(formulaWrap).toHaveLength(0)
+
+        const zeroBars = BarChart({
+            c,
+            width: 320,
+            height: 220,
+            data: [{ label: 'zero', value: 0 }, { label: 'ten', value: 10 }],
+        })
+        const barRects = collectElements(zeroBars, (el) => el.type === 'rect')
+        expect(barRects).toHaveLength(1)
+
+        const emptyLine = LineChart({ c, width: 320, height: 220, series: [] })
+        const emptyLineSvg = await renderToSvg(emptyLine, 320, 220)
+        expect(emptyLineSvg).not.toContain('NaN')
+
+        const { Sparkline, SmallMultiples, SequenceDiagram } = await import('../src')
+        const nanSparkSvg = await renderToSvg(<Sparkline c={c} values={[1, Number.NaN, 3, 5]} area />, 120, 40)
+        expect(nanSparkSvg).not.toContain('NaN')
+        expect(() => SmallMultiples({ c, items: [{ label: 'a', values: [1, 2] }], columns: 0 })).not.toThrow()
+
+        const seq = SequenceDiagram({
+            c,
+            title: 'Auth flow',
+            participants: [
+                { id: 'a', label: 'Client', tone: 'blue' },
+                { id: 'b', label: 'API', tone: 'green' },
+            ],
+            messages: [
+                { from: 'a', to: 'b', label: 'POST', tone: 'red' },
+                { from: 'b', to: 'a', label: '401', muted: true },
+            ],
+        })
+        const markers = collectElements(seq, (el) => el.type === 'marker')
+        const markerColors = markers.flatMap((m) => collectElements(m, (el) => el.type === 'path').map((p) => reactProps(p).fill))
+        expect(markerColors).toContain(c.criticalLight)
+        expect(markerColors).toContain(c.textMuted)
+    })
 })

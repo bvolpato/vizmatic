@@ -76,28 +76,50 @@ export function Sparkline({
     const h = height ?? d.f(18)
     const stroke = color ?? (tone ? getToneColor(tone, c) : c.textSecondary)
     const line = strokeWidth ?? d.w(1.5)
-    const finite = values.filter(Number.isFinite)
-    const low = min ?? Math.min(...finite), high = max ?? Math.max(...finite)
+    const finiteEntries = values
+        .map((value, index) => ({ value, index }))
+        .filter((entry) => Number.isFinite(entry.value))
+    const low = min ?? (finiteEntries.length ? Math.min(...finiteEntries.map((entry) => entry.value)) : 0)
+    const high = max ?? (finiteEntries.length ? Math.max(...finiteEntries.map((entry) => entry.value)) : 1)
     const range = high - low || 1
     const inset = endDot ? d.g(3) : line
     const x = (index: number) => inset + (values.length <= 1 ? 0 : (index / (values.length - 1)) * (w - inset * 2))
     const y = (value: number) => inset + (1 - (value - low) / range) * (h - inset * 2)
-    const path = values.map((value, index) => `${index === 0 ? 'M' : 'L'} ${x(index).toFixed(2)} ${y(value).toFixed(2)}`).join(' ')
-    const last = values.length - 1
+    const runs: Array<Array<{ value: number; index: number }>> = []
+    for (let index = 0; index < values.length; index += 1) {
+        const value = values[index]!
+        if (!Number.isFinite(value)) continue
+        const current = runs[runs.length - 1]
+        if (current && current[current.length - 1]!.index === index - 1) current.push({ value, index })
+        else runs.push([{ value, index }])
+    }
+    const path = runs
+        .map((run) => run.map((entry, step) => `${step === 0 ? 'M' : 'L'} ${x(entry.index).toFixed(2)} ${y(entry.value).toFixed(2)}`).join(' '))
+        .join(' ')
+    const areaPaths = area
+        ? runs
+            .filter((run) => run.length > 1)
+            .map((run) => {
+                const lineSegment = run.map((entry, step) => `${step === 0 ? 'M' : 'L'} ${x(entry.index).toFixed(2)} ${y(entry.value).toFixed(2)}`).join(' ')
+                return `${lineSegment} L ${x(run[run.length - 1]!.index).toFixed(2)} ${h} L ${x(run[0]!.index).toFixed(2)} ${h} Z`
+            })
+            .join(' ')
+        : ''
+    const lastFinite = finiteEntries[finiteEntries.length - 1]
     const chart = React.createElement('svg', {
         width: w, height: h, viewBox: `0 0 ${w} ${h}`, 'aria-hidden': 'true', style: { display: 'flex', flexShrink: 0 },
     },
         ...compactChildren([
-            area && values.length > 1 && React.createElement('path', {
+            areaPaths && React.createElement('path', {
                 key: 'area',
-                d: `${path} L ${x(last).toFixed(2)} ${h} L ${x(0).toFixed(2)} ${h} Z`,
+                d: areaPaths,
                 fill: withColorAlpha(stroke, 0.14),
             }),
-            React.createElement('path', {
+            path && React.createElement('path', {
                 key: 'line', d: path, fill: 'none', stroke, strokeWidth: line, strokeLinecap: 'round', strokeLinejoin: 'round',
             }),
-            endDot && values.length > 0 && React.createElement('circle', {
-                key: 'dot', cx: x(last), cy: y(values[last]!), r: d.g(2.25), fill: stroke,
+            endDot && lastFinite && React.createElement('circle', {
+                key: 'dot', cx: x(lastFinite.index), cy: y(lastFinite.value), r: d.g(2.25), fill: stroke,
             }),
         ]),
     )
@@ -353,7 +375,8 @@ export function SmallMultiples({ items, c, columns, cellWidth, cellHeight, share
     const d = densityOf(c)
     const width = cellWidth ?? d.f(118)
     const height = cellHeight ?? d.f(30)
-    const perRow = columns ?? Math.min(items.length, 6)
+    const rawPerRow = columns ?? Math.min(items.length, 6)
+    const perRow = Math.max(1, Number.isFinite(rawPerRow) ? Math.floor(rawPerRow) : 1)
     const all = items.flatMap((item) => [...item.values, ...(item.reference != null ? [item.reference] : [])])
     const sharedMin = sharedScale ? Math.min(...all) : undefined
     const sharedMax = sharedScale ? Math.max(...all) : undefined

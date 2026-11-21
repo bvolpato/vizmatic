@@ -1,7 +1,4 @@
-import { mkdtemp, rm } from 'fs/promises'
 import { AsyncLocalStorage } from 'async_hooks'
-import { tmpdir } from 'os'
-import { join } from 'path'
 import type { ReactNode } from 'react'
 import * as primitives from './primitives'
 import {
@@ -13,7 +10,7 @@ import {
     type DiagnosticSeverity,
     type SvgContextComponents,
 } from './diagnostics'
-import { CanvasOverflowError, renderToPngWithOutput, type SatoriNode } from './render'
+import { CanvasOverflowError, renderToCheckOutput, type SatoriNode } from './render'
 import type { RenderBackground } from './renderContext'
 import { getThemeColors, type ThemeMode } from './theme'
 
@@ -246,7 +243,6 @@ async function renderFrame(
         height: number
         autoSize: CheckAutoSizeAxes
         background?: RenderBackground
-        outputPath: string
     },
 ): Promise<RenderedFrame> {
     let width = options.width
@@ -255,10 +251,9 @@ async function renderFrame(
     for (let attempt = 0; attempt < MAX_AUTO_SIZE_ATTEMPTS; attempt += 1) {
         try {
             const layoutNodes: SatoriNode[] = []
-            const output = await renderToPngWithOutput(create(theme), {
+            const output = await renderToCheckOutput(create(theme), {
                 width,
                 height,
-                outputPath: options.outputPath,
                 crop: true,
                 scale: 1,
                 background: options.background,
@@ -340,117 +335,110 @@ export async function checkFrame(input: CheckFrameInput, options: CheckOptions =
     })
     const create = input.create ?? (() => input.scene)
     const failOn = options.failOn ?? 'error'
-    const tempDir = await mkdtemp(join(tmpdir(), 'vizmatic-check-'))
     const reports: CheckThemeReport[] = []
 
-    try {
-        for (const [themeIndex, theme] of themes.entries()) {
-            const inputDimensions = { width, height }
-            const diagnostics: CheckDiagnostic[] = []
-            const prepared = await captureConsole(async () => {
-                const element = create(theme)
-                const background = rootBackground(options.background, theme)
-                return analyzeScene(element, theme, TRUSTED_COMPONENTS, background, SVG_CONTEXT_COMPONENTS)
-            })
-            diagnostics.push(...messageDiagnostics(prepared.messages, theme))
+    for (const theme of themes) {
+        const inputDimensions = { width, height }
+        const diagnostics: CheckDiagnostic[] = []
+        const prepared = await captureConsole(async () => {
+            const element = create(theme)
+            const background = rootBackground(options.background, theme)
+            return analyzeScene(element, theme, TRUSTED_COMPONENTS, background, SVG_CONTEXT_COMPONENTS)
+        })
+        diagnostics.push(...messageDiagnostics(prepared.messages, theme))
 
-            if (!prepared.value) {
-                diagnostics.push(diagnosticFromMessage(
-                    prepared.error instanceof Error ? prepared.error.message : String(prepared.error),
-                    'error',
-                    theme,
-                ))
-                reports.push({
-                    theme,
-                    ok: !fails(diagnostics, failOn),
-                    dimensions: { input: inputDimensions },
-                    diagnostics,
-                })
-                continue
-            }
-            diagnostics.push(...prepared.value)
-
-            const rendered = await captureConsole(() => renderFrame(create, theme, {
-                width,
-                height,
-                autoSize,
-                background: options.background,
-                outputPath: join(tempDir, `${themeIndex}.png`),
-            }))
-            diagnostics.push(...messageDiagnostics(rendered.messages, theme))
-
-            if (rendered.value) {
-                diagnostics.push(...analyzeRenderedLayout(rendered.value.layoutNodes, theme))
-                if (rendered.value.contentBounds) {
-                    diagnostics.push(...analyzeWhitespaceBalance(
-                        rendered.value.contentBounds,
-                        rendered.value.logicalOutputWidth,
-                        rendered.value.logicalOutputHeight,
-                        theme,
-                    ))
-                }
-                if (rendered.value.width !== width || rendered.value.height !== height) {
-                    diagnostics.push({
-                        code: 'layout.auto_size',
-                        severity: 'info',
-                        theme,
-                        message: `Canvas auto-sized from ${width}×${height} to ${rendered.value.width}×${rendered.value.height}.`,
-                        suggestedDimensions: { width: rendered.value.width, height: rendered.value.height },
-                    })
-                }
-                reports.push({
-                    theme,
-                    ok: !fails(diagnostics, failOn),
-                    dimensions: {
-                        input: inputDimensions,
-                        resolved: { width: rendered.value.width, height: rendered.value.height },
-                        output: { width: rendered.value.outputWidth, height: rendered.value.outputHeight },
-                    },
-                    diagnostics,
-                })
-                continue
-            }
-
-            const edges = overflowEdges(rendered.error)
-            if (edges) {
-                const suggestion = await captureConsole(() => renderFrame(create, theme, {
-                    width,
-                    height,
-                    autoSize: { width: true, height: true },
-                    background: options.background,
-                    outputPath: join(tempDir, `${themeIndex}-suggestion.png`),
-                }))
-                const suggestedDimensions = suggestion.value
-                    ? { width: suggestion.value.width, height: suggestion.value.height }
-                    : undefined
-                diagnostics.push({
-                    code: 'layout.overflow',
-                    severity: 'error',
-                    theme,
-                    edges,
-                    message: rendered.error instanceof Error ? rendered.error.message : String(rendered.error),
-                    suggestion: suggestedDimensions
-                        ? `Increase the canvas to at least ${suggestedDimensions.width}×${suggestedDimensions.height}, or remove fixed dimensions to enable auto-sizing.`
-                        : 'Increase the canvas dimensions or remove fixed dimensions to enable auto-sizing.',
-                    suggestedDimensions,
-                })
-            } else {
-                diagnostics.push(diagnosticFromMessage(
-                    rendered.error instanceof Error ? rendered.error.message : String(rendered.error),
-                    'error',
-                    theme,
-                ))
-            }
-
+        if (!prepared.value) {
+            diagnostics.push(diagnosticFromMessage(
+                prepared.error instanceof Error ? prepared.error.message : String(prepared.error),
+                'error',
+                theme,
+            ))
             reports.push({
                 theme,
                 ok: !fails(diagnostics, failOn),
                 dimensions: { input: inputDimensions },
                 diagnostics,
             })
+            continue
         }
-    } finally {
-        await rm(tempDir, { recursive: true, force: true })
+        diagnostics.push(...prepared.value)
+
+        const rendered = await captureConsole(() => renderFrame(create, theme, {
+            width,
+            height,
+            autoSize,
+            background: options.background,
+        }))
+        diagnostics.push(...messageDiagnostics(rendered.messages, theme))
+
+        if (rendered.value) {
+            diagnostics.push(...analyzeRenderedLayout(rendered.value.layoutNodes, theme))
+            if (rendered.value.contentBounds) {
+                diagnostics.push(...analyzeWhitespaceBalance(
+                    rendered.value.contentBounds,
+                    rendered.value.logicalOutputWidth,
+                    rendered.value.logicalOutputHeight,
+                    theme,
+                ))
+            }
+            if (rendered.value.width !== width || rendered.value.height !== height) {
+                diagnostics.push({
+                    code: 'layout.auto_size',
+                    severity: 'info',
+                    theme,
+                    message: `Canvas auto-sized from ${width}×${height} to ${rendered.value.width}×${rendered.value.height}.`,
+                    suggestedDimensions: { width: rendered.value.width, height: rendered.value.height },
+                })
+            }
+            reports.push({
+                theme,
+                ok: !fails(diagnostics, failOn),
+                dimensions: {
+                    input: inputDimensions,
+                    resolved: { width: rendered.value.width, height: rendered.value.height },
+                    output: { width: rendered.value.outputWidth, height: rendered.value.outputHeight },
+                },
+                diagnostics,
+            })
+            continue
+        }
+
+        const edges = overflowEdges(rendered.error)
+        if (edges) {
+            const suggestion = await captureConsole(() => renderFrame(create, theme, {
+                width,
+                height,
+                autoSize: { width: true, height: true },
+                background: options.background,
+            }))
+            const suggestedDimensions = suggestion.value
+                ? { width: suggestion.value.width, height: suggestion.value.height }
+                : undefined
+            diagnostics.push({
+                code: 'layout.overflow',
+                severity: 'error',
+                theme,
+                edges,
+                message: rendered.error instanceof Error ? rendered.error.message : String(rendered.error),
+                suggestion: suggestedDimensions
+                    ? `Increase the canvas to at least ${suggestedDimensions.width}×${suggestedDimensions.height}, or remove fixed dimensions to enable auto-sizing.`
+                    : 'Increase the canvas dimensions or remove fixed dimensions to enable auto-sizing.',
+                suggestedDimensions,
+            })
+        } else {
+            diagnostics.push(diagnosticFromMessage(
+                rendered.error instanceof Error ? rendered.error.message : String(rendered.error),
+                'error',
+                theme,
+            ))
+        }
+
+        reports.push({
+            theme,
+            ok: !fails(diagnostics, failOn),
+            dimensions: { input: inputDimensions },
+            diagnostics,
+        })
     }
 
     const summary = counts(reports)

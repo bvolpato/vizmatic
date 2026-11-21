@@ -56,12 +56,17 @@ function VizmaticIcon({ size = 14, color }: { size?: number; color: string }): R
     )
 }
 
+const WATERMARK_COMPONENT = Symbol.for('vizmatic.watermark')
+
 export function normalizeWatermark(watermark: WatermarkInput | undefined): WatermarkOptions | undefined {
     if (watermark == null || watermark === false) return undefined
     if (watermark === true) return {}
     if (typeof watermark === 'string') return { text: watermark }
     if (React.isValidElement<WatermarkElementProps>(watermark)) {
-        if (watermark.type !== Watermark) return { element: watermark }
+        const isWatermarkElement = watermark.type === Watermark
+            || (typeof watermark.type === 'function'
+                && Boolean((watermark.type as unknown as Record<symbol, unknown>)[WATERMARK_COMPONENT]))
+        if (!isWatermarkElement) return { element: watermark }
         const { children, ...props } = watermark.props
         return {
             ...props,
@@ -74,6 +79,7 @@ export function normalizeWatermark(watermark: WatermarkInput | undefined): Water
 export function Watermark(_props: WatermarkElementProps): null {
     return null
 }
+Object.defineProperty(Watermark, WATERMARK_COMPONENT, { value: true })
 
 function positionStyle(position: WatermarkPosition): React.CSSProperties {
     switch (position) {

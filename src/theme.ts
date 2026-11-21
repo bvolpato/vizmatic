@@ -6,6 +6,7 @@
  */
 
 import parseCssColor from 'parse-css-color'
+import { contrastRatioLuminance, parseCssRgba, relativeLuminanceRgb } from './color-utils'
 import { densityOf, withDensity, type Density } from './density'
 
 export * from './density'
@@ -469,33 +470,8 @@ interface ParsedColor {
 }
 
 function parseColor(color: string): ParsedColor | undefined {
-    const parsed = parseCssColor(color)
-    if (!parsed || parsed.values.length < 3) return undefined
-    if (parsed.type !== 'hsl') {
-        return {
-            channels: [parsed.values[0] ?? 0, parsed.values[1] ?? 0, parsed.values[2] ?? 0],
-            alpha: parsed.alpha,
-        }
-    }
-
-    const hue = (((parsed.values[0] ?? 0) % 360) + 360) % 360
-    const saturation = (parsed.values[1] ?? 0) / 100
-    const lightness = (parsed.values[2] ?? 0) / 100
-    const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation
-    const segment = hue / 60
-    const intermediate = chroma * (1 - Math.abs((segment % 2) - 1))
-    let channels: [number, number, number]
-    if (segment < 1) channels = [chroma, intermediate, 0]
-    else if (segment < 2) channels = [intermediate, chroma, 0]
-    else if (segment < 3) channels = [0, chroma, intermediate]
-    else if (segment < 4) channels = [0, intermediate, chroma]
-    else if (segment < 5) channels = [intermediate, 0, chroma]
-    else channels = [chroma, 0, intermediate]
-    const offset = lightness - chroma / 2
-    return {
-        channels: channels.map((channel) => Math.round((channel + offset) * 255)) as [number, number, number],
-        alpha: parsed.alpha,
-    }
+    const parsed = parseCssRgba(color)
+    return parsed ? { channels: [parsed.r, parsed.g, parsed.b], alpha: parsed.alpha } : undefined
 }
 
 /** Apply an opacity multiplier to any CSS color accepted by parse-css-color. */
@@ -525,13 +501,7 @@ function colorLuminance(color: string, backdrop?: string): number | undefined {
             channel * parsed.alpha + backdropColor.channels[index] * (1 - parsed.alpha),
         )) as [number, number, number]
     }
-    const [r, g, b] = channels.map((channel) => {
-        const normalized = channel / 255
-        return normalized <= 0.04045
-            ? normalized / 12.92
-            : ((normalized + 0.055) / 1.055) ** 2.4
-    })
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+    return relativeLuminanceRgb(channels[0], channels[1], channels[2])
 }
 
 /** Resolve a translucent foreground over its background using CSS alpha compositing. */
@@ -550,8 +520,7 @@ function colorContrast(left: string, right: string, rightBackdrop?: string): num
     const leftLuminance = colorLuminance(left)
     const rightLuminance = colorLuminance(right, rightBackdrop)
     if (leftLuminance == null || rightLuminance == null) return 0
-    return (Math.max(leftLuminance, rightLuminance) + 0.05)
-        / (Math.min(leftLuminance, rightLuminance) + 0.05)
+    return contrastRatioLuminance(leftLuminance, rightLuminance)
 }
 
 /** Choose readable foreground text, compositing translucent backgrounds over their backdrop. */

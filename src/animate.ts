@@ -3,7 +3,7 @@ import { mkdir, writeFile } from 'fs/promises'
 import { dirname } from 'path'
 import type { ReactNode } from 'react'
 import * as gifenc from 'gifenc'
-import parseCssColor from 'parse-css-color'
+import { parseCssRgba } from './color-utils'
 import { wrapWithWatermark, type WatermarkInput } from './brand'
 import type { CropRegion, OverflowResult } from './autocrop'
 import { measureRegionChange } from './region-change'
@@ -178,38 +178,11 @@ function blendPixels(base: Uint8Array, overlay: Uint8Array, opacity: number): Ui
     return result
 }
 
-function hslToRgb(hue: number, saturation: number, lightness: number): [number, number, number] {
-    const h = ((hue % 360) + 360) % 360
-    const s = saturation / 100
-    const l = lightness / 100
-    const chroma = (1 - Math.abs(2 * l - 1)) * s
-    const segment = h / 60
-    const intermediate = chroma * (1 - Math.abs((segment % 2) - 1))
-    let channels: [number, number, number]
-    if (segment < 1) channels = [chroma, intermediate, 0]
-    else if (segment < 2) channels = [intermediate, chroma, 0]
-    else if (segment < 3) channels = [0, chroma, intermediate]
-    else if (segment < 4) channels = [0, intermediate, chroma]
-    else if (segment < 5) channels = [intermediate, 0, chroma]
-    else channels = [chroma, 0, intermediate]
-
-    const offset = l - chroma / 2
-    return [
-        Math.round((channels[0] + offset) * 255),
-        Math.round((channels[1] + offset) * 255),
-        Math.round((channels[2] + offset) * 255),
-    ]
-}
-
 function colorForBackground(background: RenderBackground, theme: 'dark' | 'light'): { r: number; g: number; b: number; a: number } {
     const value = background === 'theme' ? getThemeColors(theme).bg : background
-    const parsed = parseCssColor(value)
+    const parsed = parseCssRgba(value)
     if (!parsed) throw new Error(`Invalid animation background color: ${value}`)
-
-    const [r, g, b] = parsed.type === 'hsl'
-        ? hslToRgb(parsed.values[0], parsed.values[1], parsed.values[2])
-        : [parsed.values[0], parsed.values[1], parsed.values[2]]
-    return { r, g, b, a: Math.round(parsed.alpha * 255) }
+    return { r: parsed.r, g: parsed.g, b: parsed.b, a: Math.round(parsed.alpha * 255) }
 }
 
 function rasterBackground(background: RenderBackground, theme: 'dark' | 'light'): string {
@@ -546,42 +519,11 @@ export async function renderAnimationGifWithOutput<S extends object>(
     }
     const frames = sampleAnimationFrames(animation, { fps: options.fps })
     const paletteFrames: PixelFrame[] = []
+    const renderedCache = new Map<number, { pixels: Uint8Array; width: number; height: number }>()
     const paletteIndexes = representativeFrameIndexes(frames.length)
     const palettePixelsPerFrame = Math.max(1, Math.floor(MAX_PALETTE_SAMPLE_PIXELS / paletteIndexes.length))
     for (const index of paletteIndexes) {
         const sampled = frames[index]
-        const rawElement = animation.render(sampled.state, sampled.frame)
-        const watermark = normalized.watermark ?? normalized.brand
-        const element = watermark
-            ? wrapWithWatermark(rawElement, normalized.width, normalized.height, normalized.theme, watermark)
-            : rawElement
-        const rendered = await renderToPixels(
-            element,
-            normalized.width,
-            normalized.height,
-            normalized.scale,
-            normalized.theme,
-            normalized.background,
-        )
-        paletteFrames.push({
-            ...rendered,
-            pixels: samplePixels(rendered.pixels, palettePixelsPerFrame),
-            delay: sampled.frame.delay,
-        })
-    }
-    const palette = sharedPalette(paletteFrames)
-    const gif = GIFEncoder()
-    let pending: PixelFrame | undefined
-    let dimensions: Pick<PixelFrame, 'width' | 'height'> | undefined
-    let first = true
-
-    let encodedFrameCount = 0
-    let deltaFrameCount = 0
-    let previousPixels: Uint8Array | undefined
-    const useDeltaFrames = normalized.deltaFrames
-        && colorForBackground(normalized.background, normalized.theme).a === 255
-
-    for (const sampled of frames) {
         const rawElement = animation.render(sampled.state, sampled.frame)
         const watermark = normalized.watermark ?? normalized.brand
         const element = watermark
@@ -601,6 +543,51 @@ export async function renderAnimationGifWithOutput<S extends object>(
                 label: sampled.frame.label,
             },
         )
+        renderedCache.set(index, rendered)
+        paletteFrames.push({
+            ...rendered,
+            pixels: samplePixels(rendered.pixels, palettePixelsPerFrame),
+            delay: sampled.frame.delay,
+        })
+    }
+    const palette = sharedPalette(paletteFrames)
+    const gif = GIFEncoder()
+    let pending: PixelFrame | undefined
+    let dimensions: Pick<PixelFrame, 'width' | 'height'> | undefined
+    let first = true
+
+    let encodedFrameCount = 0
+    let deltaFrameCount = 0
+    let previousPixels: Uint8Array | undefined
+    const useDeltaFrames = normalized.deltaFrames
+        && colorForBackground(normalized.background, normalized.theme).a === 255
+
+    for (let frameIndex = 0; frameIndex < frames.length; frameIndex += 1) {
+        const sampled = frames[frameIndex]
+        let rendered = renderedCache.get(frameIndex)
+        if (rendered) {
+            renderedCache.delete(frameIndex)
+        } else {
+            const rawElement = animation.render(sampled.state, sampled.frame)
+            const watermark = normalized.watermark ?? normalized.brand
+            const element = watermark
+                ? wrapWithWatermark(rawElement, normalized.width, normalized.height, normalized.theme, watermark)
+                : rawElement
+            rendered = await renderToPixels(
+                element,
+                normalized.width,
+                normalized.height,
+                normalized.scale,
+                normalized.theme,
+                normalized.background,
+                {
+                    frameIndex: sampled.frame.index,
+                    frameCount: sampled.frame.count,
+                    time: sampled.frame.time,
+                    label: sampled.frame.label,
+                },
+            )
+        }
         dimensions ??= { width: rendered.width, height: rendered.height }
         if (rendered.width !== dimensions.width || rendered.height !== dimensions.height) {
             throw new Error('All GIF frames must have matching dimensions')
