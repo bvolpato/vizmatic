@@ -1,5 +1,5 @@
 import { pathBounds, type Path, type Ring } from './geometry'
-import { css, isGradient, sampleStops, type Paint, type Rgba } from './color'
+import { css, isGradient, sampleStops, type Gradient, type Paint, type Rgba } from './color'
 import type { BlendMode, StageImage } from './node'
 import { browserImageSource, ImageAssetError } from './image'
 import { pixelCanvas } from './pixels'
@@ -10,6 +10,8 @@ import { glowBounds, glowOf, glowProfile, type Frame } from './display'
 export type Canvas2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
 
 const path2dCache = new WeakMap<Path & object, Path2D>()
+const gradientCache = new WeakMap<Canvas2D, WeakMap<Gradient, CanvasGradient>>()
+const EMPTY_DASH: number[] = []
 
 function ringsToPath2D(path: Path): Path2D {
     let cached = path2dCache.get(path as Path & object)
@@ -29,6 +31,9 @@ function ringsToPath2D(path: Path): Path2D {
 
 function canvasPaint(ctx: Canvas2D, paint: Paint): string | CanvasGradient {
     if (!isGradient(paint)) return css(paint as Rgba)
+    let perCtx = gradientCache.get(ctx)
+    const cached = perCtx?.get(paint)
+    if (cached) return cached
     const gradient = paint.type === 'linear'
         ? ctx.createLinearGradient(paint.from[0], paint.from[1], paint.to[0], paint.to[1])
         : paint.type === 'radial'
@@ -36,6 +41,11 @@ function canvasPaint(ctx: Canvas2D, paint: Paint): string | CanvasGradient {
             : null
     if (!gradient) return css(sampleStops(paint.stops, 0.5))
     for (const [at, color] of paint.stops) gradient.addColorStop(at, css(color))
+    if (!perCtx) {
+        perCtx = new WeakMap()
+        gradientCache.set(ctx, perCtx)
+    }
+    perCtx.set(paint, gradient)
     return gradient
 }
 
@@ -95,11 +105,36 @@ function paintFrameContents(ctx: Canvas2D, frame: Frame, scale: number, images?:
     }
     // Adjacent marks from a clipped group share its paths, even when their clip arrays differ.
     let activeClips: readonly Path[] | undefined
+    let hasDash = false
+    let lastDashOffset = 0
+    let lastBlend: GlobalCompositeOperation = 'source-over'
+    let lastStrokePaint: Paint | null = null
+    let lastStrokeStyle: string | CanvasGradient | null = null
+    let lastFillPaint: Paint | null = null
+    let lastFillStyle: string | CanvasGradient | null = null
+    let lastLineWidth = -1
+    let lastCap = ''
+    let lastJoin = ''
+    const resetStyleCache = () => {
+        hasDash = false
+        lastDashOffset = 0
+        lastBlend = 'source-over'
+        lastStrokePaint = null
+        lastStrokeStyle = null
+        lastFillPaint = null
+        lastFillStyle = null
+        lastLineWidth = -1
+        lastCap = ''
+        lastJoin = ''
+    }
     try {
         for (const op of frame.ops) {
             const clips = op.clips?.length ? op.clips : undefined
             if (clips !== activeClips && (clips?.length !== activeClips?.length || clips?.some((clip, i) => clip !== activeClips?.[i]))) {
-                if (activeClips) ctx.restore()
+                if (activeClips) {
+                    ctx.restore()
+                    resetStyleCache()
+                }
                 activeClips = clips
                 if (clips) {
                     ctx.save()
@@ -121,7 +156,11 @@ function paintFrameContents(ctx: Canvas2D, frame: Frame, scale: number, images?:
                 ctx.restore()
                 continue
             }
-            ctx.globalCompositeOperation = BLEND[op.blend]
+            const blend = BLEND[op.blend]
+            if (blend !== lastBlend) {
+                ctx.globalCompositeOperation = blend
+                lastBlend = blend
+            }
             if (op.glow > 0) {
                 const color = glowOf(op)
                 const path = op.strokePath.length ? op.strokePath : op.path
@@ -141,7 +180,7 @@ function paintFrameContents(ctx: Canvas2D, frame: Frame, scale: number, images?:
                     ctx.lineCap = 'round'
                     ctx.lineJoin = 'round'
                     ctx.lineWidth = profile.width
-                    ctx.setLineDash([])
+                    ctx.setLineDash(EMPTY_DASH)
                     // shadowBlur uses sigma = blur / 2 in device pixels, unaffected by setTransform.
                     // Drawing only the shadow is faster than ctx.filter on CPU canvases and also works without filter support.
                     const offset = (frame.width - rawBounds.x + profile.width / 2 + 4 * profile.sigma) * scale
@@ -156,17 +195,43 @@ function paintFrameContents(ctx: Canvas2D, frame: Frame, scale: number, images?:
             }
             if (op.fill) {
                 ctx.globalAlpha = op.fillAlpha
-                ctx.fillStyle = canvasPaint(ctx, op.fill)
+                if (op.fill !== lastFillPaint) {
+                    lastFillPaint = op.fill
+                    lastFillStyle = canvasPaint(ctx, op.fill)
+                    ctx.fillStyle = lastFillStyle
+                }
                 ctx.fill(ringsToPath2D(op.path))
             }
             if (op.stroke && op.strokePath.length) {
                 ctx.globalAlpha = op.strokeAlpha
-                ctx.strokeStyle = canvasPaint(ctx, op.stroke)
-                ctx.lineWidth = op.strokeWidth
-                ctx.lineCap = op.cap
-                ctx.lineJoin = op.join
-                ctx.setLineDash(op.dash ? [...op.dash] : [])
-                ctx.lineDashOffset = op.dashOffset
+                if (op.stroke !== lastStrokePaint) {
+                    lastStrokePaint = op.stroke
+                    lastStrokeStyle = canvasPaint(ctx, op.stroke)
+                    ctx.strokeStyle = lastStrokeStyle
+                }
+                if (op.strokeWidth !== lastLineWidth) {
+                    ctx.lineWidth = op.strokeWidth
+                    lastLineWidth = op.strokeWidth
+                }
+                if (op.cap !== lastCap) {
+                    ctx.lineCap = op.cap
+                    lastCap = op.cap
+                }
+                if (op.join !== lastJoin) {
+                    ctx.lineJoin = op.join
+                    lastJoin = op.join
+                }
+                if (op.dash && op.dash.length > 0) {
+                    ctx.setLineDash([...op.dash])
+                    hasDash = true
+                } else if (hasDash) {
+                    ctx.setLineDash(EMPTY_DASH)
+                    hasDash = false
+                }
+                if (op.dashOffset !== lastDashOffset) {
+                    ctx.lineDashOffset = op.dashOffset
+                    lastDashOffset = op.dashOffset
+                }
                 ctx.stroke(ringsToPath2D(op.strokePath))
             }
         }

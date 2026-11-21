@@ -128,7 +128,7 @@ vz-film:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 
 /* ── Hero ───────────────────────────────────────────────────────────────── */
 .hero { position: relative; min-height: calc(100svh - 65px); display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; isolation: isolate; }
-.hero-film { position: absolute; z-index: -1; left: 50%; top: 42%; width: max(100%, calc((100svh - 65px) * 1.778)); transform: translate(-50%, -50%); background: var(--bg) var(--poster, none) center / cover no-repeat; }
+.hero-film { position: absolute; z-index: -1; left: 50%; top: 42%; width: max(100%, calc((100svh - 65px) * 1.778)); transform: translate(-50%, -50%) translateZ(0); contain: layout paint size; background: var(--bg) var(--poster, none) center / cover no-repeat; }
 .hero-film { opacity: 0; transition: opacity .9s ease; }
 .hero-film.is-ready { opacity: 1; }
 .hero-scrim { position: absolute; z-index: -1; inset: auto 0 0 0; height: 62%; background: linear-gradient(to top, var(--bg) 18%, color-mix(in srgb, var(--bg) 70%, transparent) 58%, transparent); pointer-events: none; }

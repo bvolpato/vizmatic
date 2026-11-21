@@ -1,5 +1,6 @@
 import { paintCanvasBloom, type CanvasBloom } from './bloom-canvas'
-import { supportsWebGLBloom } from './bloom-webgl'
+import { createWebGLBloomPresenter, supportsWebGLBloom, type WebGLBloomPresenter } from './bloom-webgl'
+import { parseColor } from './color'
 import { paintFrame, type Frame } from './display'
 import { isSuspend, type CompiledFilm } from './stage'
 import type { StageImage } from './node'
@@ -13,8 +14,12 @@ export interface PlayerOptions {
     stepped?: boolean
     /** Device pixels per CSS pixel. Defaults to the display's ratio, capped for speed. */
     pixelRatio?: number
+    /** Maximum backing-store width in pixels when `pixelRatio` is not forced. Defaults to the film's authored width (or 1280 on CPU bloom fallback). */
+    maxWidth?: number
     /** Paint bloom onto the canvas. Set false when a caller averages subframes before blooming. */
     bloom?: boolean
+    /** Optional sibling WebGL canvas for zero-copy direct bloom presentation (used by `<vz-film>`). */
+    presentCanvas?: HTMLCanvasElement
     onTime?: (time: number) => void
     onSeek?: (time: number) => void
     onState?: (state: { playing: boolean }) => void
@@ -26,6 +31,12 @@ export class FilmPlayer {
     readonly canvas: HTMLCanvasElement
     private readonly ctx: CanvasRenderingContext2D
     private readonly options: PlayerOptions
+    private readonly presentCanvas: HTMLCanvasElement | null
+    private presenter: WebGLBloomPresenter | null | undefined = undefined
+    private presentingBloom = false
+    private bloomBgKey: string | null = null
+    private bloomBgColor: readonly number[] = [0, 0, 0]
+    private readonly gpuBloom: boolean
     private raf = 0
     private last = 0
     private currentTime = 0
@@ -48,8 +59,10 @@ export class FilmPlayer {
         this.canvas = canvas
         this.film = film
         this.options = options
+        this.presentCanvas = options.presentCanvas ?? null
         this.speed = options.speed ?? 1
-        const ctx = canvas.getContext('2d', { alpha: film.background === null, willReadFrequently: !supportsWebGLBloom(canvas) })
+        this.gpuBloom = supportsWebGLBloom(canvas)
+        const ctx = canvas.getContext('2d', { alpha: film.background === null, willReadFrequently: !this.gpuBloom })
         if (!ctx) throw new Error('This browser could not create a 2D canvas.')
         this.ctx = ctx
         this.resizeCanvas()
@@ -97,13 +110,12 @@ export class FilmPlayer {
     /** Replace the compiled film while preserving playhead (clamped to [0, duration]) and play state. */
     setFilm(film: CompiledFilm): void {
         if (this.destroyed) return
-        const sizeChanged = film.width !== this.film.width || film.height !== this.film.height
         this.pendingPaint = null
         this.lastFrame = null
         this.film = film
         this.currentTime = Math.max(0, Math.min(film.duration, this.currentTime))
         this.bloomState = null
-        if (sizeChanged) this.resizeCanvas()
+        this.resizeCanvas()
         this.paint()
         this.options.onTime?.(this.currentTime)
     }
@@ -124,7 +136,13 @@ export class FilmPlayer {
         }
         const ratio = this.options.pixelRatio ?? Math.min(2, globalThis.devicePixelRatio || 1)
         const cssWidth = rect.width || this.film.width
-        const width = Math.max(2, Math.round(cssWidth * ratio))
+        let width = Math.max(2, Math.round(cssWidth * ratio))
+        if (this.options.pixelRatio === undefined) {
+            const baseCap = this.options.maxWidth ?? Math.max(this.film.width, 1920)
+            const cpuBloomFallback = this.options.bloom !== false && this.film.look.dark && this.film.bloom > 0 && !this.gpuBloom
+            const cap = cpuBloomFallback ? Math.min(baseCap, 1280) : baseCap
+            if (width > cap) width = cap
+        }
         const height = Math.max(2, Math.round(width * this.film.height / this.film.width))
         const bufferChanged = this.canvas.width !== width || this.canvas.height !== height
         if (bufferChanged) {
@@ -193,6 +211,16 @@ export class FilmPlayer {
         this.observer = null
         this.dprMedia?.removeEventListener?.('change', this.onDprChange)
         this.dprMedia = null
+        this.presenter?.dispose()
+        this.presenter = null
+        this.setDirectBloomVisible(false)
+    }
+
+    private setDirectBloomVisible(active: boolean): void {
+        if (!this.presentCanvas || this.presentingBloom === active) return
+        this.presentingBloom = active
+        this.presentCanvas.hidden = !active
+        if (this.canvas.style) this.canvas.style.opacity = active ? '0' : ''
     }
 
     private readonly tick = (now: number): void => {
@@ -263,7 +291,26 @@ export class FilmPlayer {
         this.lastFrame = frame
         paintFrame(this.ctx, frame, this.scale, this.lookupImage)
         if (this.options.bloom !== false && frame.bloom > 0 && frame.dark) {
+            if (this.presentCanvas && this.gpuBloom) {
+                if (this.presenter === undefined) this.presenter = createWebGLBloomPresenter(this.presentCanvas)
+                if (this.presenter) {
+                    const bgKey = frame.background ?? '#000000'
+                    if (this.bloomBgKey !== bgKey) {
+                        this.bloomBgKey = bgKey
+                        this.bloomBgColor = parseColor(bgKey)
+                    }
+                    if (this.presenter.paint(this.canvas, frame.bloom, this.bloomBgColor)) {
+                        this.setDirectBloomVisible(true)
+                        return
+                    }
+                    this.presenter.dispose()
+                    this.presenter = null
+                }
+            }
+            this.setDirectBloomVisible(false)
             this.bloomState = paintCanvasBloom(this.canvas, this.ctx, frame.bloom, frame.background, this.bloomState)
+        } else {
+            this.setDirectBloomVisible(false)
         }
     }
 }
@@ -310,6 +357,7 @@ const PLAYER_CSS = `
 :host { display: block; position: relative; background: #0b0c10; border-radius: inherit; overflow: hidden; font: 12px/1 ui-monospace, "JetBrains Mono", monospace; color: #f2efe6; aspect-ratio: var(--vz-aspect, 16 / 9); }
 [hidden] { display: none !important; }
 canvas { display: block; width: 100%; height: 100%; object-fit: contain; }
+canvas.bloom { position: absolute; inset: 0; pointer-events: none; }
 .caption { position: absolute; left: 50%; bottom: 48px; transform: translateX(-50%); max-width: min(86%, 72ch); padding: 6px 12px; border-radius: 6px; background: rgba(11,12,16,.78); color: #f2efe6; font: 500 14px/1.4 ui-sans-serif, system-ui, -apple-system, sans-serif; text-align: center; pointer-events: none; transition: bottom .18s ease; text-wrap: balance; }
 :host(:not(:hover):not(:focus-within):not([data-paused])) .caption { bottom: 18px; }
 :host([nocontrols]) .caption { display: none !important; }
@@ -365,7 +413,7 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
             // Moving an element in the DOM disconnects it first, so a reconnect rebuilds from scratch.
             const root = this.shadowRoot ?? this.attachShadow({ mode: 'open' })
             const rawLabel = this.getAttribute('label') ?? 'Animation'
-            root.innerHTML = `<style>${PLAYER_CSS}</style><canvas role="img"></canvas><div class="caption" hidden></div><div class="chrome"><button class="toggle" type="button" aria-label="Play">${ICON_PLAY}</button><div class="track" role="slider" tabindex="0" aria-label="Seek" aria-valuemin="0"><div class="fill"></div></div><span class="time">0:00</span><button class="cc" type="button" aria-label="Captions" aria-pressed="true" hidden>CC</button><button class="mute" type="button" aria-label="Mute" aria-pressed="false" hidden>${ICON_VOLUME}</button><button class="full" type="button" aria-label="Full screen">${ICON_FULL}</button></div>`
+            root.innerHTML = `<style>${PLAYER_CSS}</style><canvas class="stage" role="img"></canvas><canvas class="bloom" aria-hidden="true" hidden></canvas><div class="caption" hidden></div><div class="chrome"><button class="toggle" type="button" aria-label="Play">${ICON_PLAY}</button><div class="track" role="slider" tabindex="0" aria-label="Seek" aria-valuemin="0"><div class="fill"></div></div><span class="time">0:00</span><button class="cc" type="button" aria-label="Captions" aria-pressed="true" hidden>CC</button><button class="mute" type="button" aria-label="Mute" aria-pressed="false" hidden>${ICON_VOLUME}</button><button class="full" type="button" aria-label="Full screen">${ICON_FULL}</button></div>`
             root.querySelector('canvas')!.setAttribute('aria-label', rawLabel)
             this.setAttribute('data-paused', '')
             this.intersection = new IntersectionObserver((entries) => {
@@ -508,7 +556,10 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
                 if (connection !== this.connectionSeq) return
             }
             this.syncFilmMeta(film)
-            const canvas = root.querySelector('canvas')!
+            const canvas = root.querySelector<HTMLCanvasElement>('canvas.stage') ?? root.querySelector('canvas')!
+            const bloomCanvas = root.querySelector<HTMLCanvasElement>('canvas.bloom') ?? undefined
+            const maxWidthAttr = Number(this.getAttribute('max-width'))
+            const maxWidth = Number.isFinite(maxWidthAttr) && maxWidthAttr > 0 ? maxWidthAttr : undefined
             const toggle = root.querySelector<HTMLElement>('.toggle')!
             const fill = root.querySelector<HTMLElement>('.fill')!
             const time = root.querySelector<HTMLElement>('.time')!
@@ -623,6 +674,8 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
             const player = new FilmPlayer(canvas, film, {
                 loop: this.hasAttribute('loop'),
                 stepped: this.hasAttribute('stepped'),
+                maxWidth,
+                presentCanvas: bloomCanvas,
                 onTime,
                 onSeek: (t) => {
                     syncAudioTime(t)
