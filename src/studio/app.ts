@@ -23,6 +23,7 @@ import { closePopover, download, dragPointer, h, icon, iconButton, isMac, MOD, o
 const AUTOSAVE_KEY = 'vizmatic-studio-autosave-v1'
 const BACKUP_KEY = 'vizmatic-studio-backup-v1'
 const PREFS_KEY = 'vizmatic-studio-prefs-v1'
+const CODE_BOOT_GUARD_KEY = 'vizmatic-studio-code-booting-v1'
 
 const ASPECT_SIZES: Record<Aspect, [number, number]> = {
     '16:9': [1920, 1080], '9:16': [1080, 1920], '1:1': [1080, 1080], '4:3': [1440, 1080], '21:9': [2520, 1080],
@@ -265,6 +266,17 @@ export class App {
         const saved = this.readAutosave()
         // An empty autosave means nothing was made yet, so the welcome screen still helps.
         if (saved && !isEmptyProject(saved)) {
+            if (saved.mode === 'code') {
+                try {
+                    if (sessionStorage.getItem(CODE_BOOT_GUARD_KEY) === '1') {
+                        this.codePaused = true
+                    } else {
+                        sessionStorage.setItem(CODE_BOOT_GUARD_KEY, '1')
+                    }
+                } catch {
+                    // Storage unavailable; proceed normally.
+                }
+            }
             this.loadProject(saved)
             return
         }
@@ -829,6 +841,7 @@ export class App {
                 this.sandbox = new SandboxHost(this.view.sandboxSlot, this.assetBase, this.fontBase, {
                     onCompiled: (info) => this.onSandboxCompiled(info),
                     onError: (error) => {
+                        try { sessionStorage.removeItem(CODE_BOOT_GUARD_KEY) } catch {}
                         this.codePanel.showProblem(error)
                         this.root.dataset['codeError'] = 'true'
                     },
@@ -899,6 +912,7 @@ export class App {
     }
 
     private onSandboxCompiled(info: SandboxInfo): void {
+        try { sessionStorage.removeItem(CODE_BOOT_GUARD_KEY) } catch {}
         this.sandboxInfo = info
         this.codePanel.showProblem(null)
         delete this.root.dataset['codeError']
@@ -923,11 +937,22 @@ export class App {
 
     openProjectFile(): void {
         const input = h('input', { type: 'file', accept: '.json,application/json', 'data-test': 'open-file-input', style: { display: 'none' } })
+        const cleanup = () => {
+            window.removeEventListener('focus', onFocus)
+            input.remove()
+        }
+        const onFocus = () => {
+            window.setTimeout(() => {
+                if (input.isConnected && !input.files?.length) cleanup()
+            }, 300)
+        }
         input.addEventListener('change', () => {
             const file = input.files?.[0]
-            input.remove()
+            cleanup()
             if (file) void this.readProjectFile(file)
-        })
+        }, { once: true })
+        input.addEventListener('cancel', cleanup, { once: true })
+        window.addEventListener('focus', onFocus, { once: true })
         document.body.appendChild(input)
         input.click()
     }

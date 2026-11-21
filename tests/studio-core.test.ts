@@ -616,4 +616,23 @@ describe('Studio ?film= catalog deep-link in App.start()', () => {
         expect(toastEl.classes.has('is-error')).toBe(true)
         expect(loadedProject?.name).toBe('Saved work')
     })
+
+    it('ignores string literals when inferring codegen imports and avoids parameter shadowing in curve3d', () => {
+        const project = emptyProject('Imports test')
+        project.variables.push({ name: 'u', value: 2 }, { name: 'amp', value: 1.5 })
+        project.objects.push(
+            {
+                id: 'o1', kind: 'text', name: 'Label', x: 0, y: 0, rotation: 0, scale: 1, opacity: 1, hidden: false, locked: false,
+                props: { ...defaultProps('text'), content: 'draw a circle and ripple a matrix' },
+            },
+            {
+                id: 'o2', kind: 'curve3d', name: 'Helix', x: 0, y: 0, rotation: 0, scale: 1, opacity: 1, hidden: false, locked: false,
+                props: { ...defaultProps('curve3d'), fx: 'amp * cos(u)', fy: 'amp * sin(u)', fz: '0.2 * u' },
+            },
+        )
+        const source = projectToSource(project)
+        const importLine = source.split('\n\n')[0]!
+        expect(importLine).not.toMatch(/\b(circle|ripple|matrix|draw)\b/)
+        expect(source).toContain('(u) => [amp.value * Math.cos(u), amp.value * Math.sin(u), 0.2 * u]')
+    })
 })

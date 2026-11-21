@@ -272,11 +272,15 @@ async function exportVideo(film: CompiledFilm, settings: ExportSettings, control
                 timestamp: Math.round((index * 1_000_000) / fps),
                 duration: Math.round(1_000_000 / fps),
             })
-            encoder.encode(frame, { keyFrame: index % keyEvery === 0 })
-            frame.close()
+            try {
+                encoder.encode(frame, { keyFrame: index % keyEvery === 0 })
+            } finally {
+                frame.close()
+            }
             control.onProgress?.({ done: index + 1, total, stage: 'Encoding' })
             // Back-pressure keeps memory flat, and yielding keeps the window responsive.
             while (encoder.encodeQueueSize > 6) {
+                if (control.signal?.aborted) throw new ExportCancelled()
                 await new Promise((resolve) => setTimeout(resolve, 4))
                 if (encoderError) throw encoderError
             }
@@ -370,11 +374,23 @@ export async function exportFilm(film: CompiledFilm, settings: ExportSettings, c
             return exportGif(film, settings, control)
         case 'png':
             return exportPng(film, settings)
-        case 'svg':
+        case 'svg': {
+            let markup: string | null = null
+            for (let attempt = 0; attempt < 8; attempt++) {
+                try {
+                    markup = film.svg(settings.time)
+                    break
+                } catch (error) {
+                    if (!isSuspend(error)) throw error
+                    await error.promise
+                }
+            }
+            if (markup === null) markup = film.svg(settings.time)
             return {
-                bytes: new TextEncoder().encode(film.svg(settings.time)),
+                bytes: new TextEncoder().encode(markup),
                 type: 'image/svg+xml', extension: 'svg',
                 note: `SVG at ${film.width}x${film.height}. Text is outlines, so no fonts are needed.`,
             }
+        }
     }
 }

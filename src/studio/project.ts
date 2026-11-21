@@ -1,5 +1,5 @@
 /** Reads projects from files and share links, which are untrusted input. */
-import { deflateSync, inflateSync, strFromU8, strToU8 } from 'fflate'
+import { deflateSync, Inflate, strFromU8, strToU8 } from 'fflate'
 import { LOOKS, type Aspect, type LookName } from '../stage/index'
 import { BEATS, DEFAULT_EASE, EASES } from './beats'
 import { KINDS, type Field } from './catalog'
@@ -169,16 +169,44 @@ export function encodeShare(project: StudioProject): string {
     return toBase64Url(deflateSync(strToU8(JSON.stringify(project)), { level: 9 }))
 }
 
+/** Inflate raw deflate bytes while capping output allocation before a zip bomb can exhaust memory. */
+function boundedInflate(compressed: Uint8Array, limit: number): Uint8Array {
+    const chunks: Uint8Array[] = []
+    let total = 0
+    let exceeded = false
+    const stream = new Inflate((chunk) => {
+        total += chunk.length
+        if (total > limit) {
+            exceeded = true
+            throw new Error('limit exceeded')
+        }
+        chunks.push(chunk.slice())
+    })
+    try {
+        stream.push(compressed, true)
+    } catch (error) {
+        if (exceeded) throw new Error('This shared link is too large to open.')
+        throw error
+    }
+    const out = new Uint8Array(total)
+    let offset = 0
+    for (const chunk of chunks) {
+        out.set(chunk, offset)
+        offset += chunk.length
+    }
+    return out
+}
+
 /** Decode a share string. Throws when it is damaged or too large. */
 export function decodeShare(encoded: string): StudioProject {
     if (encoded.length > MAX_SHARE_BYTES) throw new Error('This shared link is too large to open.')
     let inflated: Uint8Array
     try {
-        inflated = inflateSync(fromBase64Url(encoded))
-    } catch {
+        inflated = boundedInflate(fromBase64Url(encoded), MAX_INFLATED_BYTES)
+    } catch (error) {
+        if (error instanceof Error && error.message === 'This shared link is too large to open.') throw error
         throw new Error('This shared link is damaged.')
     }
-    if (inflated.length > MAX_INFLATED_BYTES) throw new Error('This shared link is too large to open.')
     let parsed: unknown
     try {
         parsed = JSON.parse(strFromU8(inflated))

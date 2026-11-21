@@ -35,7 +35,13 @@ export class FilmPlayer {
     private pendingPaint: { promise: Promise<unknown> } | null = null
     private scale = 1
     private bloomState: CanvasBloom | null = null
+    private lastFrame: Frame | null = null
     private observer: ResizeObserver | null = null
+    private dprMedia: MediaQueryList | null = null
+    private readonly onDprChange = (): void => {
+        this.watchDpr()
+        this.resize()
+    }
     speed: number
 
     constructor(canvas: HTMLCanvasElement, film: CompiledFilm, options: PlayerOptions = {}) {
@@ -51,8 +57,19 @@ export class FilmPlayer {
             this.observer = new ResizeObserver(() => this.resize())
             this.observer.observe(canvas)
         }
+        this.watchDpr()
         this.paint()
         if (options.autoplay) this.play()
+    }
+
+    private watchDpr(): void {
+        this.dprMedia?.removeEventListener?.('change', this.onDprChange)
+        this.dprMedia = null
+        if (this.destroyed || this.options.pixelRatio !== undefined || typeof matchMedia !== 'function') return
+        const ratio = globalThis.devicePixelRatio || 1
+        const media = matchMedia(`(resolution: ${ratio}dppx)`)
+        media.addEventListener?.('change', this.onDprChange, { once: true })
+        this.dprMedia = media
     }
 
     get time(): number {
@@ -68,6 +85,7 @@ export class FilmPlayer {
         if (this.destroyed) return
         const sizeChanged = film.width !== this.film.width || film.height !== this.film.height
         this.pendingPaint = null
+        this.lastFrame = null
         this.film = film
         if (sizeChanged) {
             this.bloomState = null
@@ -81,6 +99,7 @@ export class FilmPlayer {
         if (this.destroyed) return
         const sizeChanged = film.width !== this.film.width || film.height !== this.film.height
         this.pendingPaint = null
+        this.lastFrame = null
         this.film = film
         this.currentTime = Math.max(0, Math.min(film.duration, this.currentTime))
         this.bloomState = null
@@ -92,11 +111,17 @@ export class FilmPlayer {
     /** Match the canvas buffer to its displayed size. */
     resize(): void {
         if (this.destroyed) return
-        if (this.resizeCanvas()) this.paint()
+        if (this.resizeCanvas()) {
+            this.lastFrame = null
+            this.paint()
+        }
     }
 
     private resizeCanvas(): boolean {
         const rect = this.canvas.getBoundingClientRect()
+        if (this.options.pixelRatio === undefined && this.canvas.isConnected && rect.width === 0 && rect.height === 0) {
+            return false
+        }
         const ratio = this.options.pixelRatio ?? Math.min(2, globalThis.devicePixelRatio || 1)
         const cssWidth = rect.width || this.film.width
         const width = Math.max(2, Math.round(cssWidth * ratio))
@@ -139,8 +164,9 @@ export class FilmPlayer {
 
     /** A prepared frame must come from this film at the clamped seek time. */
     seek(time: number, prepared?: Frame): void {
-        if (this.destroyed) return
+        if (this.destroyed || !Number.isFinite(time)) return
         this.currentTime = Math.max(0, Math.min(this.film.duration, time))
+        this.lastFrame = null
         this.paint(prepared)
         this.options.onSeek?.(this.currentTime)
         this.options.onTime?.(this.currentTime)
@@ -161,9 +187,12 @@ export class FilmPlayer {
         if (this.destroyed) return
         this.destroyed = true
         this.pendingPaint = null
+        this.lastFrame = null
         this.pause()
         this.observer?.disconnect()
         this.observer = null
+        this.dprMedia?.removeEventListener?.('change', this.onDprChange)
+        this.dprMedia = null
     }
 
     private readonly tick = (now: number): void => {
@@ -179,7 +208,7 @@ export class FilmPlayer {
             const boundary = this.film.chapters.find((chapter) => chapter.time > before && chapter.time <= next)
             if (boundary) {
                 this.currentTime = boundary.time
-                this.paint()
+                this.paint(undefined, true)
                 this.options.onTime?.(this.currentTime)
                 if (seq === this.playbackSeq) this.pause()
                 return
@@ -189,14 +218,14 @@ export class FilmPlayer {
             if (this.options.loop) next %= this.film.duration
             else {
                 this.currentTime = this.film.duration
-                this.paint()
+                this.paint(undefined, true)
                 this.options.onTime?.(this.currentTime)
                 if (seq === this.playbackSeq) this.pause()
                 return
             }
         }
         this.currentTime = next
-        this.paint()
+        this.paint(undefined, true)
         this.options.onTime?.(this.currentTime)
         if (this.playing && seq === this.playbackSeq) this.raf = requestAnimationFrame(this.tick)
     }
@@ -207,7 +236,7 @@ export class FilmPlayer {
         return element
     }
 
-    private paint(prepared?: Frame): void {
+    private paint(prepared?: Frame, skipIfSame = false): void {
         if (this.destroyed) return
         let frame: Frame
         try {
@@ -230,11 +259,35 @@ export class FilmPlayer {
             throw error
         }
         this.pendingPaint = null
+        if (skipIfSame && this.lastFrame && samePaintedFrame(this.lastFrame, frame)) return
+        this.lastFrame = frame
         paintFrame(this.ctx, frame, this.scale, this.lookupImage)
         if (this.options.bloom !== false && frame.bloom > 0 && frame.dark) {
             this.bloomState = paintCanvasBloom(this.canvas, this.ctx, frame.bloom, frame.background, this.bloomState)
         }
     }
+}
+
+function samePaintedFrame(a: Frame, b: Frame): boolean {
+    if (a.ops.length !== b.ops.length || a.background !== b.background || a.bloom !== b.bloom || a.dark !== b.dark) return false
+    for (let i = 0; i < a.ops.length; i++) {
+        const oa = a.ops[i]!, ob = b.ops[i]!
+        if (oa.kind !== ob.kind || oa.blend !== ob.blend || oa.clips?.length !== ob.clips?.length) return false
+        if (oa.clips && ob.clips) {
+            for (let c = 0; c < oa.clips.length; c++) if (oa.clips[c] !== ob.clips[c]) return false
+        }
+        if (oa.kind === 'image' && ob.kind === 'image') {
+            if (oa.image !== ob.image || oa.alpha !== ob.alpha || oa.dim !== ob.dim) return false
+            for (let k = 0; k < 6; k++) if (oa.matrix[k] !== ob.matrix[k]) return false
+        } else if (oa.kind === 'path' && ob.kind === 'path') {
+            if (oa.path !== ob.path || oa.strokePath !== ob.strokePath
+                || oa.fill !== ob.fill || oa.fillAlpha !== ob.fillAlpha
+                || oa.stroke !== ob.stroke || oa.strokeAlpha !== ob.strokeAlpha
+                || oa.strokeWidth !== ob.strokeWidth || oa.dashOffset !== ob.dashOffset
+                || oa.glow !== ob.glow || oa.glowColor !== ob.glowColor) return false
+        }
+    }
+    return true
 }
 
 /** Per-element overrides for `<vz-film look="paper" background="#f7f3ea">`. */
@@ -256,7 +309,7 @@ function formatTime(seconds: number): string {
 const PLAYER_CSS = `
 :host { display: block; position: relative; background: #0b0c10; border-radius: inherit; overflow: hidden; font: 12px/1 ui-monospace, "JetBrains Mono", monospace; color: #f2efe6; aspect-ratio: var(--vz-aspect, 16 / 9); }
 [hidden] { display: none !important; }
-canvas { display: block; width: 100%; height: 100%; }
+canvas { display: block; width: 100%; height: 100%; object-fit: contain; }
 .caption { position: absolute; left: 50%; bottom: 48px; transform: translateX(-50%); max-width: min(86%, 72ch); padding: 6px 12px; border-radius: 6px; background: rgba(11,12,16,.78); color: #f2efe6; font: 500 14px/1.4 ui-sans-serif, system-ui, -apple-system, sans-serif; text-align: center; pointer-events: none; transition: bottom .18s ease; text-wrap: balance; }
 :host(:not(:hover):not(:focus-within):not([data-paused])) .caption { bottom: 18px; }
 :host([nocontrols]) .caption { display: none !important; }
@@ -271,7 +324,7 @@ button:hover { background: rgba(255,255,255,.12); }
 .cc:hover { background: rgba(255,255,255,.22); }
 .track { position: relative; flex: 1; height: 16px; cursor: pointer; touch-action: none; }
 .track::before { content: ""; position: absolute; left: 0; right: 0; top: 7px; height: 2px; background: rgba(255,255,255,.26); border-radius: 2px; }
-.fill { position: absolute; left: 0; top: 7px; height: 2px; background: #f2efe6; border-radius: 2px; }
+.fill { position: absolute; left: 0; top: 7px; width: 100%; height: 2px; background: #f2efe6; border-radius: 2px; transform-origin: left center; transform: scaleX(0); }
 .tick { position: absolute; top: 4px; width: 1px; height: 8px; background: rgba(255,255,255,.55); }
 .time { font-variant-numeric: tabular-nums; opacity: .82; white-space: nowrap; }
 svg { width: 14px; height: 14px; fill: currentColor; }
@@ -516,39 +569,54 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
                 }, { once: true })
             }
 
+            let lastCaption: string | null = null
+            let lastCaptionVisible = false
             const updateCaption = (t: number) => {
                 const active = this.player?.film ?? film
-                if (!this.captionsEnabled || active.captions.length === 0) {
-                    captionEl.hidden = true
-                    captionEl.textContent = ''
-                    return
-                }
                 let cue: string | null = null
-                for (let i = active.captions.length - 1; i >= 0; i--) {
-                    const entry = active.captions[i]!
-                    if (t >= entry.t0 && t < entry.t1) {
-                        cue = entry.text
-                        break
+                if (this.captionsEnabled && active.captions.length > 0) {
+                    for (let i = active.captions.length - 1; i >= 0; i--) {
+                        const entry = active.captions[i]!
+                        if (t >= entry.t0 && t < entry.t1) {
+                            cue = entry.text
+                            break
+                        }
                     }
                 }
-                if (cue) {
-                    captionEl.textContent = cue
-                    captionEl.hidden = false
-                } else {
-                    captionEl.hidden = true
-                    captionEl.textContent = ''
+                const visible = cue !== null
+                if (cue !== lastCaption) {
+                    captionEl.textContent = cue ?? ''
+                    lastCaption = cue
+                }
+                if (visible !== lastCaptionVisible) {
+                    captionEl.hidden = !visible
+                    lastCaptionVisible = visible
                 }
             }
 
+            let lastTimeText = ''
+            let lastAriaVal = ''
             const onTime = (t: number) => {
                 const active = this.player?.film ?? film
                 const duration = active.duration || 1
-                fill.style.width = `${(t / duration) * 100}%`
-                time.textContent = `${formatTime(t)} / ${formatTime(active.duration)}`
-                track.setAttribute('aria-valuenow', String(Math.round(t)))
+                const ratio = Math.max(0, Math.min(1, t / duration))
+                fill.style.transform = `scaleX(${ratio})`
+                const formatted = `${formatTime(t)} / ${formatTime(active.duration)}`
+                if (formatted !== lastTimeText) {
+                    time.textContent = formatted
+                    lastTimeText = formatted
+                }
+                const ariaVal = String(Math.round(t))
+                if (ariaVal !== lastAriaVal) {
+                    track.setAttribute('aria-valuenow', ariaVal)
+                    lastAriaVal = ariaVal
+                }
                 updateCaption(t)
-                if (audio && this.player?.isPlaying && !audio.paused && Math.abs(audio.currentTime - t) > 0.35) {
-                    syncAudioTime(t)
+                if (audio && this.player?.isPlaying) {
+                    if (audio.playbackRate !== this.player.speed) audio.playbackRate = this.player.speed
+                    if (!audio.paused && Math.abs(audio.currentTime - t) > 0.35) {
+                        syncAudioTime(t)
+                    }
                 }
                 this.dispatchEvent(new CustomEvent('timeupdate', { detail: { time: t } }))
             }
@@ -556,7 +624,12 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
                 loop: this.hasAttribute('loop'),
                 stepped: this.hasAttribute('stepped'),
                 onTime,
-                onSeek: (t) => syncAudioTime(t),
+                onSeek: (t) => {
+                    syncAudioTime(t)
+                    if (audio && player.isPlaying && audio.paused && Number.isFinite(audio.duration) && t < audio.duration - 0.05) {
+                        playAudio()
+                    }
+                },
                 onState: ({ playing }) => {
                     toggle.innerHTML = playing ? ICON_PAUSE : ICON_PLAY
                     toggle.setAttribute('aria-label', playing ? 'Pause' : 'Play')
@@ -600,6 +673,7 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
             })
             const seekFrom = (event: PointerEvent) => {
                 const rect = track.getBoundingClientRect()
+                if (rect.width <= 0) return
                 const active = this.player?.film ?? film
                 player.seek(((event.clientX - rect.left) / rect.width) * active.duration)
             }
@@ -607,19 +681,40 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
                 track.setPointerCapture(event.pointerId)
                 seekFrom(event)
                 const move = (next: PointerEvent) => seekFrom(next)
+                const end = () => {
+                    track.removeEventListener('pointermove', move)
+                    track.removeEventListener('pointerup', end)
+                    track.removeEventListener('pointercancel', end)
+                    track.removeEventListener('lostpointercapture', end)
+                }
                 track.addEventListener('pointermove', move)
-                track.addEventListener('pointerup', () => track.removeEventListener('pointermove', move), { once: true })
+                track.addEventListener('pointerup', end)
+                track.addEventListener('pointercancel', end)
+                track.addEventListener('lostpointercapture', end)
             })
-            // A page can opt a decorative film out of the tab order with tabindex="-1".
-            if (!this.hasAttribute('tabindex')) this.tabIndex = 0
+            // Decorative/nocontrols films should not become unexpected keyboard tab stops.
+            if (!this.hasAttribute('tabindex') && !this.hasAttribute('nocontrols')) this.tabIndex = 0
             this.keys?.abort()
             this.keys = new AbortController()
+            document.addEventListener?.('visibilitychange', () => {
+                if (!this.player) return
+                if (document.visibilityState === 'hidden') {
+                    if (this.player.isPlaying) {
+                        this.wantsPlay = true
+                        this.player.pause()
+                    }
+                } else if (this.visible && this.wantsPlay) {
+                    this.wantsPlay = false
+                    this.player.play()
+                }
+            }, { signal: this.keys.signal })
             this.addEventListener('keydown', (event) => {
                 // Shortcuts such as Command+K belong to the page.
                 if (event.metaKey || event.ctrlKey || event.altKey) return
                 // Space activates focused controls, including buttons inside the shadow root.
                 if (event.key === ' ' && event.composedPath().some((target) => target instanceof Element && target.tagName === 'BUTTON')) return
-                if (event.key === ' ' || event.key === 'k') {
+                const lower = event.key.toLowerCase()
+                if (event.key === ' ' || lower === 'k') {
                     event.preventDefault()
                     player.toggle()
                 } else if (event.key === 'ArrowRight') {
@@ -634,15 +729,15 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
                     } else {
                         player.seek(player.time - 5)
                     }
-                } else if (event.key === 'c' && player.film.captions.length > 0) {
+                } else if (lower === 'c' && player.film.captions.length > 0) {
                     this.captionsEnabled = !this.captionsEnabled
                     ccBtn.setAttribute('aria-pressed', String(this.captionsEnabled))
                     updateCaption(player.time)
-                } else if (event.key === 'm' && audio) {
+                } else if (lower === 'm' && audio) {
                     audio.muted = !audio.muted
                     syncMuteUi()
                     if (player.isPlaying && audio.paused) playAudio()
-                } else if (event.key === 'f') {
+                } else if (lower === 'f') {
                     if (document.fullscreenElement) void document.exitFullscreen()
                     else void this.requestFullscreen()
                 }

@@ -331,6 +331,10 @@ describe('Section 3 security & sandbox hardening', () => {
         expect(() => (Object.getPrototypeOf(mockSelf) as Record<string, unknown>).postMessage).toThrow(/disabled in the Vizmatic playground/)
         expect(() => (mockSelf.navigator as Record<string, unknown>).storage).toThrow(/disabled in the Vizmatic playground/)
         expect(() => (storageProto as Record<string, unknown>).getDirectory).toThrow(/disabled in the Vizmatic playground/)
+        expect(() => mockSelf.cookieStore).toThrow(/disabled in the Vizmatic playground/)
+        expect(() => mockSelf.onmessage).toThrow(/disabled in the Vizmatic playground/)
+        expect(() => mockSelf.addEventListener).toThrow(/disabled in the Vizmatic playground/)
+        expect(() => (mockSelf.navigator as Record<string, unknown>).gpu).toThrow(/disabled in the Vizmatic playground/)
     })
 
     it('guards fromSvg against out-of-range numeric entities, <use> cycles/bombs, and circular gradients/patterns', () => {

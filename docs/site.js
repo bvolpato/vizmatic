@@ -831,21 +831,30 @@
   function installScrub() {
     const section = $('[data-scrub]')
     if (!section) return
+    const pin = $('.scrub-pin', section)
     const clock = $('[data-scrub-clock]', section)
     const notes = $$('[data-scrub-notes] li', section)
     const bar = $('.scrub-progress', section)
     let player = null
     let queued = false
+    let inView = true
+    let lastAmount = -1
+    let lastChapter = -1
 
     function progress() {
       const rect = section.getBoundingClientRect()
-      const travel = rect.height - window.innerHeight
-      return travel > 0 ? Math.max(0, Math.min(1, -rect.top / travel)) : 0
+      const stickyTop = pin ? (parseFloat(getComputedStyle(pin).top) || 0) : 0
+      const pinHeight = pin ? pin.getBoundingClientRect().height : (window.innerHeight - stickyTop)
+      const travel = rect.height - pinHeight
+      return travel > 0 ? Math.max(0, Math.min(1, (stickyTop - rect.top) / travel)) : 0
     }
 
-    function render() {
+    function render(force = false) {
       queued = false
+      if (!force && !inView && lastAmount >= 0) return
       const amount = progress()
+      if (!force && Math.abs(amount - lastAmount) < 1e-5) return
+      lastAmount = amount
       section.style.setProperty('--scrub', amount.toFixed(4))
       if (!player) return
       const film = player.film
@@ -856,18 +865,23 @@
       film.chapters.forEach((chapter, i) => {
         if (time >= chapter.time) index = i
       })
-      notes.forEach((note, i) => note.classList.toggle('is-active', i === index))
+      if (index !== lastChapter) {
+        lastChapter = index
+        notes.forEach((note, i) => note.classList.toggle('is-active', i === index))
+      }
     }
 
     function request() {
-      if (queued) return
+      if (queued || (!inView && lastAmount >= 0)) return
       queued = true
-      requestAnimationFrame(render)
+      requestAnimationFrame(() => render(false))
     }
 
     function attach(film) {
       whenFilmReady(film, (next) => {
         player = next
+        lastAmount = -1
+        lastChapter = -1
         if (bar && $$('.scrub-mark', bar).length === 0) {
           player.film.chapters.forEach((chapter) => {
             if (chapter.time <= 0) return
@@ -877,7 +891,7 @@
             bar.append(mark)
           })
         }
-        render()
+        render(true)
       })
     }
 
@@ -899,17 +913,27 @@
       loadStage().catch((error) => console.error('Could not load the film engine.', error))
     }
 
+    if (typeof IntersectionObserver !== 'undefined') {
+      new IntersectionObserver((entries) => {
+        inView = entries.some((entry) => entry.isIntersecting)
+        if (inView) {
+          mountWhenNear()
+          request()
+        }
+      }, { rootMargin: '200px 0px' }).observe(section)
+    }
+
     section.addEventListener('vizmatic-film-replaced', (event) => {
       player = null
       attach(event.detail.film)
     })
     window.addEventListener('scroll', () => {
-      mountWhenNear()
-      request()
+      if (!mounted) mountWhenNear()
+      if (inView) request()
     }, { passive: true })
-    window.addEventListener('resize', request)
+    window.addEventListener('resize', () => render(true))
     mountWhenNear()
-    render()
+    render(true)
   }
 
   /** Highlight the source line of the animation that is playing. */
@@ -952,6 +976,10 @@
     if (frames.length === 0) return
     const canHover = window.matchMedia('(hover: hover)').matches
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const activePreviews = new Set()
+    document.addEventListener('vizmatic-site-theme', () => {
+      activePreviews.forEach((refresh) => refresh())
+    })
     frames.forEach((frame) => {
       const item = frame.closest('.wall-item') ?? frame
       const poster = $('img', frame)
@@ -994,24 +1022,38 @@
         })
       }
       const sync = () => {
-        if (hovered || focused) start()
-        else stop()
+        if (hovered || focused) {
+          activePreviews.add(refreshOnTheme)
+          start()
+        } else {
+          activePreviews.delete(refreshOnTheme)
+          stop()
+        }
+      }
+      const refreshOnTheme = () => {
+        stop()
+        sync()
       }
       if (poster && canHover && !reduced) {
         filmPreviewStops.set(frame, () => {
           hovered = focused = false
+          activePreviews.delete(refreshOnTheme)
           stop()
         })
-        item.addEventListener('pointerenter', () => { hovered = true; sync() })
-        item.addEventListener('pointerleave', () => { hovered = false; sync() })
+        item.addEventListener('pointerenter', (event) => {
+          if (event.pointerType === 'touch') return
+          hovered = true
+          sync()
+        })
+        item.addEventListener('pointerleave', (event) => {
+          if (event.pointerType === 'touch') return
+          hovered = false
+          sync()
+        })
         item.addEventListener('focusin', () => { focused = true; sync() })
         item.addEventListener('focusout', (event) => {
           if (item.contains(event.relatedTarget)) return
           focused = false
-          sync()
-        })
-        document.addEventListener('vizmatic-site-theme', () => {
-          stop()
           sync()
         })
       }

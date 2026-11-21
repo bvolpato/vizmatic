@@ -187,9 +187,9 @@ function planMoov(options: Mp4Options, chunkOffset: number): Uint8Array {
     const stbl = box('stbl', stsd, stts, ...(reorders ? [ctts] : []), ...(stss.length ? [stss] : []), stsc, stsz, stco)
     const minf = box('minf', vmhd, dinf, stbl)
     const mdia = box('mdia', mdhd, hdlr, minf)
-    const edts = reorders
+    const edts = reorders && minOffset < 0
         ? box('edts', fullBox('elst', 0, 0, write((w) => {
-            w.u32(1).u32(duration).u32(-minOffset).u16(1).u16(0)
+            w.u32(1).u32(duration).u32(Math.max(0, -minOffset)).u16(1).u16(0)
         })))
         : new Uint8Array(0)
     const trak = box('trak', tkhd, ...(edts.length ? [edts] : []), mdia)
@@ -307,17 +307,22 @@ export function muxWebm(options: WebmOptions): Uint8Array {
     const header = ebml(0x1a45dfa3,
         ebmlUint(0x4286, 1), ebmlUint(0x42f7, 1), ebmlUint(0x42f2, 4), ebmlUint(0x42f3, 8),
         ebmlString(0x4282, 'webm'), ebmlUint(0x4287, 4), ebmlUint(0x4285, 2))
-    const durationMs = (samples[samples.length - 1]!.timestamp / 1000) + 1000 / fps
+    let maxTimestamp = samples[0]!.timestamp
+    for (const sample of samples) if (sample.timestamp > maxTimestamp) maxTimestamp = sample.timestamp
+    const durationMs = (maxTimestamp / 1000) + 1000 / fps
     const info = ebml(0x1549a966, ebmlUint(0x2ad7b1, 1_000_000), ebmlString(0x4d80, 'Vizmatic Studio'), ebmlString(0x5741, 'Vizmatic Studio'), ebmlFloat(0x4489, durationMs))
     const track = ebml(0x1654ae6b, ebml(0xae,
         ebmlUint(0xd7, 1), ebmlUint(0x73c5, 1), ebmlUint(0x83, 1), ebmlString(0x86, options.codecId),
         ebmlUint(0x23e383, Math.round(1e9 / fps)),
         ebml(0xe0, ebmlUint(0xb0, width), ebmlUint(0xba, height))))
     const clusters: Uint8Array[] = []
+    const cueEntries: { timeMs: number; offset: number }[] = []
+    let segmentCursor = info.length + track.length
     let start = 0
     while (start < samples.length) {
         const clusterStart = samples[start]!.timestamp / 1000
-        const blocks: Uint8Array[] = [ebmlUint(0xe7, Math.round(clusterStart))]
+        const clusterTimeMs = Math.round(clusterStart)
+        const blocks: Uint8Array[] = [ebmlUint(0xe7, clusterTimeMs)]
         let index = start
         while (index < samples.length) {
             const sample = samples[index]!
@@ -332,9 +337,17 @@ export function muxWebm(options: WebmOptions): Uint8Array {
             blocks.push(ebml(0xa3, head, sample.data))
             index++
         }
-        clusters.push(ebml(0x1f43b675, ...blocks))
+        const cluster = ebml(0x1f43b675, ...blocks)
+        if (samples[start]!.keyframe) cueEntries.push({ timeMs: clusterTimeMs, offset: segmentCursor })
+        segmentCursor += cluster.length
+        clusters.push(cluster)
         start = index
     }
-    const segment = ebml(0x18538067, info, track, ...clusters)
+    const cues = cueEntries.length > 0
+        ? ebml(0x1c53bb6b, ...cueEntries.map(({ timeMs, offset }) => ebml(0xbb,
+            ebmlUint(0xb3, timeMs),
+            ebml(0xb7, ebmlUint(0xf7, 1), ebmlUint(0xf1, offset)))))
+        : new Uint8Array(0)
+    const segment = ebml(0x18538067, info, track, ...clusters, ...(cues.length ? [cues] : []))
     return write((w) => w.bytes(header).bytes(segment))
 }

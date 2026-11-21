@@ -188,6 +188,9 @@ export class StageView {
         window.addEventListener('keyup', (event) => {
             if (event.code === 'Space') this.spaceDown = false
         })
+        window.addEventListener('blur', () => {
+            this.spaceDown = false
+        })
     }
 
     setZoom(value: number | 'fit'): void {

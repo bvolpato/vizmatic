@@ -39,6 +39,13 @@ window.parent.postMessage({ t: 'boot-ready' }, '*');
 </script></body></html>`
 
 const FONT_PATH = /^fonts\/[A-Za-z0-9-]+\.ttf$/
+const ALLOWED_EXPORT_TYPES: Readonly<Record<string, string>> = {
+    mp4: 'video/mp4',
+    webm: 'video/webm',
+    gif: 'image/gif',
+    png: 'image/png',
+    svg: 'image/svg+xml',
+}
 
 const runtimeSources = new Map<string, Promise<string>>()
 
@@ -152,9 +159,15 @@ export class SandboxHost {
                 const pending = this.exports.get(Number(data['id']))
                 this.exports.delete(Number(data['id']))
                 if (pending && data['bytes'] instanceof ArrayBuffer) {
+                    const extension = String(data['extension']).replace(/[^a-z0-9]/g, '').toLowerCase()
+                    const allowedType = Object.hasOwn(ALLOWED_EXPORT_TYPES, extension) ? ALLOWED_EXPORT_TYPES[extension] : undefined
+                    if (!allowedType) {
+                        pending.reject(new Error('Unsupported export format returned by the sandbox.'))
+                        break
+                    }
                     pending.resolve({
                         bytes: new Uint8Array(data['bytes']),
-                        type: String(data['type']), extension: String(data['extension']).replace(/[^a-z0-9]/g, ''), note: String(data['note']).slice(0, 400),
+                        type: allowedType, extension, note: String(data['note']).slice(0, 400),
                     })
                 }
                 break

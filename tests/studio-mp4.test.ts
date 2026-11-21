@@ -110,6 +110,12 @@ describe('muxWebm', () => {
             if (file[at] === 0x1f && file[at + 1] === 0x43 && file[at + 2] === 0xb6 && file[at + 3] === 0x75) clusters++
         }
         expect(clusters).toBeGreaterThanOrEqual(3)
+        // Cues element (0x1c53bb6b) must be present so players can seek directly to clusters.
+        let hasCues = false
+        for (let at = 0; at + 4 < file.length; at++) {
+            if (file[at] === 0x1c && file[at + 1] === 0x53 && file[at + 2] === 0xbb && file[at + 3] === 0x6b) { hasCues = true; break }
+        }
+        expect(hasCues).toBe(true)
     })
 })
 
