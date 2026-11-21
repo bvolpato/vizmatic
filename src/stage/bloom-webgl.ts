@@ -33,6 +33,32 @@ void main() {
     color = vec4(raw ? sum : max(vec3(0.0), sum / float(factor * factor) - background), 0.0);
 }`
 
+// Separable 1D box downsample for large non-divisible factors (e.g. prime 25, 31, 43 on Retina viewports).
+// Produces exact integer sums identical to the 2D loop in 2*factor fetches instead of factor*factor.
+const DOWNSAMPLE_H = `${HEADER}
+uniform int factor;
+void main() {
+    ivec2 p = ivec2(gl_FragCoord.xy);
+    int startX = p.x * factor;
+    vec3 sum = vec3(0.0);
+    for (int x = 0; x < factor; ++x)
+        sum += pixel(ivec2(startX + x, p.y)).rgb;
+    color = vec4(sum, 0.0);
+}`
+
+const DOWNSAMPLE_V = `${HEADER}
+uniform int factor;
+uniform bool raw;
+uniform vec3 background;
+void main() {
+    ivec2 p = ivec2(gl_FragCoord.xy);
+    int startY = p.y * factor;
+    vec3 sum = vec3(0.0);
+    for (int y = 0; y < factor; ++y)
+        sum += texelFetch(source, ivec2(p.x, startY + y), 0).rgb;
+    color = vec4(raw ? sum : max(vec3(0.0), sum / float(factor * factor) - background), 0.0);
+}`
+
 // Keep integer sums until every scale has been built. Clamping against the
 // background first would incorrectly spread light from dark cells.
 const REDUCE = `${HEADER}
@@ -108,11 +134,15 @@ interface Surface {
 interface Size {
     source: WebGLTexture
     layers: { factor: number; radius: number; pair: [Surface, Surface] }[]
+    sep: Surface | null
     pyramid: boolean
     bytes: number
+    textures: number
 }
 
 const CACHE_BYTES = 96 * 1024 * 1024
+const MAX_LIVE_TEXTURES = 14
+const SEPARABLE_THRESHOLD = 8
 
 class BloomRenderer {
     private readonly programs: Program[] = []
@@ -147,6 +177,8 @@ class BloomRenderer {
             [REDUCE, ['source', 'factor']],
             [BLUR, ['source', 'direction', 'radius', 'factor', 'background']],
             [COMPOSITE, ['source', 'nearLight', 'middleLight', 'farLight', 'factors', 'gain', 'dither']],
+            [DOWNSAMPLE_H, ['source', 'factor']],
+            [DOWNSAMPLE_V, ['source', 'factor', 'raw', 'background']],
         ] as const) this.programs.push(this.program(fragment, uniforms))
         if (gl.getError() !== gl.NO_ERROR) throw new Error('Bloom initialization failed')
     }
@@ -201,9 +233,14 @@ class BloomRenderer {
 
     private release(size: Size): void {
         const gl = this.gl
-        for (const texture of [size.source, ...size.layers.flatMap(layer => layer.pair.map(surface => surface.texture))]) {
+        const extras = size.sep ? [size.sep.texture] : []
+        for (const texture of [size.source, ...extras, ...size.layers.flatMap(layer => layer.pair.map(surface => surface.texture))]) {
             gl.deleteTexture(texture)
             this.textures.delete(texture)
+        }
+        if (size.sep) {
+            gl.deleteFramebuffer(size.sep.framebuffer)
+            this.framebuffers.delete(size.sep.framebuffer)
         }
         for (const layer of size.layers) for (const surface of layer.pair) {
             gl.deleteFramebuffer(surface.framebuffer)
@@ -223,22 +260,34 @@ class BloomRenderer {
             const factor = Math.max(1, Math.min(width, height, Math.round(base * width / 1920)))
             return { factor, radius, width: Math.max(1, Math.floor(width / factor)), height: Math.max(1, Math.floor(height / factor)) }
         })
-        const bytes = width * height * 4 + layers.reduce((sum, layer) => sum + layer.width * layer.height * 32, 0)
+        const pyramid = layers.some((layer, i) => layer.factor <= 256 && layers.slice(0, i).some(finer => finer.factor > 1 && layer.factor % finer.factor === 0))
+        let sepWidth = 0
+        for (let i = 0; i < layers.length; i++) {
+            const layer = layers[i]!
+            const tiled = pyramid && layer.factor <= 256 && layers.slice(0, i).some(finer => layer.factor % finer.factor === 0)
+            if (!tiled && layer.factor > SEPARABLE_THRESHOLD && layer.factor <= 256) {
+                sepWidth = Math.max(sepWidth, layer.width)
+            }
+        }
+        const sepBytes = sepWidth > 0 ? sepWidth * height * 16 : 0
+        const bytes = width * height * 4 + sepBytes + layers.reduce((sum, layer) => sum + layer.width * layer.height * 32, 0)
         if (bytes > CACHE_BYTES) return null
+        const neededTextures = 1 + layers.length * 2 + (sepWidth > 0 ? 1 : 0)
         let held = [...this.sizes.values()].reduce((sum, size) => sum + size.bytes, 0)
         // Two hot sizes cover a gallery preview and its expanded player. Evict
         // before allocating, so alternating players cannot grow GPU memory.
         for (const [oldKey, old] of this.sizes) {
-            if (this.sizes.size < 2 && held + bytes <= CACHE_BYTES) break
+            if (this.sizes.size < 2 && held + bytes <= CACHE_BYTES && this.textures.size + neededTextures <= MAX_LIVE_TEXTURES) break
             this.release(old)
             this.sizes.delete(oldKey)
             held -= old.bytes
         }
         const size: Size = {
-            source: this.texture(width, height, false), bytes,
+            source: this.texture(width, height, false), bytes, textures: neededTextures,
+            sep: sepWidth > 0 ? this.surface(sepWidth, height) : null,
             // A full-size float intermediate costs more than it saves for tiny
             // previews. Nondivisible scales also keep the direct path.
-            pyramid: layers.some((layer, i) => layer.factor <= 256 && layers.slice(0, i).some(finer => finer.factor > 1 && layer.factor % finer.factor === 0)),
+            pyramid,
             layers: layers.map(layer => ({ ...layer, pair: [this.surface(layer.width, layer.height), this.surface(layer.width, layer.height)] })),
         }
         if (this.gl.getError() !== this.gl.NO_ERROR) throw new Error('Bloom target allocation failed')
@@ -251,14 +300,14 @@ class BloomRenderer {
         this.gl.bindTexture(this.gl.TEXTURE_2D, texture)
     }
 
-    private pass(surface: Surface): void {
+    private pass(surface: Surface, viewWidth = surface.width, viewHeight = surface.height): void {
         const gl = this.gl
         gl.bindFramebuffer(gl.FRAMEBUFFER, surface.framebuffer)
-        gl.viewport(0, 0, surface.width, surface.height)
+        gl.viewport(0, 0, viewWidth, viewHeight)
         gl.drawArrays(gl.TRIANGLES, 0, 3)
     }
 
-    paint(target: HTMLCanvasElement, main: CanvasRenderingContext2D, amount: number, background: readonly number[], dither: boolean): boolean {
+    paint(target: HTMLCanvasElement, main: CanvasRenderingContext2D | null, amount: number, background: readonly number[], dither: boolean): boolean {
         const gl = this.gl, { width, height } = target
         if (gl.isContextLost()) return false
         const size = this.size(width, height)
@@ -269,17 +318,30 @@ class BloomRenderer {
         if (gl.drawingBufferWidth !== width || gl.drawingBufferHeight !== height) return false
         this.bind(size.source)
         gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, target)
-        const [downsample, reduce, blur, composite] = this.programs
+        const [downsample, reduce, blur, composite, downsampleH, downsampleV] = this.programs
         gl.useProgram(downsample.value)
         gl.uniform1i(downsample.uniforms.raw, size.pyramid ? 1 : 0)
         gl.uniform3f(downsample.uniforms.background, background[0], background[1], background[2])
         // Reuse unblurred sums only when whole cells tile the coarser scale.
-        // Odd output sizes can have nondivisible factors and need a direct read.
+        // Odd output sizes use a separable 1D downsample when factor > 8 to avoid factor^2 loops.
         for (let i = 0; i < size.layers.length; i++) {
             const layer = size.layers[i]
             let finer: Size['layers'][number] | undefined
             // RGBA32F represents every possible byte sum exactly through 256² cells.
             for (let j = 0; size.pyramid && j < i; j++) if (layer.factor <= 256 && layer.factor % size.layers[j].factor === 0) finer = size.layers[j]
+            if (!finer && size.sep && layer.factor > SEPARABLE_THRESHOLD && layer.factor <= 256) {
+                gl.useProgram(downsampleH.value)
+                this.bind(size.source)
+                gl.uniform1i(downsampleH.uniforms.factor, layer.factor)
+                this.pass(size.sep, layer.pair[0].width, height)
+                gl.useProgram(downsampleV.value)
+                this.bind(size.sep.texture)
+                gl.uniform1i(downsampleV.uniforms.factor, layer.factor)
+                gl.uniform1i(downsampleV.uniforms.raw, size.pyramid ? 1 : 0)
+                gl.uniform3f(downsampleV.uniforms.background, background[0], background[1], background[2])
+                this.pass(layer.pair[0])
+                continue
+            }
             const program = finer ? reduce : downsample
             gl.useProgram(program.value)
             this.bind(finer ? finer.pair[0].texture : size.source)
@@ -315,6 +377,7 @@ class BloomRenderer {
         gl.viewport(0, 0, width, height)
         gl.drawArrays(gl.TRIANGLES, 0, 3)
         if (gl.isContextLost()) return false
+        if (!main) return true
         // Do not touch the source before all passes succeed. A failed/lost
         // context can then run the unchanged CPU kernel on this same frame.
         main.save()
@@ -537,5 +600,59 @@ export function paintWebGLBloom(target: HTMLCanvasElement, main: CanvasRendering
         renderer?.dispose()
         renderer = null
         return false
+    }
+}
+
+export interface WebGLBloomPresenter {
+    paint(source: HTMLCanvasElement, amount: number, background: readonly number[], dither?: boolean): boolean
+    dispose(): void
+}
+
+/**
+ * Present WebGL bloom directly on a visible canvas, skipping the WebGL2-to-2D
+ * drawImage copy on every frame (a major bottleneck in Firefox).
+ */
+export function createWebGLBloomPresenter(display: HTMLCanvasElement): WebGLBloomPresenter | null {
+    if (!supportsWebGLBloom(display)) return null
+    let instance: BloomRenderer | null = null
+    let broken = false
+    const onLost = (event: Event) => {
+        event.preventDefault()
+        broken = true
+        instance?.dispose(false)
+        instance = null
+    }
+    try {
+        const gl = display.getContext('webgl2', {
+            alpha: true, premultipliedAlpha: true, antialias: false, depth: false, stencil: false,
+            preserveDrawingBuffer: true, failIfMajorPerformanceCaveat: true,
+        })
+        if (!gl) return null
+        instance = new BloomRenderer(display, gl)
+        instance.init()
+        display.addEventListener?.('webglcontextlost', onLost)
+        return {
+            paint(source: HTMLCanvasElement, amount: number, background: readonly number[], dither = true): boolean {
+                if (broken || !instance || !Number.isFinite(amount) || amount < 0 || !background.slice(0, 3).every(Number.isFinite)) return false
+                try {
+                    return instance.paint(source, null, amount, background, dither)
+                } catch {
+                    broken = true
+                    instance?.dispose(false)
+                    instance = null
+                    return false
+                }
+            },
+            dispose(): void {
+                broken = true
+                display.removeEventListener?.('webglcontextlost', onLost)
+                instance?.dispose(true)
+                instance = null
+            },
+        }
+    } catch {
+        display.removeEventListener?.('webglcontextlost', onLost)
+        instance?.dispose(true)
+        return null
     }
 }

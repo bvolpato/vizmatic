@@ -209,6 +209,48 @@ describe('FilmPlayer lifecycle', () => {
         expect(clock.pending.size).toBe(0)
     })
 
+    it('caps default backing-store width to authored resolution and to 1280 on CPU bloom fallback', async () => {
+        vi.stubGlobal('devicePixelRatio', 2)
+        const wideRect = () => ({ width: 2560, height: 1440, left: 0 } as DOMRect)
+        const lightFilm = await compileFilm(film({ width: 1920, height: 1080, bloom: 0 }, s => { s.wait(1) }))
+        const darkBloomFilm = await compileFilm(film({ width: 1920, height: 1080, bloom: 0.3, look: 'midnight' }, s => { s.wait(1) }))
+
+        const lightMock = createCanvasMock()
+        lightMock.canvas.getBoundingClientRect = wideRect
+        const lightPlayer = new FilmPlayer(lightMock.canvas, lightFilm)
+        try {
+            expect(lightMock.canvas.width).toBe(1920)
+            expect(lightMock.canvas.height).toBe(1080)
+        } finally {
+            lightPlayer.destroy()
+        }
+
+        const customMock = createCanvasMock()
+        customMock.canvas.getBoundingClientRect = wideRect
+        const customPlayer = new FilmPlayer(customMock.canvas, lightFilm, { maxWidth: 1440 })
+        try {
+            expect(customMock.canvas.width).toBe(1440)
+            expect(customMock.canvas.height).toBe(810)
+        } finally {
+            customPlayer.destroy()
+        }
+
+        // Mock canvas has no WebGL2 context, so dark bloom falls back to CPU and caps at 1280px.
+        const bloomMock = createCanvasMock()
+        bloomMock.canvas.getBoundingClientRect = wideRect
+        ;(bloomMock.ctx as Record<string, unknown>).getImageData = (_x: number, _y: number, w: number, h: number) => ({
+            width: w, height: h, data: new Uint8ClampedArray(w * h * 4),
+        })
+        ;(bloomMock.ctx as Record<string, unknown>).putImageData = () => {}
+        const bloomPlayer = new FilmPlayer(bloomMock.canvas, darkBloomFilm)
+        try {
+            expect(bloomMock.canvas.width).toBe(1280)
+            expect(bloomMock.canvas.height).toBe(720)
+        } finally {
+            bloomPlayer.destroy()
+        }
+    })
+
     it('retries a suspended frame once after multiple ticks, at the latest playhead', async () => {
         const compiled = await compileFilm(film({ bloom: 0 }, s => { s.wait(2) }))
         const asset = deferred<void>()
