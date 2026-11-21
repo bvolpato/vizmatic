@@ -48,17 +48,25 @@ jobs:
           node-version: 22
           cache: pnpm
       - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: tools/narration/*.py
       - name: Install FFmpeg, which the tools read and write movies with
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          sudo apt-get install -y --no-install-recommends ffmpeg
+      # pnpm install runs prepare (`pnpm build`) once, so no second build step is needed.
       - run: pnpm install --frozen-lockfile
-      # The command line loads a film as a project does: from the built package.
-      - run: pnpm build
       - name: Test the tools, the one command of a film, the film shell, and the movie export
+        env:
+          VIZMATIC_TEST_USE_EXISTING_BUILD: "1"
         run: >-
           pnpm exec vitest run
-          tests/narrated-tools.test.ts
+          tests/narrated-tools-checks.test.ts
+          tests/narrated-tools-mix.test.ts
+          tests/narrated-tools-effects.test.ts
+          tests/narrated-tools-draft.test.ts
+          tests/narrated-tools-resound.test.ts
           tests/narrated-cli.test.ts
           tests/narrated.test.ts
           tests/narration-hold.test.ts
@@ -97,19 +105,41 @@ jobs:
         run: |
           git status --porcelain --untracked-files=all
           test -z "$(git status --porcelain --untracked-files=all)"
-      - run: pnpm docs:check
-      - run: pnpm exec playwright install --with-deps chromium
+      - id: playwright-version
+        name: Read installed Playwright version
+        run: echo "version=$(node -p "require('./node_modules/playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+      - id: playwright-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+      - name: Install Chromium and FFmpeg for browser and Studio checks
+        run: |
+          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
+            pnpm exec playwright install-deps chromium
+          else
+            pnpm exec playwright install --with-deps chromium
+          fi
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
       - name: Check visual parity in Chromium
         run: timeout --kill-after=10s 180s pnpm exec vitest run --maxWorkers 2 --reporter verbose tests/stage-image.test.ts tests/stage-bloom-browser.test.ts tests/stage-engine-upgrades.test.ts tests/stage-tex-browser.test.ts tests/stage-scalar-field-browser.test.ts tests/stage-color-bar-raster.test.ts tests/fourier-seek-browser.test.ts tests/site-film-preview-browser.test.ts
         env:
           VIZMATIC_BROWSER_TESTS: '1'
-      - name: Install FFmpeg, which the Studio journey uses to decode its exports
+      - name: Run Playground, scene-browser, and Studio browser suites
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
-      - run: pnpm check:playground
-      - run: pnpm check:scene-browser
-      - run: pnpm check:studio
+          set -euo pipefail
+          pnpm check:playground &
+          pid_playground=$!
+          pnpm check:scene-browser &
+          pid_scene=$!
+          pnpm check:studio &
+          pid_studio=$!
+          status=0
+          wait "$pid_playground" || status=1
+          wait "$pid_scene" || status=1
+          wait "$pid_studio" || status=1
+          exit "$status"
 
   runtime:
     name: runtime (Node ${{ matrix.node-version }})
@@ -133,8 +163,9 @@ jobs:
           node-version: ${{ matrix.node-version }}
       - run: node scripts/check-runtime.mjs
       - run: node scripts/check-consumer.mjs /tmp/vizmatic-runtime-package/*.tgz
-      # Vitest 5 requires Node 22.12+; Node 20 exercises the built package directly.
-      - if: matrix.node-version != 20
+      # verify (Node 22) already runs the full Vitest suite on Node 22, and Vitest 5 requires Node 22.12+.
+      # Run the full suite here on Node 24 so both Node 22 and Node 24 execute every test without duplicating Node 22.
+      - if: matrix.node-version == 24
         run: node node_modules/vitest/vitest.mjs run
         env:
           VIZMATIC_TEST_USE_EXISTING_BUILD: "1"

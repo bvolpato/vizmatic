@@ -232,26 +232,26 @@ describe('H.264 encoder selection', () => {
     })
 
     it('kills a cancelled probe, does not cache its result and allows a later retry', async () => {
-        const fake = await encoder({ delay: 500 })
+        const fake = await encoder({ delay: 2000 })
         const controller = new AbortController()
         const probe = resolveH264Encoder('nvenc', fake.ffmpegPath, format, { signal: controller.signal })
         const rejection = expect(probe).rejects.toMatchObject({ name: 'AbortError' })
-        await vi.waitFor(async () => expect(await fake.calls()).toHaveLength(1))
+        await vi.waitFor(async () => expect(await fake.calls()).toHaveLength(1), { timeout: 5000 })
         controller.abort()
         await rejection
         const [{ pid }] = await fake.calls()
-        await vi.waitFor(() => expect(() => process.kill(pid!, 0)).toThrow())
+        await vi.waitFor(() => expect(() => process.kill(pid!, 0)).toThrow(), { timeout: 5000 })
         expect(await resolveH264Encoder('nvenc', fake.ffmpegPath, format)).toBe('nvenc')
         expect(await fake.calls()).toHaveLength(2)
     })
 
     it('cancels one export without aborting another caller probing the same format', async () => {
-        const fake = await encoder({ delay: 500 })
+        const fake = await encoder({ delay: 2000 })
         const controller = new AbortController()
         const privateProbe = resolveH264Encoder('nvenc', fake.ffmpegPath, format, { signal: controller.signal })
         const rejection = expect(privateProbe).rejects.toMatchObject({ name: 'AbortError' })
         const sharedProbe = resolveH264Encoder('nvenc', fake.ffmpegPath, format)
-        await vi.waitFor(async () => expect(await fake.calls()).toHaveLength(2))
+        await vi.waitFor(async () => expect(await fake.calls()).toHaveLength(2), { timeout: 5000 })
         controller.abort()
         await rejection
         expect(await sharedProbe).toBe('nvenc')

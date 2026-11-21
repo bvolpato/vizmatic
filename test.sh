@@ -24,7 +24,7 @@ git diff --binary > "$before_diff"
 # generated file that has no rule in .gitignore.
 git status --short --untracked-files=all > "$before_status"
 
-pnpm install --frozen-lockfile
+pnpm install --frozen-lockfile --ignore-scripts
 pnpm verify
 
 git diff --binary > "$after_diff"

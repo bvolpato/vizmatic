@@ -1,13 +1,16 @@
-import { spawnSync } from 'child_process'
+import { spawn } from 'child_process'
 import { access, readFile, readdir } from 'fs/promises'
-import { dirname, extname, join } from 'path'
+import { cpus } from 'os'
+import { dirname, extname, join, resolve } from 'path'
 import { isDeepStrictEqual } from 'util'
 import { fileURLToPath, pathToFileURL } from 'url'
 import { sampleAnimationFrames, type DefinedAnimation } from '../src/timeline'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
+const RENDER_EXTENSIONS = new Set(['.js', '.jsx', '.mjs', '.ts', '.tsx'])
 
 interface CheckReport {
+    files?: Array<{ source?: string }>
     summary?: {
         files?: number
         errors?: number
@@ -16,28 +19,80 @@ interface CheckReport {
     }
 }
 
-const result = spawnSync(process.execPath, [
-    'dist/cli.js',
-    'check',
-    'examples',
-    '--theme',
-    'dark,light',
-    '--json',
-], {
-    cwd: root,
-    encoding: 'utf8',
-    maxBuffer: 20 * 1024 * 1024,
-})
-
-if (result.status !== 0) {
-    process.stderr.write(result.stderr || result.stdout)
-    process.exit(result.status ?? 1)
+async function collectExampleFiles(dir: string): Promise<string[]> {
+    const found: string[] = []
+    async function walk(current: string) {
+        const entries = await readdir(current, { withFileTypes: true })
+        for (const entry of entries) {
+            const next = join(current, entry.name)
+            if (entry.isDirectory()) {
+                if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name.startsWith('_')) continue
+                await walk(next)
+            } else if (RENDER_EXTENSIONS.has(extname(entry.name)) && !entry.name.endsWith('.d.ts')) {
+                found.push(next)
+            }
+        }
+    }
+    await walk(resolve(root, dir))
+    return found.sort()
 }
 
-const report = JSON.parse(result.stdout) as CheckReport
-const summary = report.summary
-if (!summary || summary.errors || summary.warnings) {
-    process.stderr.write(result.stdout)
+function runCheckChunk(files: string[]): Promise<CheckReport> {
+    return new Promise((done, reject) => {
+        const child = spawn(process.execPath, [
+            'dist/cli.js',
+            'check',
+            ...files,
+            '--theme',
+            'dark,light',
+            '--json',
+        ], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] })
+        const out: Buffer[] = []
+        const err: Buffer[] = []
+        child.stdout.on('data', (chunk: Buffer) => out.push(chunk))
+        child.stderr.on('data', (chunk: Buffer) => err.push(chunk))
+        child.once('error', reject)
+        child.once('exit', (code) => {
+            const stdout = Buffer.concat(out).toString('utf8')
+            const stderr = Buffer.concat(err).toString('utf8')
+            if (code !== 0) {
+                process.stderr.write(stderr || stdout)
+                process.exit(code ?? 1)
+            }
+            try {
+                done(JSON.parse(stdout) as CheckReport)
+            } catch (parseError) {
+                process.stderr.write(stderr || stdout)
+                reject(parseError)
+            }
+        })
+    })
+}
+
+const allCheckFiles = await collectExampleFiles('examples')
+const chunkCount = Math.min(4, Math.max(1, cpus().length), allCheckFiles.length)
+const chunks: string[][] = Array.from({ length: chunkCount }, () => [])
+allCheckFiles.forEach((file, index) => chunks[index % chunkCount]!.push(file))
+const reports = await Promise.all(chunks.map(runCheckChunk))
+const summary = reports.reduce(
+    (acc, report) => ({
+        files: acc.files + (report.summary?.files ?? 0),
+        errors: acc.errors + (report.summary?.errors ?? 0),
+        warnings: acc.warnings + (report.summary?.warnings ?? 0),
+        info: acc.info + (report.summary?.info ?? 0),
+    }),
+    { files: 0, errors: 0, warnings: 0, info: 0 },
+)
+const checkedSources = new Set(
+    reports.flatMap((report) => (report.files ?? []).map((entry) => entry.source ? resolve(root, entry.source) : '')).filter(Boolean),
+)
+if (
+    reports.some((report) => !report.summary)
+    || checkedSources.size !== allCheckFiles.length
+    || summary.errors
+    || summary.warnings
+) {
+    process.stderr.write(`${JSON.stringify(reports, null, 2)}\n`)
     process.exit(1)
 }
 
