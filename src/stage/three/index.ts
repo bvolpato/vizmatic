@@ -4,7 +4,7 @@
  * browser and the video exporter produce the same picture. Camera angles and
  * every object's opacity and reveal live on the timeline like anything else.
  */
-import { Node, ownLabels, rebindCloneParts } from '../node'
+import { Node, ownLabels, rebindCloneParts, type BlendMode } from '../node'
 import { oneNode } from '../layout'
 import { parseColor, sampleStops, toPaint, type ColorInput, type Paint, type Rgba } from '../color'
 import { Value, type Anim, type AnimOptions } from '../anim'
@@ -224,41 +224,83 @@ function joinedStrokes(run: PathOp[]): PathOp[] {
 }
 
 function joinUnobstructed(ordered: PathOp[]): PathOp[] {
-    const result: PathOp[] = []
-    const previous = new Map<Object3D, { core?: number; halo?: number }>()
-    const bounds = new Map<PathOp, Bounds | null>()
-    const ink = (op: PathOp): Bounds | null => {
-        if (bounds.has(op)) return bounds.get(op)!
-        const b = pathBounds(op.path)
-        const pad = op.strokeWidth / 2 + op.glow * 1.4
-        const box = b && { x: b.x - pad, y: b.y - pad, width: b.width + pad * 2, height: b.height + pad * 2 }
-        bounds.set(op, box)
-        return box
+    let hasPieces = false
+    for (let i = 0; i < ordered.length; i++) {
+        if (strokePieces.has(ordered[i]!)) { hasPieces = true; break }
     }
-    const overlaps = (a: Bounds | null, b: Bounds | null) => !a || !b
-        || (a.x <= b.x + b.width && b.x <= a.x + a.width && a.y <= b.y + b.height && b.y <= a.y + a.height)
+    if (!hasPieces) return ordered
+    const result: PathOp[] = []
+    // Flat [minX, minY, maxX, maxY] cache indexed by result position (NaN marks empty bounds, -Infinity uncomputed).
+    let boxCap = Math.max(64, ordered.length)
+    let boxes = new Float64Array(boxCap * 4)
+    const ensureCap = (idx: number) => {
+        if (idx < boxCap) return
+        const next = new Float64Array(boxCap * 8)
+        next.set(boxes)
+        boxes = next
+        boxCap *= 2
+    }
+    const computeBox = (op: PathOp): [number, number, number, number] | null => {
+        const b = pathBounds(op.path)
+        if (!b) return null
+        const pad = op.strokeWidth / 2 + op.glow * 1.4
+        return [b.x - pad, b.y - pad, b.x + b.width + pad, b.y + b.height + pad]
+    }
+    const pushResult = (op: PathOp) => {
+        const idx = result.length
+        ensureCap(idx)
+        boxes[idx * 4] = -Infinity
+        result.push(op)
+    }
+    const boxAt = (idx: number): number => {
+        const o = idx * 4
+        if (boxes[o] === -Infinity) {
+            const box = computeBox(result[idx]!)
+            if (box) {
+                boxes[o] = box[0]; boxes[o + 1] = box[1]; boxes[o + 2] = box[2]; boxes[o + 3] = box[3]
+            } else {
+                boxes[o] = NaN
+            }
+        }
+        return o
+    }
+    const previous = new Map<Object3D, { core?: number; halo?: number }>()
     for (const op of ordered) {
         const piece = strokePieces.get(op)
-        if (!piece) { result.push(op); continue }
+        if (!piece) { pushResult(op); continue }
         const entries = previous.get(piece.owner) ?? {}
         const key = piece.halo ? 'halo' : 'core'
         const index = entries[key]
         if (index !== undefined && sameStroke(result[index]!, op)) {
             const joined = joinedStrokes([result[index]!, op])
             if (joined.length === 1) {
-                const box = ink(op)
+                const box = computeBox(op)
                 // Moving this fragment back is safe only when it cannot paint
                 // over any intervening mark, including its stroke and glow.
                 let blocked = false
-                for (let i = index + 1; i < result.length; i++) {
-                    if (overlaps(box, ink(result[i]!))) { blocked = true; break }
+                if (!box) {
+                    blocked = index + 1 < result.length
+                } else {
+                    const [ax0, ay0, ax1, ay1] = box
+                    for (let i = index + 1; i < result.length; i++) {
+                        const o = boxAt(i)
+                        const bx0 = boxes[o]!
+                        if (Number.isNaN(bx0) || (ax0 <= boxes[o + 2]! && bx0 <= ax1 && ay0 <= boxes[o + 3]! && boxes[o + 1]! <= ay1)) {
+                            blocked = true
+                            break
+                        }
+                    }
                 }
-                if (!blocked) { result[index] = joined[0]!; continue }
+                if (!blocked) {
+                    result[index] = joined[0]!
+                    boxes[index * 4] = -Infinity
+                    continue
+                }
             }
         }
         entries[key] = result.length
         previous.set(piece.owner, entries)
-        result.push(op)
+        pushResult(op)
     }
     return result
 }
@@ -368,7 +410,7 @@ export class Scene3D extends Node {
     }
 
     private bindView(): void {
-        this.rawOps = (matrix, alpha, ops) => this.render(matrix, alpha, ops)
+        this.rawOps = (matrix, alpha, ops, blend) => this.render(matrix, alpha, ops, blend)
         this.draw = (time) => {
             const view = this.view(this.worldless, 1, time)
             const labels = this.children.flatMap((child) => child instanceof Object3D && child.get('visible') ? child.labelsNow(view) : [])
@@ -394,7 +436,7 @@ export class Scene3D extends Node {
     private thetaAt(time: number): number {
         let theta = this.theta.value
         for (const spin of this.spins) {
-            if (time > spin.from) theta += (Math.min(time, spin.to) - spin.from) * spin.rate
+            if (time > spin.from && spin.to > spin.from) theta += (Math.min(time, spin.to) - spin.from) * spin.rate
         }
         return theta
     }
@@ -435,7 +477,7 @@ export class Scene3D extends Node {
         return view
     }
 
-    private render(matrix: Mat, alpha: number, ops: DrawOp[]): void {
+    private render(matrix: Mat, alpha: number, ops: DrawOp[], blend: BlendMode = 'normal'): void {
         const time = clock.now
         const view = this.view(matrix, alpha, time)
         for (const child of this.children) {
@@ -463,7 +505,12 @@ export class Scene3D extends Node {
             ordered.push(...joinedStrokes(run))
             i = end
         }
-        ops.push(...joinUnobstructed(ordered))
+        const final = joinUnobstructed(ordered)
+        if (blend === 'normal') {
+            ops.push(...final)
+        } else {
+            for (const op of final) ops.push(op.blend === 'normal' ? { ...op, blend } : op)
+        }
     }
 
     protected override boundsFrom(parent: Mat): Bounds | null {
@@ -541,7 +588,7 @@ export class Scene3D extends Node {
     }
 
     stopSpin(): this {
-        if (this.openSpin) this.openSpin.to = clock.now
+        if (this.openSpin) this.openSpin.to = Math.max(this.openSpin.from, clock.now)
         this.openSpin = null
         return this
     }
@@ -749,7 +796,8 @@ export class Surface3D extends Object3D {
         const opaque = alpha >= 0.995
         const reveal = view.measuring ? 1 : this.get('trimTo')
         const rows = Math.ceil(reveal * nu)
-        const { dx, dy, dz } = view
+        const { dx, dy, dz, fx, fy, fz, distance, perspective } = view
+        const camX = fx + dx * distance, camY = fy + dy * distance, camZ = fz + dz * distance
         const cull = options.cull ?? false
         const meshColor = this.meshColor
         const meshAlpha = (options.meshOpacity ?? 0.35) * alpha
@@ -760,7 +808,16 @@ export class Surface3D extends Object3D {
                 const a = i * stride + j, b = (i + 1) * stride + j, c = (i + 1) * stride + j + 1, d = i * stride + j + 1
                 if (!valid[a] || !valid[b] || !valid[c] || !valid[d]) continue
                 const f = (i * nv + j) * 3
-                const facing = normals[f]! * dx + normals[f + 1]! * dy + normals[f + 2]! * dz
+                let facing: number
+                if (perspective) {
+                    const ka = a * 3, kb = b * 3, kc = c * 3, kd = d * 3
+                    const mx = (positions[ka]! + positions[kb]! + positions[kc]! + positions[kd]!) * 0.25
+                    const my = (positions[ka + 1]! + positions[kb + 1]! + positions[kc + 1]! + positions[kd + 1]!) * 0.25
+                    const mz = (positions[ka + 2]! + positions[kb + 2]! + positions[kc + 2]! + positions[kd + 2]!) * 0.25
+                    facing = normals[f]! * (camX - mx) + normals[f + 1]! * (camY - my) + normals[f + 2]! * (camZ - mz)
+                } else {
+                    facing = normals[f]! * dx + normals[f + 1]! * dy + normals[f + 2]! * dz
+                }
                 if (facing < 0 && cull) continue
                 const flip = facing < 0 ? -1 : 1
                 const nx = shadingNormals[f]! * flip, ny = shadingNormals[f + 1]! * flip, nz = shadingNormals[f + 2]! * flip
@@ -1039,6 +1096,7 @@ export class Vector3D extends Line3D {
     private readonly to3: Reactive3
     private readonly tipSize: number
     private readonly tipBias: number
+    private readonly tipOpacity: number | undefined
     private readonly haloSetting: boolean | number | undefined
 
     constructor(from: Reactive3, to: Reactive3, style: Vector3DOptions = {}) {
@@ -1052,6 +1110,7 @@ export class Vector3D extends Line3D {
         this.from3 = from
         this.to3 = to
         this.tipSize = style.tip ?? 24
+        this.tipOpacity = style.opacity
         this.haloSetting = style.halo
         // The head sorts with its shaft, so an arrow drawn on top keeps its head.
         this.tipBias = style.onTop ? ON_TOP : style.bias ?? 0
@@ -1062,7 +1121,8 @@ export class Vector3D extends Line3D {
         const trim = view.measuring ? 1 : this.get('trimTo')
         if (trim < 0.98) return
         const a = read3(this.from3), b = read3(this.to3)
-        const alpha = this.objectAlpha(view)
+        const alpha = view.measuring ? 1 : this.objectAlpha(view) * (this.tipOpacity ?? 1) * this.get('strokeOpacity')
+        if (alpha <= 0.002) return
         if (!view.project(a[0], a[1], a[2])) return
         const ax = view.px, ay = view.py
         if (!view.project(b[0], b[1], b[2])) return
@@ -1112,7 +1172,7 @@ export class Points3D extends Object3D {
         if (alpha <= 0.002) return
         const points = typeof this.source === 'function' ? this.source() : this.source
         const radius = (this.style.radius ?? 8) * view.scale
-        const trim = this.get('trimTo')
+        const trim = view.measuring ? 1 : this.get('trimTo')
         const shown = Math.ceil(points.length * trim)
         const base = solidOf(this.get('fill'))
         const bias = this.style.onTop ? ON_TOP : this.style.bias ?? 0
@@ -1159,8 +1219,12 @@ export class Trail3D extends Object3D {
         if (cached) return cached
         const saved = clock.now
         clock.now = this.from + index / rate
-        const value = this.point()
-        clock.now = saved
+        let value: Vec3
+        try {
+            value = this.point()
+        } finally {
+            clock.now = saved
+        }
         if (clock.mode === 'render') this.cache.set(index, value)
         return value
     }
@@ -1369,7 +1433,7 @@ export class GridPlane3D extends Object3D {
         const step = this.options.step ?? 1
         const rgb = solidOf(this.get('stroke'))
         const width = this.get('strokeWidth') * view.scale
-        const trim = this.get('trimTo')
+        const trim = view.measuring ? 1 : this.get('trimTo')
         const run = (ax: number, ay: number, bx: number, by: number) => {
             const pieces = 10
             for (let i = 0; i < pieces; i++) {
@@ -1427,9 +1491,12 @@ export class Label3D extends Object3D {
         const p = read3(this.position)
         const at = view.screen(p[0], p[1], p[2])
         if (!at) return []
-        this.content.at(at[0] + this.offset[0], at[1] + this.offset[1])
-        this.content.set('opacity', alpha * this.get('trimTo'))
-        return [this.content]
+        const node = this.content.mounted ? this.content.clone() : this.content
+        const savedOpacity = node.base.opacity
+        node.at(at[0] + this.offset[0], at[1] + this.offset[1])
+        node.set('opacity', savedOpacity * alpha * this.get('trimTo'))
+        if (!this.content.mounted && clock.mode !== 'render') node.base.opacity = savedOpacity
+        return [node]
     }
 }
 

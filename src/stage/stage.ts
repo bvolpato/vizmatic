@@ -248,10 +248,13 @@ export class Stage {
         const saved = this.time
         this.time = time
         clock.now = time
-        build()
-        this.ending = Math.max(this.ending, this.time)
-        this.time = saved
-        clock.now = saved
+        try {
+            build()
+            this.ending = Math.max(this.ending, this.time)
+        } finally {
+            this.time = saved
+            clock.now = saved
+        }
         return this
     }
 
@@ -453,8 +456,9 @@ export class CompiledFilm {
                 if (t >= updater.from && t <= updater.to) updater.fn(updater.node, t)
             }
             const camera = stage.camera
+            const sx = camera.get('sx'), sy = camera.get('sy')
             const ops = buildOps(stage.root, {
-                x: camera.get('x'), y: camera.get('y'), zoom: camera.get('sx'), rotation: camera.get('rotation'),
+                x: camera.get('x'), y: camera.get('y'), zoom: sx, zoomY: sy !== 1 || sx === 1 ? sy : sx, rotation: camera.get('rotation'),
             }, stage.width, stage.height, stage.backdrop, stage.lights.length > 0 ? stage.marks : null)
             const preparedOps = ops.map(op => {
                 if (op.kind !== 'image' || op.image.pixels) return op

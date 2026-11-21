@@ -16,8 +16,12 @@ const align = (size: number) => Math.ceil(size / 8) * 8
 export function encodeGpuJob(job: GpuJob): Uint8Array {
     const arrays: ArrayBufferView[] = []
     const ids = new Map<ArrayBufferView, number>()
-    const json = new TextEncoder().encode(JSON.stringify(job, (key, value) => {
+    const json = new TextEncoder().encode(JSON.stringify(job, function (key, value) {
         if (key === 'node') return undefined
+        // Avoid duplicating multi-MB base64 data URIs on both image.src and image.asset.src.
+        if (key === 'asset' && value && typeof value === 'object' && typeof value.src === 'string' && this?.src === value.src) {
+            return { ...value, src: { $sameSrc: true } }
+        }
         if (!(value instanceof Float64Array) && !(value instanceof Uint8ClampedArray)) return value
         let id = ids.get(value)
         if (id === undefined) { id = arrays.length; ids.set(value, id); arrays.push(value) }
@@ -45,6 +49,10 @@ export function decodeGpuJob(buffer: ArrayBuffer): GpuJob {
     if (at > buffer.byteLength) throw new Error('Truncated GPU frame metadata')
     const arrays: (Float64Array | Uint8ClampedArray)[] = []
     const result = JSON.parse(new TextDecoder().decode(new Uint8Array(buffer, 8, jsonLength)), (_key, value) => {
+        if (value && typeof value === 'object' && value.asset && typeof value.asset === 'object'
+            && value.asset.src && typeof value.asset.src === 'object' && value.asset.src.$sameSrc === true && typeof value.src === 'string') {
+            value.asset.src = value.src
+        }
         if (!value || typeof value !== 'object' || !Object.hasOwn(value, '$array')) return value
         const { $array: id, type, length } = value
         if (!Number.isSafeInteger(id) || id < 0 || id >= count || !Number.isSafeInteger(length) || length < 0

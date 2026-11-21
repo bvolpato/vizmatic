@@ -126,12 +126,13 @@ export interface AlignedPaths {
 
 /** Give two paths matching structure, so straight-line motion between points morphs them. */
 export function alignPaths(from: Path, to: Path, minSegments = 12): AlignedPaths {
-    const pairs = pairRings(from, to)
+    const valid = (path: Path) => path.filter((r) => segmentCount(r) > 0)
+    const pairs = pairRings(valid(from), valid(to))
     const a: Float64Array[] = [], b: Float64Array[] = [], closed: boolean[] = []
     for (const [ra, rb] of pairs) {
         const target = Math.max(segmentCount(ra), segmentCount(rb), ra.closed && rb.closed ? minSegments : 1)
-        let x = growTo(ra, target)
-        let y = growTo(rb, target)
+        let x = segmentCount(ra) > 0 ? growTo(ra, target) : pointRing(ra.p[0] ?? 0, ra.p[1] ?? 0, target, ra.closed)
+        let y = segmentCount(rb) > 0 ? growTo(rb, target) : pointRing(rb.p[0] ?? 0, rb.p[1] ?? 0, target, rb.closed)
         if (x.closed && y.closed) {
             // Matching winding direction prevents a ring from folding through itself.
             if (Math.sign(signedArea(x)) !== Math.sign(signedArea(y)) && signedArea(x) !== 0 && signedArea(y) !== 0) y = reverseRing(y)

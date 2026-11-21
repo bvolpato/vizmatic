@@ -40,7 +40,7 @@ export function typewriter(target: Target, options: TypewriterOptions = {}): Ani
                 cursor = new Node(rectPath(0, -height / 2, Math.max(3, height * 0.1), height)).fill(options.cursorColor ?? 'ink')
                 // The cursor stands beside the last letter on purpose, so the film check does not judge the text against it.
                 cursor.data['decoration'] = true
-                ctx.stage.add(cursor)
+                ctx.stage.mountAt(cursor, ctx.t0)
                 ctx.stage.marks.set(cursor, list(target)[0]!)
             }
             leaves.forEach((leaf, i) => {

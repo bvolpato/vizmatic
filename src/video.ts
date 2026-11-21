@@ -692,15 +692,16 @@ export async function renderRgbaVideo(
     const sidecars: string[] = []
     let metadataInput = -1, captionInput = -1
     if (codec === 'h264') {
+        const durationSeconds = schedule.duration / 1_000
         const chapters = options.chapters ?? []
         if (options.title || chapters.length > 0) {
             const path = join(outputDirectory, `.${basename(outputPath)}.${randomUUID()}.tmp.ffmeta`)
-            await writeFile(path, chapterMetadata(options.title, chapters, schedule.duration), { mode: 0o600 })
+            await writeFile(path, chapterMetadata(options.title, chapters, durationSeconds), { mode: 0o600 })
             sidecars.push(path)
             args.push('-f', 'ffmetadata', '-i', path)
             metadataInput = inputs++
         }
-        const srt = captionsToSrt(options.captions ?? [], schedule.duration)
+        const srt = captionsToSrt(options.captions ?? [], durationSeconds)
         if (srt) {
             const path = join(outputDirectory, `.${basename(outputPath)}.${randomUUID()}.tmp.srt`)
             await writeFile(path, srt, { mode: 0o600 })

@@ -67,7 +67,12 @@ export class Track<T> {
         }
         if (index < 0) return this.initial
         const key = keys[index]!
-        if (t >= key.t1 || !key.at) return key.to
+        if (!key.at) return key.to
+        if (t >= key.t1) {
+            if (!key.ease) return key.to
+            const end = key.ease(1)
+            return end === 1 ? key.to : key.at(end)
+        }
         const span = key.t1 - key.t0
         const raw = span > 0 ? (t - key.t0) / span : 1
         return key.at(key.ease ? key.ease(raw) : raw)

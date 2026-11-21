@@ -11,6 +11,7 @@ function sigmoid(x: number): number {
 
 /** The house default. A sigmoid with a calm start and a calm landing. */
 export function smoothBy(inflection: number): Ease {
+    if (!Number.isFinite(inflection) || Math.abs(inflection) < 1e-9) return linear
     const low = sigmoid(-inflection / 2)
     const high = sigmoid(inflection / 2)
     return (t) => {
@@ -73,8 +74,11 @@ export const bounce: Ease = (t) => {
 export const thereAndBack: Ease = (t) => smooth(t < 0.5 ? 2 * t : 2 * (1 - t))
 
 export function thereAndBackWithPause(pause = 1 / 3): Ease {
-    const a = (1 - pause) / 2
+    const clamped = Math.max(0, Math.min(1, pause))
+    const a = (1 - clamped) / 2
     return (t) => {
+        if (t <= 0 || t >= 1) return 0
+        if (a <= 0) return 1
         if (t < a) return smooth(t / a)
         if (t < 1 - a) return 1
         return smooth((1 - t) / a)
@@ -93,7 +97,9 @@ export function notQuiteThere(amount = 0.7, inner: Ease = smooth): Ease {
 
 /** Holds at 1 for the last part of the time. */
 export function lingering(hold = 0.25, inner: Ease = smooth): Ease {
-    return (t) => inner(clamp01(t / (1 - hold)))
+    const active = 1 - Math.max(0, Math.min(1, hold))
+    if (active <= 0) return (t) => inner(t > 0 ? 1 : 0)
+    return (t) => inner(clamp01(t / active))
 }
 
 /** Backs up briefly, then runs through to the target. */
@@ -108,7 +114,9 @@ export function runningStart(pull = -0.5): Ease {
 
 /** Restrict an ease to a window of the animation. */
 export function during(from: number, to: number, inner: Ease = smooth): Ease {
-    return (t) => inner(clamp01((t - from) / (to - from)))
+    const span = to - from
+    if (!(span > 0)) return (t) => inner(t >= from ? 1 : 0)
+    return (t) => inner(clamp01((t - from) / span))
 }
 
 /** CSS-style cubic-bezier timing function. */
@@ -121,12 +129,22 @@ export function cubicBezier(x1: number, y1: number, x2: number, y2: number): Eas
     return (x) => {
         if (x <= 0) return 0
         if (x >= 1) return 1
-        let t = x
+        let lo = 0, hi = 1, t = x
         for (let i = 0; i < 8; i++) {
             const dx = sampleX(t) - x
+            if (Math.abs(dx) < 1e-6) return sampleY(t)
+            if (dx < 0) lo = t
+            else hi = t
             const d = slope(t)
-            if (Math.abs(dx) < 1e-5 || Math.abs(d) < 1e-6) break
-            t -= dx / d
+            const next = Math.abs(d) >= 1e-6 ? t - dx / d : (lo + hi) / 2
+            t = next > lo && next < hi ? next : (lo + hi) / 2
+        }
+        for (let i = 0; i < 16; i++) {
+            const dx = sampleX(t) - x
+            if (Math.abs(dx) < 1e-6) break
+            if (dx < 0) lo = t
+            else hi = t
+            t = (lo + hi) / 2
         }
         return sampleY(t)
     }
