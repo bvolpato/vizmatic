@@ -61,7 +61,16 @@ def synthesize(text, voice):
         audio += [chunk, breath]
         offset += (len(chunk) + len(breath)) / RATE
     # The last breath is not part of the take.
-    return np.concatenate(audio[:-1]), words
+    if not audio:
+        return np.zeros(0, dtype=np.float32), words
+    data = np.concatenate(audio[:-1])
+    duration = len(data) / RATE
+    for word in words:
+        if word["end"] > duration:
+            word["end"] = round(duration, 3)
+        if word["start"] > word["end"]:
+            word["start"] = word["end"]
+    return data, words
 
 
 def take_key(voice, text):

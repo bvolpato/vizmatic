@@ -1,4 +1,4 @@
-import { Node, ownLabels } from '../node'
+import { Node, ownLabels, rebindCloneParts } from '../node'
 import { toPaint, type ColorInput } from '../color'
 import { dot, rect } from '../shapes'
 import { text, type TextOptions } from '../text'
@@ -154,13 +154,11 @@ export class UnitChart extends Node {
         return [place[0], place[1]]
     }
 
-    /** A copy with its own marks and labels, in the arrangement that the chart has now. */
-    override clone(): this {
-        const copy = super.clone()
+    /** Clone detached labels when copied directly or inside a parent container. */
+    protected override [rebindCloneParts](copy: this): void {
         this.labels.forEach((label, index) => {
             if (label && label.parent !== this) copy.labels[index] = label.clone()
         })
-        return copy
     }
 
     /** The marks arrive line by line, in the order that the chart fills. The label of a block arrives with its first line. */

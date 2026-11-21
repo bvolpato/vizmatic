@@ -373,6 +373,14 @@ function everyBounds(node: Node, parent: Mat, lines = false): Bounds | null {
         if (b.width > 0 || b.height > 0) result = unionBounds(result, b)
     }
     for (const child of node.children) result = unionBounds(result, everyBounds(child, m, lines))
+    if (node.clipPath && result) {
+        const clip = pathBounds(transformPath(node.clipPath, m))
+        if (!clip) return null
+        const x = Math.max(result.x, clip.x), y = Math.max(result.y, clip.y)
+        const right = Math.min(result.x + result.width, clip.x + clip.width)
+        const bottom = Math.min(result.y + result.height, clip.y + clip.height)
+        return right >= x && bottom >= y ? { x, y, width: right - x, height: bottom - y } : null
+    }
     return result
 }
 
@@ -468,11 +476,20 @@ const TEXT_ROOM = 0.3
 /** Pixels over that room, so that the rounding of a measure does not put a text under it. */
 const TEXT_SPARE = 0.5
 
-/** The texts among the nodes of a thing, at any depth of blocks and lists. A text inside an object is a label of that object. */
+/** The texts among the nodes of a thing, at any depth of blocks, lists, and plain groups. A text inside an object is a label of that object. */
 function textsOf(thing: Measured): TextNode[] {
     if (thing instanceof Box || isPoint(thing)) return []
-    return (thing instanceof Node || thing instanceof Block ? [thing] : (thing as readonly (LayoutItem | Box)[]).filter((part): part is LayoutItem => Boolean(part) && !(part instanceof Box)))
-        .flatMap((part) => nodesOf(part)).filter((node): node is TextNode => node instanceof TextNode)
+    const out: TextNode[] = []
+    const collect = (node: Node): void => {
+        if (node instanceof TextNode) { out.push(node); return }
+        if (node.data['ownLayout']) return
+        if (node.get('path') === null && node.get('image') === null && node.draw === null && node.rawOps === null) {
+            for (const child of node.children) collect(child)
+        }
+    }
+    const items = thing instanceof Node || thing instanceof Block ? [thing] : (thing as readonly (LayoutItem | Box)[]).filter((part): part is LayoutItem => Boolean(part) && !(part instanceof Box))
+    for (const part of items) for (const node of nodesOf(part)) collect(node)
+    return out
 }
 
 /**

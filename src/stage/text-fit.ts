@@ -17,8 +17,7 @@ export function capHeight(size: number): number {
 
 /** The advance width of one line: the letters and the space at both sides of them. An object measures its own text with it. */
 export function advanceWidth(content: string, size: number, options: TextMeasureOptions = {}): number {
-    // The origin of a text with its anchor at the right is its advance width.
-    return text(content, { ...options, size, anchor: 'right' }).get('px')
+    return text(content, { ...options, size }).advanceWidth
 }
 
 /** The largest size, not over `size`, at which the advance width of a line is no more than `width`. */

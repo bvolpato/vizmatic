@@ -71,7 +71,7 @@ export class Zone extends Node {
         const titleSize = options.titleSize ?? 26
         const borderWidth = options.borderWidth ?? 2.5
         const title = options.title ? text(options.title, { size: titleSize, font: options.font, color }) : null
-        const titleWidth = title ? title.get('px') * 2 : 0
+        const titleWidth = title ? title.advanceWidth : 0
         // The lower half of the title is inside the border, so the content gets that much more room at the top.
         const head = title ? titleSize * 0.7 : 0
         const height = Math.max(around.height + padding * 2 + head, options.minHeight ?? 0)

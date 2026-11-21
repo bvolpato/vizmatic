@@ -1,5 +1,5 @@
 import { parseSvgPath, pathBounds, transformPath, type Path } from '../geometry'
-import { Node, ownLabels } from '../node'
+import { Node, ownLabels, rebindCloneParts } from '../node'
 import { rect } from '../shapes'
 import { text } from '../text'
 import { fallbackGlyph, fontFor, glyphPath } from '../font'
@@ -330,11 +330,9 @@ export class Terminal extends Node {
         ]
     }
 
-    /** A copy with its own record of the lines that are shown. */
-    override clone(): this {
-        const copy = super.clone()
+    /** Rebind line-visibility bookkeeping when cloned directly or inside a parent container. */
+    protected override [rebindCloneParts](copy: this): void {
         copy.since = [...this.since]
-        return copy
     }
 
     /**

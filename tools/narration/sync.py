@@ -25,7 +25,7 @@ NEAR = 2.0
 
 
 def letters(word):
-    return re.sub(r"[^a-z]", "", word.lower())
+    return re.sub(r"[^\w]|_", "", word.lower())
 
 
 def heard_words(root, movie):
@@ -37,19 +37,29 @@ def heard_words(root, movie):
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(movie), "-ac", "1", "-ar", "16000", str(sound)], check=True)
     audio, _ = sf.read(sound, dtype="float32")
     segments = speech.segments(speech.whisper(), audio, beam_size=5, language="en", word_timestamps=True)
-    return [(word.word.strip().lower().strip(".,?!:"), word.start) for segment in segments for word in segment.words]
+    return [(word.word.strip().lower().strip(".,?!:;\"'()[]"), word.start) for segment in segments for word in segment.words]
 
 
 def offsets(line, heard):
-    """For each beat: heard time minus planned time of its first word, or None when the word is not heard
+    """For each beat: heard time minus planned time of its first matched spoken word, or None when not heard
     within 3 seconds of its place."""
     found = {}
     for beat in line.beats:
-        if not beat.take["words"]:
+        words = beat.take["words"]
+        if not words:
             continue
-        first = letters(beat.take["say"].split()[0])
-        near = [time for word, time in heard if abs(time - beat.start) < 3 and letters(word) == first]
-        found[f"{beat.scene}/{beat.index}"] = min((time - (beat.start + beat.take["words"][0]["start"]) for time in near), key=abs) if near else None
+        candidates = [(letters(w["text"]), w["start"]) for w in words[:3] if letters(w["text"])]
+        if not candidates:
+            fallback = letters(beat.take["say"].split()[0])
+            candidates = [(fallback, words[0]["start"])] if fallback else []
+        best = None
+        for token, rel_start in candidates:
+            planned = beat.start + rel_start
+            near = [time - planned for word, time in heard if abs(time - planned) < 3 and letters(word) == token]
+            if near:
+                best = min(near, key=abs)
+                break
+        found[f"{beat.scene}/{beat.index}"] = best
     return found
 
 

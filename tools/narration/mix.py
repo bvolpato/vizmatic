@@ -34,7 +34,9 @@ CLEAR_VOICE = 18.0                   # Decibels that the pad must stay under the
 
 def word_start(beat, word, last, where):
     """When the voice starts a word of one beat, in seconds from the start of the beat."""
-    hits = [spoken["start"] for spoken in beat.take["words"] if spoken["text"].strip(".,:?").lower() == word.lower()]
+    punctuation = ".,:?!;\"'()[]"
+    target = word.strip(punctuation).lower()
+    hits = [spoken["start"] for spoken in beat.take["words"] if spoken["text"].strip(punctuation).lower() == target]
     if not hits:
         said = " ".join(spoken["text"] for spoken in beat.take["words"])
         film.fail(f'{where}.word: the voice does not say "{word}" in beat {beat.index} of scene "{beat.scene}". It says: {said}')
@@ -67,7 +69,8 @@ def lay_voice(root, line, samples):
             data = resample_poly(data, RATE, rate).astype(np.float32)
         start = int(beat.start * RATE)
         voice[start:start + len(data)] += data[: max(0, samples - start)]
-    return voice / np.abs(voice).max() * 0.89
+    peak = float(np.abs(voice).max()) if len(voice) else 0.0
+    return voice / peak * 0.89 if peak > 0 else voice
 
 
 def swell(seconds, center, width, db):
@@ -213,8 +216,11 @@ def report(line, levels, mix, voice, bed, level, spoke, track, parts, swells, ch
             print(f"the effect of {at:.2f}s is silent from {until:.2f}s")
         elif until is not None:
             # What sounds under the words that follow the bell: the voice, the pad at its usual level, and no bell.
-            a, b = int((until + 0.5) * RATE), int((until + 1.0) * RATE)
-            print(f"the bell of {at:.2f}s is silent from {until:.2f}s; from {until + 0.5:.2f}s to {until + 1.0:.2f}s, voice RMS {rms(voice[a:b]):.1f} dB, bed RMS {rms(bed[a:b, 0]):.1f} dB, bell peak {np.abs(track[a:b]).max():.4f}")
+            a, b = int((until + 0.5) * RATE), min(len(track), int((until + 1.0) * RATE))
+            if b > a:
+                print(f"the bell of {at:.2f}s is silent from {until:.2f}s; from {until + 0.5:.2f}s to {until + 1.0:.2f}s, voice RMS {rms(voice[a:b]):.1f} dB, bed RMS {rms(bed[a:b, 0]):.1f} dB, bell peak {np.abs(track[a:b]).max():.4f}")
+            else:
+                print(f"the bell of {at:.2f}s is silent from {until:.2f}s")
     lengths = [end - start for start, end, _, _ in parts]
     print(f"pad: {len(parts)} chords, {min(lengths):.1f} to {max(lengths):.1f} s each; " + " ".join(chord for _, _, chord, _ in parts))
 

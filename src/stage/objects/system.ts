@@ -1,6 +1,6 @@
 import { apply, invert, parseSvgPath, pathLength, pointAt, polyPath, rectPath, tangentAt, transformPath, trimPath, smoothPath, IDENTITY, type Path, type Vec, type Mat } from '../geometry'
-import { Node, ownLabels, type Edge, objectName } from '../node'
-import { filmFont, text, type TextOptions } from '../text'
+import { Node, ownLabels, rebindCloneParts, type Edge, objectName } from '../node'
+import { filmFont, text, TextNode, type TextOptions } from '../text'
 import { circle, dot, line } from '../shapes'
 import { toPaint, type ColorInput, type Paint } from '../color'
 import { morphMatching, type Anim, type AnimOptions } from '../anim'
@@ -18,7 +18,7 @@ function place(node: Node, x: number, y: number, align: 'left' | 'right' | 'cent
 }
 
 function advanceWidth(node: Node): number {
-    return node.get('px') * 2
+    return node instanceof TextNode ? node.advanceWidth : node.get('px') * 2
 }
 
 // ── Info box ────────────────────────────────────────────────────────────────
@@ -584,12 +584,24 @@ export class Connector extends Node {
         this.labelFont = options.font ?? filmFont() ?? 'mono'
         this.base.stroke = toPaint(options.color ?? 'dim')
         this.base.strokeWidth = options.width ?? 1.6
-        this.draw = (time) => this.build(time)
+        this.draw = function (this: Connector, time: number) { return this.build(time) }
         // The label sits on the line, on a plate. `build` makes it later.
         ownLabels(this, { name: 'connector', labels: [] })
         // The line ends at the two nodes on purpose, so the film check does not judge their text against it.
         this.data['attached'] = [from, to].flatMap((end) => (end instanceof Block ? end.nodes : end instanceof Node ? [end] : []))
         this.data['line'] = true
+    }
+
+    protected override [rebindCloneParts](copy: this, copies: ReadonlyMap<Node, Node>): void {
+        const remap = (end: ConnectorEnd): ConnectorEnd => (end instanceof Node ? copies.get(end) ?? end : end)
+        Object.assign(copy, {
+            fromEnd: remap(this.fromEnd),
+            toEnd: remap(this.toEnd),
+            pulses: [],
+            trails: [],
+            plate: null,
+            caption: null,
+        })
     }
 
     private anchors(): [Anchor, Anchor] {

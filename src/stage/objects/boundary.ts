@@ -1,4 +1,4 @@
-import { Node, ownLabels } from '../node'
+import { Node, ownLabels, rebindCloneParts } from '../node'
 import { apply, invert, rectPath, type Bounds } from '../geometry'
 import { dot, line } from '../shapes'
 import { text, type TextOptions } from '../text'
@@ -275,7 +275,7 @@ export class Boundary extends Node {
             const trimmed = given.map((word) => word.trim())
             if (trimmed.some((word) => word === '') && trimmed.some((word) => word !== '')) throw new Error("boundary: tally has a word for one count and none for the other. Give both, such as ['system call', 'system calls']")
             // A digit takes the width of the widest digit, so the digits of a number that runs keep their places.
-            const advance = (glyph: string) => text(glyph, { size: tallySize, font, weight: 600 }).get('px') * 2
+            const advance = (glyph: string) => text(glyph, { size: tallySize, font, weight: 600 }).advanceWidth
             const digit = Math.max(...[...'0123456789'].map(advance)), separator = advance(',')
             // The word ends at the right end of the line. The number ends just before the word and grows to
             // the left, so the word does not move when digits are added.
@@ -325,6 +325,14 @@ export class Boundary extends Node {
     x(part: number): number {
         if (!(part >= 0 && part <= 1)) throw new Error(`boundary: x(${part}) is not a place on the line. A part is from 0 to 1: 0 is the first place after the names, and 1 is the last place before the tally`)
         return this.first + (this.last - this.first) * part
+    }
+
+    /** Snapshot the tally count at clone time so future crossings on the original do not mutate the copy. */
+    protected override [rebindCloneParts](copy: this): void {
+        const now = this.shown(clock.now)
+        copy.changes = now > 0 ? [{ t0: -Infinity, t1: -Infinity, ease: null, amount: now }] : []
+        copy.clears = []
+        copy.total = now
     }
 
     /** The tally after the changes that are scheduled so far. */

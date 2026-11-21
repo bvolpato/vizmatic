@@ -2,7 +2,7 @@ import type { Bounds } from '../geometry'
 import type { Anim, AnimOptions } from '../anim'
 import { Node, ownLabels } from '../node'
 import { rect } from '../shapes'
-import { text, type TextOptions } from '../text'
+import { text, type TextNode, type TextOptions } from '../text'
 import type { ColorInput } from '../color'
 import { oneNode } from '../layout'
 import { reveal, sampleAt, staggered, stepAt } from './util'
@@ -48,7 +48,7 @@ const TITLE_WIDTH = 0.92
 const TITLE_FLOOR = 0.6
 
 /** The advance width of a line of text. It includes the side bearings, which the bounds of the ink do not. */
-const advance = (node: Node) => node.get('px') * 2
+const advance = (node: TextNode) => node.advanceWidth
 
 function wrap(content: string, width: number, options: TextOptions): string[] {
     const lines: string[] = []

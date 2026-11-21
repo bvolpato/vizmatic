@@ -1,4 +1,4 @@
-import { dynamic, Node } from '../node'
+import { Node, rebindCloneParts } from '../node'
 import { apply, invert, rectPath, type Vec } from '../geometry'
 import { text, type TextOptions } from '../text'
 import { smooth, linear } from '../ease'
@@ -7,7 +7,7 @@ import { Value, type Anim, type AnimOptions, type Target } from '../anim'
 import { addLight, inside } from '../light'
 import { Block, nodesFor, oneNode } from '../layout'
 import { clock } from '../track'
-import { reveal, stepAt, tweenValue } from './util'
+import { Part, reveal, stepAt, tweenValue } from './util'
 
 function list(target: Target, what = 'an animation'): Node[] {
     return nodesFor(what, target)
@@ -128,17 +128,26 @@ export interface CounterOptions {
 /** A number readout. Animate it with `countUp`. */
 export class Counter extends Node {
     readonly value: Value
+    private lastText = ''
+    private lastNode: Node | null = null
 
     constructor(initial = 0, options: CounterOptions = {}) {
         super()
         this.value = new Value(initial)
         const digits = options.digits ?? 0
         const format = new Intl.NumberFormat('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits, useGrouping: options.grouped ?? true })
-        const inner = dynamic(() => {
-            const body = `${options.prefix ?? ''}${format.format(this.value.value)}${options.suffix ?? ''}`
-            return text(body, { size: options.size ?? 48, color: options.color ?? 'ink', font: options.font ?? 'mono', weight: options.weight ?? 400 })
+        const inner = new Part(this, (owner) => {
+            const body = `${options.prefix ?? ''}${format.format(owner.value.value)}${options.suffix ?? ''}`
+            if (owner.lastNode && body === owner.lastText) return owner.lastNode
+            owner.lastText = body
+            owner.lastNode = text(body, { size: options.size ?? 48, color: options.color ?? 'ink', font: options.font ?? 'mono', weight: options.weight ?? 400 })
+            return owner.lastNode
         })
         this.add(inner)
+    }
+
+    protected override [rebindCloneParts](copy: this): void {
+        Object.assign(copy, { value: new Value(this.value.value), lastText: '', lastNode: null })
     }
 }
 

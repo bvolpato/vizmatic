@@ -377,7 +377,7 @@ export class LayerStack extends Node {
         this.looks = new Map(Object.entries(states))
         const base = this.paintOf(options.color ?? 'blue', 'color')
         const backing = this.paintOf(options.backing ?? 'bg', 'backing')
-        const wide = (content: string) => text(content, { size, font }).get('px') * 2
+        const wide = (content: string) => text(content, { size, font }).advanceWidth
 
         // Read the layers before anything is drawn, so that a wrong layer is named and not a wrong place.
         const specs: { label: string; id: string; paint: Paint; state: string; shape: string | undefined; role: Role; layer: number }[] = []
@@ -565,7 +565,7 @@ export class LayerStack extends Node {
                 // The label is on the top line of the frame, at its right end, and the line has a gap for it. It
                 // ends over the right edge of the blocks, so a line from a block to its close-up starts after it.
                 const label = text(group.text, { size, font, color: 'dim', anchor: 'right' })
-                const width = label.get('px'), end = x1 - sidePad - Math.round(size * 0.9), room = size * 0.4
+                const width = label.advanceWidth, end = x1 - sidePad - Math.round(size * 0.9), room = size * 0.4
                 if (width + 2 * room > end - x0 - radius) throw new Error(`layerStack: the label ${shown(group.text)} of a group is ${Math.ceil(width)} px wide, and the top line of its frame has ${Math.max(0, Math.floor(end - x0 - radius - 2 * room))} px for it. Use a shorter label, or a wider stack`)
                 frame.add(
                     new Node(parseSvgPath(`M${end + room} ${y0}H${x1 - radius}A${radius} ${radius} 0 0 1 ${x1} ${y0 + radius}V${y1 - radius}A${radius} ${radius} 0 0 1 ${x1 - radius} ${y1}`
@@ -1088,7 +1088,7 @@ export class LayerStack extends Node {
         if (!isObject(spec) || typeof spec.label !== 'string' || spec.label.trim() === '') throw new Error(`layerStack: replace: the new block of ${this.called(index)} is ${shown(next)}. Give a label, or { label, color }`)
         const label = spec.label.trim()
         if (/[\n\r\t]/.test(label)) throw new Error(`layerStack: replace: the label ${shown(label)} has a line break or a tab. A label is one line`)
-        const width = text(label, { size: this.size, font: this.font }).get('px') * 2
+        const width = text(label, { size: this.size, font: this.font }).advanceWidth
         if (width > this.rooms[index]! + 0.5) throw new Error(`layerStack: replace: the label ${shown(label)} is ${Math.ceil(width)} px wide at size ${this.size}, and ${this.called(index)} has ${Math.floor(this.rooms[index]!)} px for it. Use a shorter label, or build the stack with a width of ${Math.ceil(this.tight + width - this.rooms[index]!)} or more`)
         const paint = spec.color === undefined ? null : this.paintOf(spec.color, `the color of the new block of ${this.called(index)}`)
         const call = `replace(${shown(ref)})`
@@ -1411,7 +1411,7 @@ export class LayerStack extends Node {
         for (const [index, value] of values.entries()) {
             if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`layerStack: value ${index} of ${call} is ${shown(value)}. A value is a number`)
             // A number has a fifth of the text size of room at each side of its cell, at the least.
-            if (this.digits !== null && text(this.written(value), { size: this.size, font: this.font }).get('px') * 2 > this.cellWidth - this.size * 0.4) throw new Error(`layerStack: value ${index} of ${call} is ${value}, which a cell writes as ${shown(this.written(value))}. A cell has room for a number as wide as ${shown(this.widest)}. Give smaller values, such as a tenth of each, or fewer digits`)
+            if (this.digits !== null && text(this.written(value), { size: this.size, font: this.font }).advanceWidth > this.cellWidth - this.size * 0.4) throw new Error(`layerStack: value ${index} of ${call} is ${value}, which a cell writes as ${shown(this.written(value))}. A cell has room for a number as wide as ${shown(this.widest)}. Give smaller values, such as a tenth of each, or fewer digits`)
         }
         return [...values] as number[]
     }

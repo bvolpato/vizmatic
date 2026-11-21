@@ -1,7 +1,7 @@
 import { apply, curveThrough, linePath, polyPath, type Path, type Ring, type Vec } from './geometry'
 import { scaleMapping, niceStep, formatAxisTick, type AxisScale, type ScaleMapping } from './scales'
 import { adaptivePath, continuousSpans, type AdaptiveSampling } from './sampling'
-import { Node, dynamic, group, ownLabels, objectName } from './node'
+import { Node, dynamic, group, ownLabels, objectName, rebindCloneParts } from './node'
 import { arrow, dot, line, type ShapeStyle } from './shapes'
 import { tex } from './tex'
 import { text, type TextOptions } from './text'
@@ -197,9 +197,7 @@ export class Axes extends Node {
         if (this.moving) {
             // A range that is wrong now stops the build here, and not at the first frame.
             this.steps()
-            if (options.grid) this.grid.draw = () => this.gridMarks()
-            this.lines.draw = () => this.lineMarks()
-            if (numbers) this.numbers.draw = () => this.numberMarks()
+            this.bindMoving(Boolean(options.grid), numbers)
         } else {
             if (options.grid) this.grid.add(...this.gridMarks())
             this.lines.add(...this.lineMarks())
@@ -210,6 +208,16 @@ export class Axes extends Node {
         const names = () => this.nameMarks(options.xLabel, options.yLabel)
         if (options.xLabel || options.yLabel) this.add(...(this.moving ? [dynamic(names)] : names()))
         ownLabels(this, { name: 'pair of axes', plot: true })
+    }
+
+    private bindMoving(hasGrid: boolean, hasNumbers: boolean): void {
+        if (hasGrid) this.grid.draw = () => this.gridMarks()
+        this.lines.draw = () => this.lineMarks()
+        if (hasNumbers) this.numbers.draw = () => this.numberMarks()
+    }
+
+    protected override [rebindCloneParts](copy: this): void {
+        if (this.moving) copy.bindMoving(this.grid.draw !== null, this.numbers.draw !== null)
     }
 
     /** The x range now. On axes with a range that moves, it changes with the time of the film. */
