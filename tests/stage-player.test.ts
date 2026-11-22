@@ -251,6 +251,41 @@ describe('FilmPlayer lifecycle', () => {
         }
     })
 
+    it('loops and bounces cleanly inside a [loopStart, loopEnd] window', async () => {
+        const compiled = await compileFilm(film({ bloom: 0 }, s => { s.wait(10) }))
+        const clock = animationClock()
+        const repeatMock = createCanvasMock()
+        const repeatPlayer = new FilmPlayer(repeatMock.canvas, compiled, {
+            loop: true, loopStart: 2, loopEnd: 2.2, loopMode: 'repeat',
+        })
+        try {
+            repeatPlayer.seek(2.15)
+            repeatPlayer.play()
+            clock.frame(80) // +0.08s -> 2.23 -> wraps to 2.03
+            expect(repeatPlayer.time).toBeCloseTo(2.03, 2)
+        } finally {
+            repeatPlayer.destroy()
+        }
+
+        const bounceClock = animationClock()
+        const bounceMock = createCanvasMock()
+        const bouncePlayer = new FilmPlayer(bounceMock.canvas, compiled, {
+            loop: true, loopStart: 2, loopEnd: 2.2, loopMode: 'bounce',
+        })
+        try {
+            bouncePlayer.seek(2.15)
+            bouncePlayer.play()
+            bounceClock.frame(80) // +0.08s -> 2.23 -> bounces back to 2.17 (moving backward)
+            expect(bouncePlayer.time).toBeCloseTo(2.17, 2)
+            bounceClock.frame(160) // -0.08s -> 2.09 (still moving backward)
+            expect(bouncePlayer.time).toBeCloseTo(2.09, 2)
+            bounceClock.frame(260) // -0.10s -> 1.99 -> bounces forward to 2.01
+            expect(bouncePlayer.time).toBeCloseTo(2.01, 2)
+        } finally {
+            bouncePlayer.destroy()
+        }
+    })
+
     it('retries a suspended frame once after multiple ticks, at the latest playhead', async () => {
         const compiled = await compileFilm(film({ bloom: 0 }, s => { s.wait(2) }))
         const asset = deferred<void>()
