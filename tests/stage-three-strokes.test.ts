@@ -2,7 +2,8 @@ import { Resvg } from '@resvg/resvg-js'
 import { describe, expect, it } from 'vitest'
 import { frameToSvg, type DrawOp, type Frame } from '../src/stage/display'
 import { polyPath } from '../src/stage/geometry'
-import { curve3d, line3d, parametricSurface, scene3d, vector3d, type Scene3D } from '../src/stage/three'
+import { curve3d, line3d, parametricSurface, point3d, scene3d, vector3d, type Scene3D } from '../src/stage/three'
+import { clock } from '../src/stage/track'
 
 function frame(scene: Scene3D, dark: boolean): Frame {
     const ops: DrawOp[] = []
@@ -93,5 +94,48 @@ describe('continuous 3D strokes', () => {
         expect(image[right + 2]).toBeGreaterThan(image[right]! * 2)
         expect(image[left + 3]).toBeGreaterThan(5)
         expect(image[right + 3]).toBeGreaterThan(5)
+    })
+
+    it('renders glow on line3d without seam banding', () => {
+        const view = scene3d(camera)
+        view.add(line3d([-0.5, -1.2, 0], [0.5, 1.2, 0], { color: '#ffd166', width: 3, glow: 12, blend: 'screen' }))
+        const rendered = frame(view, true)
+        const glowOps = rendered.ops.filter(op => op.kind === 'path' && op.glow > 0)
+        expect(glowOps.length).toBe(1)
+        expect(glowOps[0]!.kind === 'path' && glowOps[0]!.blend).toBe('screen')
+        const image = pixels({ ...rendered, background: null })
+        // 8 px above the 3 px horizontal line: only the glow pass illuminates here.
+        const above = (112 * 320 + 160) * 4
+        expect(image[above]).toBeGreaterThan(10)
+        expect(image[above + 3]).toBeGreaterThan(10)
+    })
+
+    it('supports glow and blend on point3d', () => {
+        const view = scene3d(camera)
+        view.add(point3d([0, 0, 0], { color: '#5ce1e6', radius: 4, glow: 14, blend: 'screen' }))
+        const rendered = frame(view, true)
+        const pointOp = rendered.ops.find(op => op.kind === 'path')!
+        expect(pointOp.kind === 'path' && pointOp.glow).toBe(14)
+        expect(pointOp.kind === 'path' && pointOp.blend).toBe('screen')
+        const image = pixels({ ...rendered, background: null })
+        const halo = (111 * 320 + 160) * 4
+        expect(image[halo + 2]).toBeGreaterThan(10)
+    })
+
+    it('recomputes animated curve3d frames over time and preserves blend', () => {
+        const view = scene3d(camera)
+        view.add(curve3d((t, time) => [0, t, time * 0.5], -1, 1, { color: '#ff6b8b', width: 4, animate: true, blend: 'screen', samples: 32 }))
+        const saved = clock.now
+        try {
+            clock.now = 0
+            const f0 = frame(view, true)
+            clock.now = 1
+            const f1 = frame(view, true)
+            const op0 = f0.ops.find(op => op.kind === 'path')!
+            expect(op0.kind === 'path' && op0.blend).toBe('screen')
+            expect(maxDifference(pixels(f0), pixels(f1))).toBeGreaterThan(40)
+        } finally {
+            clock.now = saved
+        }
     })
 })
