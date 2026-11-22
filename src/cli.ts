@@ -1481,10 +1481,11 @@ async function renderFrameToPng(
 }
 
 async function rasterizeSvgForBounds(svg: string, width: number) {
-    const { Resvg } = await loadResvg()
+    const [{ Resvg }, { getResvgFontOptions }] = await Promise.all([loadResvg(), loadPublicApi()])
     return new Resvg(svg, {
         fitTo: { mode: 'width', value: width },
         background: 'rgba(0, 0, 0, 0)',
+        font: getResvgFontOptions(svg),
     }).render()
 }
 

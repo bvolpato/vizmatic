@@ -35,10 +35,17 @@ await runAll([
 // Phase 2: full Vitest suite reusing the fresh build from Phase 1.
 await run('vitest', 'pnpm', ['exec', 'vitest', 'run'], { VIZMATIC_TEST_USE_EXISTING_BUILD: '1' })
 
-// Phase 3: refresh gallery PNGs, GIFs, manifests, and examples/README.md.
-await run('render-examples', 'pnpm', ['exec', 'tsx', 'scripts/render-examples.ts'])
+// Phase 3: refresh gallery assets in parallel with independent package/dependency checks.
+await runAll([
+    () => run('render-examples', 'pnpm', ['exec', 'tsx', 'scripts/render-examples.ts']),
+    () => run('security:audit', 'pnpm', ['security:audit']),
+    () => run('assets:check', 'pnpm', ['assets:check']),
+    () => run('publint', 'pnpm', ['exec', 'publint']),
+    () => run('check-package', 'pnpm', ['exec', 'tsx', 'scripts/check-package.ts']),
+    () => run('check-consumer', process.execPath, ['scripts/check-consumer.mjs']),
+])
 
-// Phase 4: site build + docs verification, examples/films checks, and package/consumer checks are independent.
+// Phase 4: site build + docs verification and examples/films checks are independent.
 // check:examples recursively validates every file under examples/ (including all films in dark + light looks).
 await runAll([
     async () => {
@@ -46,5 +53,4 @@ await runAll([
         await run('docs:check', 'pnpm', ['docs:check'])
     },
     () => run('check:examples', 'pnpm', ['check:examples']),
-    () => run('deps:check', 'pnpm', ['deps:check']),
 ])

@@ -60,49 +60,49 @@ export async function buildPlayground(): Promise<void> {
     await mkdir('docs', { recursive: true })
     await rm('docs/assets/playground', { recursive: true, force: true })
 
-    const worker = await build({
-        entryPoints: {
-            'playground-worker': 'src/playground-worker.ts',
-        },
-        bundle: true,
-        format: 'iife',
-        target: 'es2022',
-        platform: 'browser',
-        minify: true,
-        outdir: 'docs',
-        sourcemap: false,
-        metafile: true,
-        plugins: [browserRenderContextShim, browserHarfbuzzLoader],
-        loader: {
-            '.ttf': 'file',
-            '.wasm': 'file',
-        },
-        assetNames: 'assets/playground/[name]-[hash]',
-    })
-
-    await build({
-        entryPoints: ['src/playground-scene.ts'],
-        bundle: true,
-        format: 'esm',
-        target: 'es2022',
-        platform: 'browser',
-        minify: true,
-        outfile: sceneOutPath,
-    })
-
-    await build({
-        entryPoints: {
-            playground: 'src/playground.ts',
-            'playground-redirect': 'src/playground-redirect.ts',
-        },
-        bundle: true,
-        format: 'iife',
-        target: 'es2022',
-        platform: 'browser',
-        minify: true,
-        sourcemap: false,
-        outdir: 'docs',
-    })
+    const [worker] = await Promise.all([
+        build({
+            entryPoints: {
+                'playground-worker': 'src/playground-worker.ts',
+            },
+            bundle: true,
+            format: 'iife',
+            target: 'es2022',
+            platform: 'browser',
+            minify: true,
+            outdir: 'docs',
+            sourcemap: false,
+            metafile: true,
+            plugins: [browserRenderContextShim, browserHarfbuzzLoader],
+            loader: {
+                '.ttf': 'file',
+                '.wasm': 'file',
+            },
+            assetNames: 'assets/playground/[name]-[hash]',
+        }),
+        build({
+            entryPoints: ['src/playground-scene.ts'],
+            bundle: true,
+            format: 'esm',
+            target: 'es2022',
+            platform: 'browser',
+            minify: true,
+            outfile: sceneOutPath,
+        }),
+        build({
+            entryPoints: {
+                playground: 'src/playground.ts',
+                'playground-redirect': 'src/playground-redirect.ts',
+            },
+            bundle: true,
+            format: 'iife',
+            target: 'es2022',
+            platform: 'browser',
+            minify: true,
+            sourcemap: false,
+            outdir: 'docs',
+        }),
+    ])
 
     await Promise.all([
         normalizeGeneratedIndentation(outPath),

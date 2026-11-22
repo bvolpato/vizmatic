@@ -55,18 +55,27 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ffmpeg
+      # Build one shared Python audio environment instead of creating one per Vitest worker.
+      - name: Prepare shared Python audio environment
+        run: |
+          uv venv --python 3.12 /tmp/vizmatic-audio-venv
+          uv pip install --python /tmp/vizmatic-audio-venv/bin/python numpy scipy soundfile
       # pnpm install runs prepare (`pnpm build`) once, so no second build step is needed.
       - run: pnpm install --frozen-lockfile
       - name: Test the tools, the one command of a film, the film shell, and the movie export
         env:
           VIZMATIC_TEST_USE_EXISTING_BUILD: "1"
+          VIZMATIC_TEST_AUDIO_PYTHON: /tmp/vizmatic-audio-venv/bin/python
+          VIZMATIC_TEST_BARE_PYTHON: /tmp/vizmatic-audio-venv/bin/python
         run: >-
           pnpm exec vitest run
           tests/narrated-tools-checks.test.ts
           tests/narrated-tools-mix.test.ts
           tests/narrated-tools-effects.test.ts
+          tests/narrated-tools-chimes.test.ts
           tests/narrated-tools-draft.test.ts
           tests/narrated-tools-resound.test.ts
+          tests/narrated-tools-sync.test.ts
           tests/narrated-cli.test.ts
           tests/narrated.test.ts
           tests/narration-hold.test.ts
@@ -78,6 +87,7 @@ jobs:
           tests/canvas-readback.test.ts
           tests/cli-video.test.ts
           tests/cli-film.test.ts
+          tests/cli-film-check.test.ts
           tests/stage-export.test.ts
           tests/stage-frame-reuse.test.ts
           tests/catalog-film-quality.test.ts
@@ -120,25 +130,28 @@ jobs:
           else
             pnpm exec playwright install --with-deps chromium
           fi
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg
-      - name: Check visual parity in Chromium
-        run: timeout --kill-after=10s 180s pnpm exec vitest run --maxWorkers 2 --reporter verbose tests/stage-image.test.ts tests/stage-bloom-browser.test.ts tests/stage-engine-upgrades.test.ts tests/stage-tex-browser.test.ts tests/stage-scalar-field-browser.test.ts tests/stage-color-bar-raster.test.ts tests/fourier-seek-browser.test.ts tests/site-film-preview-browser.test.ts
+          sudo apt-get install -y --no-install-recommends ffmpeg || (sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg)
+      - name: Run visual parity, Playground, scene-browser, and Studio browser suites
         env:
           VIZMATIC_BROWSER_TESTS: '1'
-      - name: Run Playground, scene-browser, and Studio browser suites
         run: |
           set -euo pipefail
           pnpm check:playground &
           pid_playground=$!
           pnpm check:scene-browser &
           pid_scene=$!
-          pnpm check:studio &
-          pid_studio=$!
+          (
+            timeout --kill-after=10s 180s pnpm exec vitest run --maxWorkers 1 --reporter verbose \
+              tests/stage-image.test.ts tests/stage-bloom-browser.test.ts tests/stage-engine-upgrades.test.ts \
+              tests/stage-tex-browser.test.ts tests/stage-scalar-field-browser.test.ts tests/stage-color-bar-raster.test.ts \
+              tests/fourier-seek-browser.test.ts tests/site-film-preview-browser.test.ts
+            pnpm check:studio
+          ) &
+          pid_stage_studio=$!
           status=0
           wait "$pid_playground" || status=1
           wait "$pid_scene" || status=1
-          wait "$pid_studio" || status=1
+          wait "$pid_stage_studio" || status=1
           exit "$status"
 
   runtime:

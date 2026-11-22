@@ -93,7 +93,7 @@ describe('CPU implicit surfaces', () => {
         view.matrix = [1, 0, 0, 1, 256, 256]
         surface.emit(view, 0)
         const svg = frameToSvg({ width: 512, height: 512, ops: view.ops, background: '#ffffff', bloom: 0, dark: false })
-        const pixels = new Resvg(svg).render().pixels
+        const pixels = new Resvg(svg, { font: { loadSystemFonts: false } }).render().pixels
         let seams = 0
         for (let y = 190; y <= 320; y++) for (let x = 190; x <= 320; x++) {
             if (pixels[(y * 512 + x) * 4 + 1] > 12) seams++

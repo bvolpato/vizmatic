@@ -1,16 +1,15 @@
 import { access, copyFile, mkdir, readFile, readdir, rm, writeFile } from 'fs/promises'
-import { codeToHtml } from 'shiki'
 import { buildPlayground } from './build-playground'
 import { buildComponentPreviews } from './build-component-previews'
 import { catalogComponentCount, componentCatalog, diagramCategories, type ComponentCatalogCategory } from './component-catalog'
 import { buildAgentDocs } from './build-agent-docs'
 import { buildLogo } from './build-logo'
-import { buildStage } from './build-stage'
+import { buildStageBundle } from './build-stage'
 import { exampleTitle, listGalleryExamples } from './gallery-examples'
 import { prepareGuides, writeGuides } from './build-guides'
 import { buildSiteMedia } from './build-site-media'
 import { applySiteShell, configureSiteShell, registerSitePages, sitePages } from './site-shell'
-import { highlight, highlightPage } from './site-highlight'
+import { highlight, highlightGalleryExample, highlightPage } from './site-highlight'
 import { escapeHtml } from './site-markdown'
 import { formatDuration, loadFilmCatalog, renderClaims, renderFigures, renderFilmFilters, renderFilmWall, renderHomeShowcase } from './site-content'
 import { toPlaygroundExample } from './playground-example'
@@ -36,15 +35,20 @@ const exists = (path: string) => access(path).then(() => true, () => false)
 const hasStudio = await exists(studioTemplatePath)
 configureSiteShell({ studio: hasStudio })
 
-await mkdir('docs/assets/licenses', { recursive: true })
-await Promise.all([
-    copyFile('assets/THIRD_PARTY_LICENSES.md', 'docs/assets/THIRD_PARTY_LICENSES.md'),
-    ...(await readdir('assets/licenses')).map((name) => copyFile('assets/licenses/' + name, 'docs/assets/licenses/' + name)),
-])
-await mkdir('docs/assets/fonts', { recursive: true })
-await Promise.all(['Inter-Regular.woff2', 'Inter-SemiBold.woff2', 'Inter-Bold.woff2', 'JetBrainsMono-Regular.woff2', 'SourceSerif4-24pt-Regular.woff2', 'SourceSerif4-24pt-Italic.woff2']
-    .map((name) => copyFile('assets/site-fonts/' + name, 'docs/assets/fonts/' + name)))
-await buildLogo()
+async function copyStaticAssets(): Promise<void> {
+    await Promise.all([
+        mkdir('docs/assets/licenses', { recursive: true }),
+        mkdir('docs/assets/fonts', { recursive: true }),
+    ])
+    const licenseNames = await readdir('assets/licenses')
+    await Promise.all([
+        copyFile('assets/THIRD_PARTY_LICENSES.md', 'docs/assets/THIRD_PARTY_LICENSES.md'),
+        ...licenseNames.map((name) => copyFile('assets/licenses/' + name, 'docs/assets/licenses/' + name)),
+        ...['Inter-Regular.woff2', 'Inter-SemiBold.woff2', 'Inter-Bold.woff2', 'JetBrainsMono-Regular.woff2', 'SourceSerif4-24pt-Regular.woff2', 'SourceSerif4-24pt-Italic.woff2']
+            .map((name) => copyFile('assets/site-fonts/' + name, 'docs/assets/fonts/' + name)),
+        buildLogo(),
+    ])
+}
 
 function generatedNotice(source: string): string {
     return `<!-- Generated from ${source} by pnpm site:build. Edit template. -->`
@@ -230,26 +234,12 @@ function renderBenchmarkSummary(results: BenchmarkResults): string {
     ].join('\n')
 }
 
-await buildPlayground()
-await buildComponentPreviews()
-
-const prompt = await readFile(promptPath, 'utf8')
-const packageJson = JSON.parse(await readFile('package.json', 'utf8')) as { version: string }
 function sourceForGallery(code: string): string {
     if (!code.includes('createScenes') && !code.includes('createAnimation')) return code
     return code
         .replace(/\nexport function create\(theme: ThemeMode = 'dark'\) \{\n    return buildFrame\(theme, stages\.length - 1\)\n\}\n(?=\nexport function createScenes)/, '\n')
         .replace(/\nexport default create\('dark'\)\n?$/, '\n')
         .replace(/\n{3,}/g, '\n\n')
-}
-
-function highlightExample(code: string, theme: 'dark' | 'light') {
-    return codeToHtml(code, {
-        lang: 'tsx',
-        theme: `github-${theme}-high-contrast`,
-        // Embedded image strings must retain the same grammar state on slower CI runners.
-        tokenizeTimeLimit: 0,
-    })
 }
 
 /**
@@ -268,33 +258,75 @@ async function playgroundCodeFor(source: string): Promise<string> {
     return `${settings.map((line) => line.replace('export const ', '')).join('\n')}\n${body}`
 }
 
-await mkdir('docs/assets/sources', { recursive: true })
-const sources = []
-for (const { name, source } of await listGalleryExamples()) {
-    const raw = await readFile(source, 'utf8')
-    const code = sourceForGallery(raw)
-    const html = { dark: await highlightExample(code, 'dark'), light: await highlightExample(code, 'light') }
-    const entry = { name, title: exampleTitle(name), source, code, html }
-    const playgroundCode = await playgroundCodeFor(raw)
-    await writeFile(`docs/assets/sources/${name}.json`, JSON.stringify({ ...entry, playgroundCode }))
-    sources.push(entry)
+async function buildGallerySources() {
+    await mkdir('docs/assets/sources', { recursive: true })
+    const galleryExamples = await listGalleryExamples()
+    const sources = await Promise.all(galleryExamples.map(async ({ name, source }) => {
+        const raw = await readFile(source, 'utf8')
+        const code = sourceForGallery(raw)
+        const [dark, light, playgroundCode] = await Promise.all([
+            highlightGalleryExample(code, 'dark'),
+            highlightGalleryExample(code, 'light'),
+            playgroundCodeFor(raw),
+        ])
+        const entry = { name, title: exampleTitle(name), source, code, html: { dark, light } }
+        await writeFile(`docs/assets/sources/${name}.json`, JSON.stringify({ ...entry, playgroundCode }))
+        return entry
+    }))
+    await writeFile('docs/assets/examples/sources.json', `${JSON.stringify(sources, null, 2)}\n`)
+    return sources
 }
-await writeFile('docs/assets/examples/sources.json', `${JSON.stringify(sources, null, 2)}\n`)
-const sourceByName = new Map(sources.map((source) => [source.name, source]))
 
-const prepared = await prepareGuides()
-await buildStage({ demos: prepared.demos })
-// Studio is its own application with its own page. The site only links to it.
-const studioFilmIds = new Set<string>()
+const studioTask = hasStudio
+    ? import('./build-studio').then(async ({ buildStudio }) => {
+        await buildStudio()
+        const studioFilms = JSON.parse(await readFile('docs/assets/studio/films.json', 'utf8')) as { id: string }[]
+        return new Set(studioFilms.map(({ id }) => id))
+    })
+    : Promise.resolve(new Set<string>())
+
+const preparedPromise = prepareGuides()
+const stagePromise = preparedPromise.then((prepared) => buildStageBundle({ demos: prepared.demos }))
+
+const [
+    ,
+    ,
+    ,
+    prompt,
+    packageJsonRaw,
+    sources,
+    prepared,
+    stageBundle,
+    studioFilmIds,
+    ,
+    ,
+    films,
+] = await Promise.all([
+    copyStaticAssets(),
+    buildPlayground(),
+    buildComponentPreviews(),
+    readFile(promptPath, 'utf8'),
+    readFile('package.json', 'utf8'),
+    buildGallerySources(),
+    preparedPromise,
+    stagePromise,
+    studioTask,
+    buildSiteMedia(),
+    buildAgentDocs(),
+    loadFilmCatalog(),
+])
+
+const packageJson = JSON.parse(packageJsonRaw) as { version: string }
+const sourceByName = new Map(sources.map((source) => [source.name, source]))
 if (hasStudio) {
-    const { buildStudio } = await import('./build-studio')
-    await buildStudio()
-    const studioFilms = JSON.parse(await readFile('docs/assets/studio/films.json', 'utf8')) as { id: string }[]
-    for (const { id } of studioFilms) studioFilmIds.add(id)
     registerSitePages([{ file: 'studio.html', title: 'Studio | Vizmatic', description: 'Build and animate films in one browser tab: a timeline, an inspector, live code, and frame-exact MP4 export.' }])
 }
-await buildSiteMedia()
-const films = await loadFilmCatalog()
+
+function modulePreloadLinks(entries: readonly string[], prefix = ''): string {
+    return stageBundle.preloadsFor(entries)
+        .map((path) => `<link rel="modulepreload" href="${prefix}${path}">`)
+        .join('\n  ')
+}
 
 function preparePage(template: string, file: string): string {
     return applySiteShell(template, file)
@@ -307,7 +339,7 @@ function preparePage(template: string, file: string): string {
         })
 }
 
-// ── Film pages ──────────────────────────────────────────────────────────────
+// ── Film pages and guides ───────────────────────────────────────────────────
 
 registerSitePages(await Promise.all(films.map(async (film) => ({
     file: `film/${film.id}.html`,
@@ -317,39 +349,42 @@ registerSitePages(await Promise.all(films.map(async (film) => ({
 }))))
 await rm('docs/film', { recursive: true, force: true })
 await mkdir('docs/film', { recursive: true })
-await Promise.all(films.map(async (film, index) => {
-    const file = `film/${film.id}.html`
-    const sourcePath = (await exists(`examples/films/${film.id}.ts`)) ? `examples/films/${film.id}.ts` : `examples/films/${film.id}.tsx`
-    const source = await readFile(sourcePath, 'utf8')
-    const code = await highlight(source, sourcePath.endsWith('x') ? 'tsx' : 'ts')
-    const previous = films[index - 1]
-    const next = films[index + 1]
-    const meta = [film.topic, formatDuration(film.duration), film.audio ? 'Narrated' : '', film.stepped ? 'Interactive deck' : ''].filter(Boolean).join(' \u00b7 ')
-    const modeAttr = film.stepped ? 'stepped' : 'autoplay'
-    const lookAttr = film.look && film.look !== 'midnight' ? ` data-fixed-look look="${escapeHtml(film.look)}"` : ''
-    const audioHref = film.audio ? (/^(https?:|\.\.\/)/.test(film.audio) ? film.audio : `../${film.audio.replace(/^\.?\//, '')}`) : ''
-    const audioAttr = audioHref ? ` audio="${escapeHtml(audioHref)}"` : ''
-    const activeLook = film.look ?? 'midnight'
-    const lookChoices: readonly [string, string][] = [
-        ['midnight', 'Midnight'],
-        ['paper', 'Paper'],
-        ['blueprint', 'Blueprint'],
-        ['chalk', 'Chalk'],
-        ['neon', 'Neon'],
-    ]
-    const lookPicker = `<div class="look-picker filter-pills" data-look-picker role="group" aria-label="Film look"><span class="look-picker-label">Look</span>${lookChoices.map(([id, label]) => `<button type="button" data-look-choice="${id}" aria-pressed="${activeLook === id}">${label}</button>`).join('')}</div>`
-    const steppedNote = film.stepped ? '<p class="film-note">Interactive presentation: press Right / Left Arrow or click chapters to step.</p>' : ''
-    const page = applySiteShell(`<!DOCTYPE html>
+const [, guideSearch] = await Promise.all([
+    Promise.all(films.map(async (film, index) => {
+        const file = `film/${film.id}.html`
+        const sourcePath = (await exists(`examples/films/${film.id}.ts`)) ? `examples/films/${film.id}.ts` : `examples/films/${film.id}.tsx`
+        const source = await readFile(sourcePath, 'utf8')
+        const code = await highlight(source, sourcePath.endsWith('x') ? 'tsx' : 'ts')
+        const previous = films[index - 1]
+        const next = films[index + 1]
+        const meta = [film.topic, formatDuration(film.duration), film.audio ? 'Narrated' : '', film.stepped ? 'Interactive deck' : ''].filter(Boolean).join(' \u00b7 ')
+        const modeAttr = film.stepped ? 'stepped' : 'autoplay'
+        const lookAttr = film.look && film.look !== 'midnight' ? ` data-fixed-look look="${escapeHtml(film.look)}"` : ''
+        const audioHref = film.audio ? (/^(https?:|\.\.\/)/.test(film.audio) ? film.audio : `../${film.audio.replace(/^\.?\//, '')}`) : ''
+        const audioAttr = audioHref ? ` audio="${escapeHtml(audioHref)}"` : ''
+        const activeLook = film.look ?? 'midnight'
+        const lookChoices: readonly [string, string][] = [
+            ['midnight', 'Midnight'],
+            ['paper', 'Paper'],
+            ['blueprint', 'Blueprint'],
+            ['chalk', 'Chalk'],
+            ['neon', 'Neon'],
+        ]
+        const lookPicker = `<div class="look-picker filter-pills" data-look-picker role="group" aria-label="Film look"><span class="look-picker-label">Look</span>${lookChoices.map(([id, label]) => `<button type="button" data-look-choice="${id}" aria-pressed="${activeLook === id}">${label}</button>`).join('')}</div>`
+        const steppedNote = film.stepped ? '<p class="film-note">Interactive presentation: press Right / Left Arrow or click chapters to step.</p>' : ''
+        const filmPreloads = modulePreloadLinks(['assets/stage/stage.js', `assets/stage/films/${film.id}.js`], '../')
+        const page = applySiteShell(`<!DOCTYPE html>
 <html lang="en">
 <head>
   {{SITE_HEAD}}
+  ${filmPreloads}
 </head>
 <body>
   {{SITE_NAV}}
   <main id="main-content" tabindex="-1">
     <article class="section" style="padding-top:0" data-film-page>
       <header class="film-page-head"><h1>${escapeHtml(film.title)}</h1><span class="meta">${escapeHtml(meta)}</span></header>
-      <vz-film src="../assets/stage/films/${film.id}.js" ${modeAttr}${lookAttr}${audioAttr} label="${escapeHtml(film.summary || film.title)}"></vz-film>
+      <vz-film src="../assets/stage/films/${film.id}.js" eager ${modeAttr}${lookAttr}${audioAttr} label="${escapeHtml(film.summary || film.title)}"></vz-film>
       <div class="film-toolbar">${steppedNote}${lookPicker}</div>
       <ol class="chapter-list" data-chapters hidden></ol>
       <p class="film-page-summary">${escapeHtml(film.summary)}</p>
@@ -367,38 +402,51 @@ await Promise.all(films.map(async (film, index) => {
 </body>
 </html>
 `, file)
-    await writeFile(`docs/${file}`, `<!DOCTYPE html>\n<!-- Generated from examples/films/catalog.json by scripts/build-site.ts. -->\n${page.replace('<!DOCTYPE html>\n', '')}`)
-}))
-
-// ── Guides and agent files ──────────────────────────────────────────────────
-
-const guideSearch = await writeGuides(prepared, (page) => hasStudio ? page : page.replaceAll('../studio.html', '../playground.html'))
-await buildAgentDocs()
+        await writeFile(`docs/${file}`, `<!DOCTYPE html>\n<!-- Generated from examples/films/catalog.json by scripts/build-site.ts. -->\n${page.replace('<!DOCTYPE html>\n', '')}`)
+    })),
+    writeGuides(prepared, (page) => hasStudio ? page : page.replaceAll('../studio.html', '../playground.html')),
+])
 
 // ── Landing page content ────────────────────────────────────────────────────
 
-const besideSource = await readFile('scripts/site-films/beside.ts', 'utf8')
+const [besideSource, hasHeroTitle, figures, landingWall, fullWall, claims] = await Promise.all([
+    readFile('scripts/site-films/beside.ts', 'utf8'),
+    exists('examples/films/vizmatic-title.ts'),
+    renderFigures([
+        { name: 'production-system-map', label: 'System map', alt: 'A dense production system map with services, data stores, regions, ports, and live metrics', caption: 'A production system on one page: services, boundaries, ports, protocols, and live numbers.' },
+        { name: 'production-system-map-presentation', label: 'Same source, larger', alt: 'The same production system map rendered at presentation density, with larger type and strokes', caption: 'The same source at presentation density. One prop changes, and nothing else does.' },
+        { name: 'llm-serving-stack', label: 'LLM serving', alt: 'Disaggregated LLM serving stack with prefill, decode, KV cache store, and live telemetry', caption: 'Disaggregated prefill and decode pools, shared KV cache, and live throughput on one page.' },
+        { name: 'engineering-dashboard', label: 'Dashboard', alt: 'An engineering platform health dashboard with small multiples, latency heatmap, charts, and endpoint tables', caption: 'Small multiples, heatmaps, charts, and tables that share one scale of type and rule.' },
+        { name: 'data-pipeline-lineage', label: 'Data lineage', alt: 'End-to-end revenue data lineage across bronze, silver, and gold tables with freshness and schemas', caption: 'Column-level schemas, streaming and batch flows, and SLA freshness from event to board metric.' },
+    ]),
+    renderHomeShowcase(films, [
+        { id: 'planetary-orbits', start: 0.8, end: 12.4, mode: 'repeat', lead: true, scene: 'Spinning orbits' },
+        { id: 'svd-3d', start: 2.2, end: 6.8, mode: 'bounce', scene: 'Unit sphere on the plane' },
+        { id: 'lorenz', start: 31.0, end: 38.6, mode: 'repeat', scene: '72 butterfly trajectories' },
+        { id: 'gradient-descent', start: 11.2, end: 19.2, mode: 'repeat', scene: 'Downhill on a rotating surface' },
+        { id: 'central-limit', start: 13.5, end: 33.2, mode: 'repeat', scene: '900 balls forming the bell curve' },
+    ]),
+    renderFilmWall(films, ''),
+    renderClaims(catalogComponentCount),
+])
 const besideLines = besideSource.split('\n').flatMap((line, index) => /^\s*s\.play\(/.test(line) ? [index] : [])
-const heroFilm = (await exists('examples/films/vizmatic-title.ts')) ? 'assets/stage/films/vizmatic-title.js' : 'assets/stage/site/scrub.js'
-const figures = await renderFigures([
-    { name: 'production-system-map', label: 'System map', alt: 'A dense production system map with services, data stores, regions, ports, and live metrics', caption: 'A production system on one page: services, boundaries, ports, protocols, and live numbers.' },
-    { name: 'production-system-map-presentation', label: 'Same source, larger', alt: 'The same production system map rendered at presentation density, with larger type and strokes', caption: 'The same source at presentation density. One prop changes, and nothing else does.' },
-    { name: 'llm-serving-stack', label: 'LLM serving', alt: 'Disaggregated LLM serving stack with prefill, decode, KV cache store, and live telemetry', caption: 'Disaggregated prefill and decode pools, shared KV cache, and live throughput on one page.' },
-    { name: 'engineering-dashboard', label: 'Dashboard', alt: 'An engineering platform health dashboard with small multiples, latency heatmap, charts, and endpoint tables', caption: 'Small multiples, heatmaps, charts, and tables that share one scale of type and rule.' },
-    { name: 'data-pipeline-lineage', label: 'Data lineage', alt: 'End-to-end revenue data lineage across bronze, silver, and gold tables with freshness and schemas', caption: 'Column-level schemas, streaming and batch flows, and SLA freshness from event to board metric.' },
-])
-const landingWall = await renderHomeShowcase(films, [
-    { id: 'planetary-orbits', start: 0.8, end: 12.4, mode: 'repeat', lead: true, scene: 'Spinning orbits' },
-    { id: 'svd-3d', start: 2.2, end: 6.8, mode: 'bounce', scene: 'Unit sphere on the plane' },
-    { id: 'lorenz', start: 31.0, end: 38.6, mode: 'repeat', scene: '72 butterfly trajectories' },
-    { id: 'gradient-descent', start: 11.2, end: 19.2, mode: 'repeat', scene: 'Downhill on a rotating surface' },
-    { id: 'central-limit', start: 13.5, end: 33.2, mode: 'repeat', scene: '900 balls forming the bell curve' },
-])
-const fullWall = await renderFilmWall(films, '')
-const claims = await renderClaims(catalogComponentCount)
+const heroFilm = hasHeroTitle ? 'assets/stage/films/vizmatic-title.js' : 'assets/stage/site/scrub.js'
+const heroPreloadTags = [
+    modulePreloadLinks(['assets/stage/stage.js', heroFilm]),
+    ...(hasHeroTitle ? ['<link rel="preload" href="assets/stage/assets/fonts/SourceSerif4-24pt-Regular.ttf" as="fetch" crossorigin>'] : []),
+].filter(Boolean).join('\n  ')
 
-const benchmarkTemplate = await readFile(benchmarksTemplatePath, 'utf8')
-const benchmarkResults = JSON.parse(await readFile(benchmarkResultsPath, 'utf8')) as BenchmarkResults
+const [benchmarkTemplate, benchmarkResultsRaw, landingTemplate, filmsTemplate, examplesTemplate, componentsRaw, playgroundRaw, agentsRaw] = await Promise.all([
+    readFile(benchmarksTemplatePath, 'utf8'),
+    readFile(benchmarkResultsPath, 'utf8'),
+    readFile(templatePath, 'utf8'),
+    readFile(filmsTemplatePath, 'utf8'),
+    readFile(examplesTemplatePath, 'utf8'),
+    readFile(componentsTemplatePath, 'utf8'),
+    readFile(playgroundTemplatePath, 'utf8'),
+    readFile(agentsTemplatePath, 'utf8'),
+])
+const benchmarkResults = JSON.parse(benchmarkResultsRaw) as BenchmarkResults
 const catalogReplacements = (template: string) => template
     .replace('{{COMPONENT_EXPLORER}}', () => explorer)
     .replaceAll('{{COMPONENT_COUNT}}', String(catalogComponentCount))
@@ -408,7 +456,8 @@ const catalogReplacements = (template: string) => template
 
 const notice = (source: string, html: string) => html.replace('<!DOCTYPE html>\n', `<!DOCTYPE html>\n${generatedNotice(source)}\n`)
 
-const landing = (await readFile(templatePath, 'utf8'))
+const landing = landingTemplate
+    .replace('{{HERO_PRELOADS}}', () => heroPreloadTags)
     .replace('{{HERO_FILM}}', heroFilm)
     .replace('{{BESIDE_SOURCE}}', () => encodeHtml(besideSource.trimEnd()))
     .replace('{{BESIDE_LINES}}', besideLines.join(','))
@@ -416,13 +465,13 @@ const landing = (await readFile(templatePath, 'utf8'))
     .replace('{{FIGURES}}', () => figures)
     .replace('{{CLAIMS}}', () => claims)
 const filmFilters = renderFilmFilters(films)
-const filmsPage = (await readFile(filmsTemplatePath, 'utf8'))
+const filmsPage = filmsTemplate
     .replace('{{FILM_FILTERS}}', () => filmFilters)
     .replace('{{FILM_WALL_ALL}}', () => fullWall)
-const examplesPage = await readFile(examplesTemplatePath, 'utf8')
-const componentsTemplate = catalogReplacements(await readFile(componentsTemplatePath, 'utf8'))
-const playgroundTemplate = catalogReplacements(await readFile(playgroundTemplatePath, 'utf8'))
-const agentsTemplate = (await readFile(agentsTemplatePath, 'utf8')).replace('{{PROMPT_MD}}', () => encodeHtml(prompt))
+const examplesPage = examplesTemplate
+const componentsTemplate = catalogReplacements(componentsRaw)
+const playgroundTemplate = catalogReplacements(playgroundRaw)
+const agentsTemplate = agentsRaw.replace('{{PROMPT_MD}}', () => encodeHtml(prompt))
 const benchmarksOutput = preparePage(benchmarkTemplate, 'benchmarks.html')
     .replaceAll('{{GENERATED_AT}}', () => encodeHtml(benchmarkResults.generatedAt))
     .replace('{{ENVIRONMENT}}', () => renderBenchmarkEnvironment(benchmarkResults))

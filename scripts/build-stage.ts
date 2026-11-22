@@ -121,37 +121,78 @@ export interface StageBuildOptions {
     demos?: Record<string, string>
 }
 
+export interface StageBuildResult {
+    films: string[]
+    /** Return static ESM module paths (relative to `docs/`, e.g. `assets/stage/...`) needed for the given entries. */
+    preloadsFor(entries: readonly string[]): string[]
+}
+
 /**
  * Bundle the browser engine, every film, the site's own films, and guide demos
  * into one build. They must share one engine module, because that module holds
  * the clock, and splitting gives them the same copy.
  */
-export async function buildStage(options: StageBuildOptions = {}): Promise<string[]> {
+export async function buildStageBundle(options: StageBuildOptions = {}): Promise<StageBuildResult> {
     await rm(out, { recursive: true, force: true })
     await mkdir(`${out}/assets/fonts`, { recursive: true })
-    const films = await listSources('examples/films')
+    const [films, siteFilms, siteRuntime] = await Promise.all([
+        listSources('examples/films'),
+        listSources('scripts/site-films'),
+        listSources('scripts/site-runtime'),
+    ])
     const entryPoints: Record<string, string> = { stage: 'src/stage/site-player.ts' }
     for (const name of films) entryPoints[`films/${name.replace(/\.tsx?$/, '')}`] = join('examples/films', name)
-    for (const name of await listSources('scripts/site-films')) entryPoints[`site/${name.replace(/\.tsx?$/, '')}`] = join('scripts/site-films', name)
-    for (const name of await listSources('scripts/site-runtime')) entryPoints[`site/${name.replace(/\.tsx?$/, '')}`] = join('scripts/site-runtime', name)
+    for (const name of siteFilms) entryPoints[`site/${name.replace(/\.tsx?$/, '')}`] = join('scripts/site-films', name)
+    for (const name of siteRuntime) entryPoints[`site/${name.replace(/\.tsx?$/, '')}`] = join('scripts/site-runtime', name)
     for (const [name, path] of Object.entries(options.demos ?? {})) entryPoints[`demos/${name}`] = path
-    await build({
-        entryPoints,
-        bundle: true,
-        splitting: true,
-        format: 'esm',
-        target: 'es2022',
-        platform: 'browser',
-        outdir: out,
-        minify: true,
-        // Chunks stay beside stage.js, because the engine locates fonts relative to its own module URL.
-        chunkNames: '[name]-[hash]',
-        alias: { 'vizmatic/stage': './src/stage/index.ts' },
-        plugins: [splitStageBarrelPlugin()],
-        logLevel: 'warning',
-    })
-    await Promise.all(STAGE_FONTS.map((font) => copyFile(`assets/fonts/${font}`, `${out}/assets/fonts/${font}`)))
-    return films
+    const [result] = await Promise.all([
+        build({
+            entryPoints,
+            bundle: true,
+            splitting: true,
+            format: 'esm',
+            target: 'es2022',
+            platform: 'browser',
+            outdir: out,
+            minify: true,
+            metafile: true,
+            // Chunks stay beside stage.js, because the engine locates fonts relative to its own module URL.
+            chunkNames: '[name]-[hash]',
+            alias: { 'vizmatic/stage': './src/stage/index.ts' },
+            plugins: [splitStageBarrelPlugin()],
+            logLevel: 'warning',
+        }),
+        Promise.all(STAGE_FONTS.map((font) => copyFile(`assets/fonts/${font}`, `${out}/assets/fonts/${font}`))),
+    ])
+
+    const staticImports = new Map<string, string[]>()
+    for (const [outputPath, info] of Object.entries(result.metafile?.outputs ?? {})) {
+        const normalized = outputPath.replace(/\\/g, '/')
+        const deps = info.imports
+            .filter((imp) => imp.kind === 'import-statement' && !imp.external)
+            .map((imp) => imp.path.replace(/\\/g, '/'))
+        staticImports.set(normalized, deps)
+    }
+
+    const preloadsFor = (entries: readonly string[]): string[] => {
+        const seen = new Set<string>()
+        const queue = entries.map((entry) => entry.startsWith('docs/') ? entry : `docs/${entry.replace(/^\/+/, '')}`)
+        while (queue.length > 0) {
+            const current = queue.shift()!
+            if (seen.has(current) || !staticImports.has(current)) continue
+            seen.add(current)
+            for (const dep of staticImports.get(current) ?? []) {
+                if (!seen.has(dep)) queue.push(dep)
+            }
+        }
+        return [...seen].map((file) => file.replace(/^docs\//, ''))
+    }
+
+    return { films, preloadsFor }
+}
+
+export async function buildStage(options: StageBuildOptions = {}): Promise<string[]> {
+    return (await buildStageBundle(options)).films
 }
 
 if (process.argv[1]?.endsWith('build-stage.ts')) {

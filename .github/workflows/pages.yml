@@ -162,12 +162,21 @@ jobs:
           pattern: pages-films-${{ needs.prepare.outputs.sha }}-*
           path: .cache/films
           merge-multiple: true
-      - name: Assemble and verify the complete film catalog
-        run: pnpm render:films --no-posters --cache-dir .cache/films --require-cache
-      - name: Build showcase media from source
-        run: pnpm exec tsx scripts/render-video-example.ts
-      # Use the package from prepare instead of rebuilding for each render command.
-      - run: pnpm exec tsx scripts/render-examples.ts
+      # Assemble cached catalog MP4s, render showcase media, and verify gallery examples concurrently (disjoint outputs).
+      - name: Assemble catalog, build showcase media, and render examples
+        run: |
+          set -euo pipefail
+          pnpm render:films --no-posters --cache-dir .cache/films --require-cache &
+          pid_films=$!
+          pnpm exec tsx scripts/render-video-example.ts &
+          pid_video=$!
+          pnpm exec tsx scripts/render-examples.ts &
+          pid_examples=$!
+          status=0
+          wait "$pid_films" || status=1
+          wait "$pid_video" || status=1
+          wait "$pid_examples" || status=1
+          exit "$status"
       - run: pnpm site:build
       - run: pnpm docs:check --require-video
       # The rendered examples, the film posters, and some data files in docs/ are still committed.

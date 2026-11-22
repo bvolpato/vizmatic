@@ -10,7 +10,7 @@ function frame(scene: Scene3D, dark: boolean): Frame {
     return { width: 320, height: 240, ops, dark, bloom: 0, background: dark ? '#101820' : '#f8f6ee' }
 }
 
-const pixels = (frame: Frame) => new Resvg(frameToSvg(frame)).render().pixels
+const pixels = (frame: Frame) => new Resvg(frameToSvg(frame), { font: { loadSystemFonts: false } }).render().pixels
 const maxDifference = (a: Uint8Array, b: Uint8Array) => a.reduce((max, value, i) => Math.max(max, Math.abs(value - b[i]!)), 0)
 const camera = { theta: 0, phi: Math.PI / 2, perspective: false, unit: 100, fog: 0 } as const
 

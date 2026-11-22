@@ -55,7 +55,7 @@ it.runIf(process.env.VIZMATIC_BROWSER_TESTS === '1')('paints sampled fields iden
         })()`))
         console.info('[scalar field browser] SVG pixel assertions: start')
         for (const [i, time] of [0, 1, 0.3, 0].entries()) {
-            const expected = new Resvg(frameToSvg(compiled.frame(time))).render().pixels
+            const expected = new Resvg(frameToSvg(compiled.frame(time)), { font: { loadSystemFonts: false } }).render().pixels
             expect(actual[i]).toEqual(Array.from(expected))
         }
         console.info('[scalar field browser] SVG pixel assertions: done')

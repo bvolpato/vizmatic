@@ -104,12 +104,12 @@ const scratchRoot = await mkdtemp(join(tmpdir(), 'vizmatic-render-examples-'))
 try {
     // Partition regular examples across parallel worker batches so Node, fonts, and Satori stay warm
     // and every batch writes its own temp manifest without contending on docs/assets/examples/manifest.json.
-    const workerCount = Math.min(4, Math.max(1, cpus().length))
-    type RenderBatch = { kind: 'png'; sources: string[]; extraArgs: string[] } | { kind: 'gif'; sources: string[] }
+    const workerCount = Math.min(8, Math.max(1, cpus().length))
+    type RenderBatch = { kind: 'png'; sources: string[]; extraArgs: string[] } | { kind: 'gif'; sources: string[]; theme: (typeof themes)[number] }
     const batches: RenderBatch[] = []
-    // Queue animated GIF jobs first so the longest renders start immediately and PNG batches fill behind them.
+    // Queue per-theme animated GIF jobs first so the longest renders start immediately across all workers.
     for (const source of animatedSources) {
-        batches.push({ kind: 'gif', sources: [source] })
+        for (const theme of themes) batches.push({ kind: 'gif', sources: [source], theme })
     }
     if (regularSources.length > 0) {
         const chunkCount = Math.min(workerCount, regularSources.length)
@@ -124,11 +124,20 @@ try {
         batches.push({ kind: 'png', sources: transparentSources, extraArgs: [] })
     }
 
+    type GifManifestEntry = {
+        name: string
+        source: string
+        width: number
+        height: number
+        outputs: string[]
+        outputDetails: Array<{ theme: string; [key: string]: unknown }>
+        [key: string]: unknown
+    }
     const gifManifestPath = join(outDir, 'gif-manifest.json')
-    const previousGifs: Array<{ name: string }> = animatedSources.length > 0 && selected
+    const previousGifs: GifManifestEntry[] = animatedSources.length > 0 && selected
         ? JSON.parse(await readFile(gifManifestPath, 'utf8'))
         : []
-    const updatedGifs: Array<{ name: string }> = []
+    const updatedGifsByName = new Map<string, Map<string, GifManifestEntry>>()
 
     const renderTasks: Promise<void>[] = []
     let nextBatch = 0
@@ -163,7 +172,7 @@ try {
                     '--out',
                     batchOut,
                     '--theme',
-                    themes.join(','),
+                    batch.theme,
                     '--watermark',
                     'Vizmatic',
                     '--scale',
@@ -175,8 +184,12 @@ try {
                         .filter((file) => file.endsWith('.gif'))
                         .map((file) => copyFile(join(batchOut, file), join(outDir, file))),
                 )
-                const batchGifs: Array<{ name: string }> = JSON.parse(await readFile(join(batchOut, 'gif-manifest.json'), 'utf8'))
-                updatedGifs.push(...batchGifs)
+                const batchGifs: GifManifestEntry[] = JSON.parse(await readFile(join(batchOut, 'gif-manifest.json'), 'utf8'))
+                for (const entry of batchGifs) {
+                    const byTheme = updatedGifsByName.get(entry.name) ?? new Map<string, GifManifestEntry>()
+                    byTheme.set(batch.theme, entry)
+                    updatedGifsByName.set(entry.name, byTheme)
+                }
             }
         }
     }
@@ -186,7 +199,20 @@ try {
     await Promise.all(renderTasks)
 
     if (animatedSources.length > 0) {
-        const gifsByName = new Map([...previousGifs, ...updatedGifs].map((entry) => [entry.name, entry]))
+        const mergedUpdated: GifManifestEntry[] = []
+        for (const [name, byTheme] of updatedGifsByName) {
+            const ordered = themes.map((theme) => byTheme.get(theme)).filter((entry): entry is GifManifestEntry => entry !== undefined)
+            const first = ordered[0]
+            if (!first || ordered.length !== themes.length) {
+                throw new Error(`Missing themed GIF output for ${name}`)
+            }
+            mergedUpdated.push({
+                ...first,
+                outputs: ordered.flatMap((entry) => entry.outputs),
+                outputDetails: ordered.flatMap((entry) => entry.outputDetails),
+            })
+        }
+        const gifsByName = new Map([...previousGifs, ...mergedUpdated].map((entry) => [entry.name, entry]))
         const completeGifs = manifest
             .filter((entry) => entry.outputs.some((output) => output.endsWith('.gif')))
             .map((entry) => {

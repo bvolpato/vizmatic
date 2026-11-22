@@ -21,8 +21,13 @@ let cachedBarePython: string | null | undefined
 let cachedAudioPython: string | null | undefined
 let audioVenvDir: string | null = null
 
-function barePython(): string | null {
+export function barePython(): string | null {
     if (cachedBarePython !== undefined) return cachedBarePython
+    const override = process.env['VIZMATIC_TEST_BARE_PYTHON']
+    if (override && existsSync(override)) {
+        cachedBarePython = override
+        return cachedBarePython
+    }
     const res = spawnSync(
         'uv',
         ['run', '--no-project', '--python', '3.12', 'python', '-c', 'import os, sys; print(os.path.realpath(sys.executable))'],
@@ -33,8 +38,13 @@ function barePython(): string | null {
     return cachedBarePython
 }
 
-function audioPython(): string | null {
+export function audioPython(): string | null {
     if (cachedAudioPython !== undefined) return cachedAudioPython
+    const override = process.env['VIZMATIC_TEST_AUDIO_PYTHON']
+    if (override && existsSync(override)) {
+        cachedAudioPython = override
+        return cachedAudioPython
+    }
     const venvDir = mkdtempSync(join(tmpdir(), 'vizmatic-audio-venv-'))
     audioVenvDir = venvDir
     const created = spawnSync('uv', ['venv', '--python', '3.12', venvDir], {
@@ -211,7 +221,7 @@ export async function tinyMovie(folder: string, seconds = 8.5, split = 4, name =
             await writeFile(chapters, `;FFMETADATA1\ntitle=A tiny film\n[CHAPTER]\nTIMEBASE=1/1000\nSTART=0\nEND=4000\ntitle=One\n[CHAPTER]\nTIMEBASE=1/1000\nSTART=4000\nEND=8500\ntitle=Two\\\\ and \\= more\n`)
             await writeFile(captions, '1\n00:00:00,100 --> 00:00:00,900\nFirst line\n\n2\n00:00:01,100 --> 00:00:01,900\nSecond line\n')
             ffmpeg('-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=30:duration=8.5', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=8.5:sample_rate=48000', '-i', captions,
-                '-map', '0:v', '-map', '1:a', '-map', '2:s', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-c:s', 'mov_text', encoded)
+                '-map', '0:v', '-map', '1:a', '-map', '2:s', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-c:s', 'mov_text', encoded)
             ffmpeg('-i', encoded, '-f', 'ffmetadata', '-i', chapters, '-map', '0', '-map_metadata', '1', '-map_chapters', '1', '-c', 'copy', '-movie_timescale', '1000', cachedTinyMovie)
             await rm(encoded)
         }
@@ -223,7 +233,7 @@ export async function tinyMovie(folder: string, seconds = 8.5, split = 4, name =
     await writeFile(join(folder, 'captions.srt'), '1\n00:00:00,100 --> 00:00:00,900\nFirst line\n\n2\n00:00:01,100 --> 00:00:01,900\nSecond line\n')
     const encoded = join(folder, `encoded-${name}.mp4`)
     ffmpeg('-f', 'lavfi', '-i', `${picture}=size=320x180:rate=30:duration=${seconds}`, '-f', 'lavfi', '-i', `sine=frequency=440:duration=${seconds}:sample_rate=48000`, '-i', join(folder, 'captions.srt'),
-        '-map', '0:v', '-map', '1:a', '-map', '2:s', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-c:s', 'mov_text', encoded)
+        '-map', '0:v', '-map', '1:a', '-map', '2:s', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-c:s', 'mov_text', encoded)
     ffmpeg('-i', encoded, '-f', 'ffmetadata', '-i', join(folder, 'chapters.txt'), '-map', '0', '-map_metadata', '1', '-map_chapters', '1', '-c', 'copy', '-movie_timescale', '1000', movie)
     await rm(encoded)
     return movie

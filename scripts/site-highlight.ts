@@ -1,4 +1,4 @@
-import { codeToHtml, type ThemeRegistration } from 'shiki'
+import { createHighlighter, type BundledLanguage, type Highlighter, type ThemeRegistration } from 'shiki'
 
 function theme(name: string, type: 'dark' | 'light', colors: { text: string; comment: string; keyword: string; string: string; constant: string; func: string; type: string; punct: string }): ThemeRegistration {
     return {
@@ -20,12 +20,52 @@ function theme(name: string, type: 'dark' | 'light', colors: { text: string; com
 const ink = theme('vizmatic-ink', 'dark', { text: '#e9e5da', comment: '#8f8a7d', keyword: '#ffd75e', string: '#8fdccb', constant: '#ff9d57', func: '#9fd3ea', type: '#c7b8ff', punct: '#a5a091' })
 const paper = theme('vizmatic-paper', 'light', { text: '#23211b', comment: '#6c685c', keyword: '#815700', string: '#0a6a60', constant: '#a8430a', func: '#1f5f8f', type: '#5a3eb0', punct: '#55514a' })
 
+const PRELOADED_LANGS: BundledLanguage[] = ['ts', 'tsx', 'bash', 'json', 'html', 'css', 'js', 'jsx']
+let highlighterPromise: Promise<Highlighter> | undefined
+const loadedLangs = new Set<string>(['text', 'plaintext', 'txt', ...PRELOADED_LANGS])
+const loadingLangs = new Map<string, Promise<void>>()
+
+async function getHighlighter(lang: string): Promise<Highlighter> {
+    highlighterPromise ??= createHighlighter({
+        themes: [ink, paper, 'github-dark-high-contrast', 'github-light-high-contrast'],
+        langs: PRELOADED_LANGS,
+    })
+    const highlighter = await highlighterPromise
+    if (!loadedLangs.has(lang)) {
+        let pending = loadingLangs.get(lang)
+        if (!pending) {
+            pending = highlighter.loadLanguage(lang as BundledLanguage).then(() => {
+                loadedLangs.add(lang)
+                loadingLangs.delete(lang)
+            }, (error) => {
+                loadingLangs.delete(lang)
+                throw error
+            })
+            loadingLangs.set(lang, pending)
+        }
+        await pending
+    }
+    return highlighter
+}
+
 /** Highlight code for the site in both themes. The result carries a `--shiki-*` color per token. */
 export async function highlight(code: string, lang: string, preAttributes = ''): Promise<string> {
+    const highlighter = await getHighlighter(lang)
     // No time limit for a line: with the default limit, a busy machine gives up on a long line and colors the
     // rest of the block in another way, so two builds of one source differ.
-    const html = await codeToHtml(code, { lang, themes: { light: paper, dark: ink }, defaultColor: false, tokenizeTimeLimit: 0 })
+    const html = highlighter.codeToHtml(code, { lang, themes: { light: 'vizmatic-paper', dark: 'vizmatic-ink' }, defaultColor: false, tokenizeTimeLimit: 0 })
     return html.replace(/^<pre[^>]*>/, `<pre class="shiki" data-shiki="${lang}" tabindex="0"${preAttributes ? ` ${preAttributes}` : ''}>`)
+}
+
+/** Highlight a gallery TSX example using the shared high-contrast GitHub themes. */
+export async function highlightGalleryExample(code: string, mode: 'dark' | 'light'): Promise<string> {
+    const highlighter = await getHighlighter('tsx')
+    return highlighter.codeToHtml(code, {
+        lang: 'tsx',
+        theme: `github-${mode}-high-contrast`,
+        // Embedded image strings must retain the same grammar state on slower CI runners.
+        tokenizeTimeLimit: 0,
+    })
 }
 
 export function decodeHtml(value: string): string {

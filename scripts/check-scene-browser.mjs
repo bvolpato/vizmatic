@@ -104,7 +104,7 @@ try {
         await renderSceneFrame({ ...request, time, outputScale, outputPath })
         const png = await readFile(outputPath)
         const width = png.readUInt32BE(16), height = png.readUInt32BE(20)
-        const rasterizer = new Resvg(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><image width="${width}" height="${height}" href="data:image/png;base64,${png.toString('base64')}"/></svg>`)
+        const rasterizer = new Resvg(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><image width="${width}" height="${height}" href="data:image/png;base64,${png.toString('base64')}"/></svg>`, { font: { loadSystemFonts: false } })
         const expected = createHash('sha256').update(rasterizer.render().pixels).digest('hex')
         assert.equal(result.frames[0].hash, expected, `Browser RGBA must exactly match Node PNG pixels for case ${index}`)
         if (index < 2) {

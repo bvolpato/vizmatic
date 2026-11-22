@@ -10,7 +10,7 @@ import { Resvg } from '@resvg/resvg-js'
 import parseCssColor from 'parse-css-color'
 import type { OverflowResult } from './autocrop'
 import type { WatermarkInput } from './brand'
-import { CanvasOverflowError, renderToSvg, type RenderBackground } from './render'
+import { CanvasOverflowError, getResvgFontOptions, renderToSvg, type RenderBackground } from './render'
 import { getThemeColors, type ThemeMode } from './theme'
 import { sampleAnimationFrame, type DefinedAnimation } from './timeline'
 
@@ -258,6 +258,7 @@ export async function renderAnimationVideo<S extends object>(
         const rendered = new Resvg(svg, {
             fitTo: { mode: 'width', value: options.width * scale },
             background: backgroundColor,
+            font: getResvgFontOptions(svg),
         }).render()
         if (rendered.width !== options.width * scale || rendered.height !== options.height * scale) {
             throw new Error('All video frames must match the scaled canvas dimensions')
