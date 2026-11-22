@@ -9,7 +9,7 @@ import {
 } from 'vizmatic/stage'
 
 const SIZE = 3
-const GRID = 38
+const GRID = 30
 const ETA = 0.32
 const STEPS = 170
 const CENTER: Vec = [-235, 16]
@@ -97,7 +97,12 @@ export default film({
             1,
         ]
     }
-    interface Quad { corners: [number, number][]; fill: Rgba; edge: Rgba; lines: { a: Vec; b: Vec; level: number }[] }
+    interface Quad {
+        corners: [number, number, number][]
+        fill: Rgba
+        edge: Rgba
+        lines: { a: [number, number, number]; b: [number, number, number]; level: number }[]
+    }
     const levels = Array.from({ length: 16 }, (_, i) => low + ((i + 0.6) * (high - low)) / 16)
     const levelColors = ramp(levels.length, 'blue', 'teal', 'green', 'yellow')
     const quads: Quad[] = []
@@ -112,17 +117,19 @@ export default film({
             const lambert = Math.max(0, (nx * -0.42 + ny * -0.58 + nz * 0.7) / size)
             const level = Math.min(63, Math.floor(((loss((x0 + x1) / 2, (y0 + y1) / 2) - low) / (high - low)) * 64))
             const light = 0.45 + 0.75 * lambert
-            const corners: [number, number][] = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
-            const values = corners.map(([x, y]) => loss(x, y))
+            const cornerXY: [number, number][] = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
+            const values = cornerXY.map(([x, y]) => loss(x, y))
+            const corners: [number, number, number][] = cornerXY.map(([x, y], idx) => [x, y, ((values[idx]! - low) / (high - low)) * HEIGHT + 0.16])
             const lines: Quad['lines'] = []
             levels.forEach((value, index) => {
-                const hits: Vec[] = []
+                const hits: [number, number, number][] = []
                 for (let c = 0; c < 4; c++) {
                     const va = values[c]!, vb = values[(c + 1) % 4]!
                     if ((va < value) === (vb < value)) continue
                     const t = (value - va) / (vb - va)
-                    const [ax, ay] = corners[c]!, [bx, by] = corners[(c + 1) % 4]!
-                    hits.push([ax + (bx - ax) * t, ay + (by - ay) * t])
+                    const [ax, ay] = cornerXY[c]!, [bx, by] = cornerXY[(c + 1) % 4]!
+                    const hx = ax + (bx - ax) * t, hy = ay + (by - ay) * t
+                    hits.push([hx, hy, heightOf(hx, hy) - FLOOR])
                 }
                 if (hits.length >= 2) lines.push({ a: hits[0]!, b: hits[1]!, level: index })
             })
@@ -167,13 +174,15 @@ export default film({
         const lift = rise.value
         const z = (x: number, y: number) => FLOOR + (heightOf(x, y) - FLOOR) * lift
         for (const quad of quads) {
-            const corners = quad.corners.map(([x, y]) => project(x, y, z(x, y)))
+            const corners = quad.corners.map(([x, y, dz]) => project(x, y, FLOOR + dz * lift))
             const depth = (corners[0]!.depth + corners[1]!.depth + corners[2]!.depth + corners[3]!.depth) / 4
             const parts: Node[] = [new Node(polyPath(corners.map((corner) => corner.p), true)).fill(quad.fill).stroke(quad.edge, 0.7)]
             for (const mark of quad.lines) {
-                parts.push(line(project(mark.a[0], mark.a[1], z(mark.a[0], mark.a[1]) + 0.004).p, project(mark.b[0], mark.b[1], z(mark.b[0], mark.b[1]) + 0.004).p, {
-                    stroke: levelColors[mark.level]!, width: 1.5,
-                }))
+                parts.push(line(
+                    project(mark.a[0], mark.a[1], FLOOR + mark.a[2] * lift + 0.004).p,
+                    project(mark.b[0], mark.b[1], FLOOR + mark.b[2] * lift + 0.004).p,
+                    { stroke: levelColors[mark.level]!, width: 1.5 },
+                ))
             }
             items.push({ depth, node: parts.length === 1 ? parts[0]! : new Node().add(...parts) })
         }

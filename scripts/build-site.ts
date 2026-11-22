@@ -422,7 +422,7 @@ const [besideSource, hasHeroTitle, figures, landingWall, fullWall, claims] = awa
     renderHomeShowcase(films, [
         { id: 'planetary-orbits', start: 0.8, end: 12.4, mode: 'repeat', lead: true, scene: 'Spinning orbits' },
         { id: 'svd-3d', start: 2.2, end: 6.8, mode: 'bounce', scene: 'Unit sphere on the plane' },
-        { id: 'lorenz', start: 31.0, end: 38.6, mode: 'repeat', scene: '72 butterfly trajectories' },
+        { id: 'lorenz', start: 30.7, end: 33.4, mode: 'bounce', speed: 0.48, scene: '72 butterfly trajectories' },
         { id: 'gradient-descent', start: 11.2, end: 19.2, mode: 'repeat', scene: 'Downhill on a rotating surface' },
         { id: 'central-limit', start: 13.5, end: 33.2, mode: 'repeat', scene: '900 balls forming the bell curve' },
     ]),

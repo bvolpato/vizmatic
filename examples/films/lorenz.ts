@@ -62,20 +62,34 @@ export default film({
         return [CENTER[0] + X * scale, CENTER[1] - (Y * se + Z * ce) * scale]
     }
 
-    const tail = (data: Samples, from: number, to: number, stride: number): Vec[] => {
+    const sampleHead = (data: Samples, headFloat: number): Vec => {
+        const i0 = Math.min(SPAN - 1, Math.max(0, Math.floor(headFloat)))
+        const i1 = Math.min(SPAN - 1, i0 + 1)
+        const frac = headFloat - i0
+        const a = data[i0]!, b = data[i1]!
+        return project(
+            a[0]! + (b[0]! - a[0]!) * frac,
+            a[1]! + (b[1]! - a[1]!) * frac,
+            a[2]! + (b[2]! - a[2]!) * frac,
+        )
+    }
+
+    const tail = (data: Samples, from: number, to: number, stride: number, tip?: Vec): Vec[] => {
         const out: Vec[] = []
         for (let i = Math.max(0, from); i <= to; i += stride) out.push(project(data[i]![0]!, data[i]![1]!, data[i]![2]!))
+        if (tip) out.push(tip)
         return out
     }
 
     /** A line that fades into its own past, in four stretches. */
-    const comet = (data: Samples, head: number, length: number, color: string | Rgba, width: number, stride: number, alpha: number): Node[] => {
+    const comet = (data: Samples, headFloat: number, length: number, color: string | Rgba, width: number, stride: number, alpha: number, tip: Vec): Node[] => {
+        const head = Math.min(SPAN - 1, Math.floor(headFloat))
         const out: Node[] = []
         const stops = [[1, 0.6, 0.1], [0.6, 0.32, 0.26], [0.32, 0.12, 0.55], [0.12, 0, 1]] as const
         for (const [far, near, opacity] of stops) {
-            const from = Math.floor(head - length * far), to = Math.floor(head - length * near)
+            const from = Math.floor(headFloat - length * far), to = Math.floor(headFloat - length * near)
             if (to <= 0 || to <= from) continue
-            const points = tail(data, Math.max(0, from), Math.min(head, to), stride)
+            const points = tail(data, Math.max(0, from), Math.min(head, to), stride, near === 0 ? tip : undefined)
             if (points.length > 1) out.push(new Node(polyPath(points)).stroke(color, width, opacity * alpha))
         }
         return out
@@ -83,25 +97,29 @@ export default film({
 
     const scene = dynamic(() => {
         const t = clock.value
-        const head = Math.min(SPAN - 1, Math.floor(t / DT))
+        const headFloat = Math.max(0, Math.min(SPAN - 1, t / DT))
+        const head = Math.floor(headFloat)
         const out: Node[] = []
         if (showSingle.value > 0) {
             // The long trail keeps the shape of the butterfly while one point runs through it.
-            const points = tail(runA, 0, head, 2)
+            const tipA = sampleHead(runA, headFloat)
+            const points = tail(runA, 0, head, 2, tipA)
             if (points.length > 1) out.push(new Node(polyPath(points)).stroke('blue', 1.6, 0.8 * showSingle.value).glow(3, 'blue'))
-            out.push(dot(8, 'yellow').at(project(runA[head]![0]!, runA[head]![1]!, runA[head]![2]!)).glow(12).opacity(showSingle.value))
+            out.push(dot(8, 'yellow').at(tipA).glow(12).opacity(showSingle.value))
         }
         if (showPair.value > 0) {
             const a = showPair.value
-            out.push(...comet(runA, head, 1400, 'yellow', 3, 2, a), ...comet(runB, head, 1400, 'pink', 3, 2, a))
-            out.push(dot(8, 'yellow').at(project(runA[head]![0]!, runA[head]![1]!, runA[head]![2]!)).glow(10).opacity(a))
-            out.push(dot(8, 'pink').at(project(runB[head]![0]!, runB[head]![1]!, runB[head]![2]!)).glow(10).opacity(a))
+            const tipA = sampleHead(runA, headFloat), tipB = sampleHead(runB, headFloat)
+            out.push(...comet(runA, headFloat, 1400, 'yellow', 3, 2, a, tipA), ...comet(runB, headFloat, 1400, 'pink', 3, 2, a, tipB))
+            out.push(dot(8, 'yellow').at(tipA).glow(10).opacity(a))
+            out.push(dot(8, 'pink').at(tipB).glow(10).opacity(a))
         }
         if (showCloud.value > 0) {
             const a = showCloud.value
             cloud.forEach((data, i) => {
-                out.push(...comet(data, head, 420, cloudColors[i]!, 2, 4, a))
-                out.push(dot(4.5, cloudColors[i]!).at(project(data[head]![0]!, data[head]![1]!, data[head]![2]!)).opacity(a))
+                const tip = sampleHead(data, headFloat)
+                out.push(...comet(data, headFloat, 420, cloudColors[i]!, 2, 6, a, tip))
+                out.push(dot(4.5, cloudColors[i]!).at(tip).opacity(a))
             })
         }
         return out

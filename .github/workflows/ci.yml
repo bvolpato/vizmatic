@@ -136,22 +136,22 @@ jobs:
           VIZMATIC_BROWSER_TESTS: '1'
         run: |
           set -euo pipefail
+          pnpm check:studio &
+          pid_studio=$!
           pnpm check:playground &
           pid_playground=$!
-          pnpm check:scene-browser &
-          pid_scene=$!
           (
+            pnpm check:scene-browser
             timeout --kill-after=10s 180s pnpm exec vitest run --maxWorkers 1 --reporter verbose \
               tests/stage-image.test.ts tests/stage-bloom-browser.test.ts tests/stage-engine-upgrades.test.ts \
               tests/stage-tex-browser.test.ts tests/stage-scalar-field-browser.test.ts tests/stage-color-bar-raster.test.ts \
               tests/fourier-seek-browser.test.ts tests/site-film-preview-browser.test.ts
-            pnpm check:studio
           ) &
-          pid_stage_studio=$!
+          pid_parity=$!
           status=0
+          wait "$pid_studio" || status=1
           wait "$pid_playground" || status=1
-          wait "$pid_scene" || status=1
-          wait "$pid_stage_studio" || status=1
+          wait "$pid_parity" || status=1
           exit "$status"
 
   runtime:

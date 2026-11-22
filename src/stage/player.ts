@@ -463,6 +463,9 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
             root.innerHTML = `<style>${PLAYER_CSS}</style><canvas class="stage" role="img"></canvas><canvas class="bloom" aria-hidden="true" hidden></canvas><div class="caption" hidden></div><div class="chrome"><button class="toggle" type="button" aria-label="Play">${ICON_PLAY}</button><div class="track" role="slider" tabindex="0" aria-label="Seek" aria-valuemin="0"><div class="fill"></div></div><span class="time">0:00</span><button class="cc" type="button" aria-label="Captions" aria-pressed="true" hidden>CC</button><button class="mute" type="button" aria-label="Mute" aria-pressed="false" hidden>${ICON_VOLUME}</button><button class="full" type="button" aria-label="Full screen">${ICON_FULL}</button></div>`
             root.querySelector('canvas')!.setAttribute('aria-label', rawLabel)
             this.setAttribute('data-paused', '')
+            const rootMargin = this.getAttribute('root-margin') ?? '240px'
+            const thresholdAttr = Number(this.getAttribute('threshold'))
+            const threshold = Number.isFinite(thresholdAttr) && thresholdAttr >= 0 && thresholdAttr <= 1 ? thresholdAttr : 0
             this.intersection = new IntersectionObserver((entries) => {
                 if (connection !== this.connectionSeq) return
                 this.visible = entries.some((entry) => entry.isIntersecting)
@@ -478,11 +481,12 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
                         this.player.play()
                     }
                 }
-            }, { rootMargin: '240px' })
+            }, { rootMargin, threshold })
             this.intersection.observe(this)
-            // Above-the-fold films marked `eager` kick off module loading immediately instead of waiting an IO tick.
-            if (this.hasAttribute('eager') && !this.started) {
-                this.visible = true
+            // Above-the-fold films marked `eager` kick off module loading and playback immediately;
+            // `preload` compiles and paints the first frame early while letting IntersectionObserver gate playback.
+            if ((this.hasAttribute('eager') || this.hasAttribute('preload')) && !this.started) {
+                if (this.hasAttribute('eager')) this.visible = true
                 this.startPromise = this.start()
             }
         }
@@ -728,6 +732,8 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
             const loopStart = loopStartAttr !== null && Number.isFinite(Number(loopStartAttr)) ? Number(loopStartAttr) : undefined
             const loopEnd = loopEndAttr !== null && Number.isFinite(Number(loopEndAttr)) ? Number(loopEndAttr) : undefined
             const loopMode = this.getAttribute('loop-mode') === 'bounce' ? 'bounce' : 'repeat'
+            const speedAttr = Number(this.getAttribute('speed'))
+            const speed = Number.isFinite(speedAttr) && speedAttr > 0 ? speedAttr : undefined
             const startAt = this.getAttribute('start')
             const firstStep = this.hasAttribute('stepped') && !autoplay ? film.chapters.find((c) => c.time > 0) : undefined
             let initialTime = 0
@@ -746,6 +752,7 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
                 loopStart,
                 loopEnd,
                 loopMode,
+                speed,
                 stepped: this.hasAttribute('stepped'),
                 maxWidth,
                 presentCanvas: bloomCanvas,

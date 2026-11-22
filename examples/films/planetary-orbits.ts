@@ -1,7 +1,7 @@
 import {
-    Box, circle, column, curve3d, dot, dynamic, fadeIn, fadeOut, film,
+    Box, Node, circle, circlePath, column, curve3d, dot, dynamic, fadeIn, fadeOut, film,
     place, point3d, radialGradient, rectPath, scene3d, sceneKit, tex, text, parseColor, mixColor,
-    type Node, type Vec3,
+    type Ring, type Vec3,
 } from 'vizmatic/stage'
 import { PLANETS, orbitalState } from './_planetary-orbits/model'
 import { COLORS, RADII, SPACING, planetSurface, saturnRings } from './_planetary-orbits/appearance'
@@ -32,19 +32,28 @@ function position(index: number, at: number): Vec3 {
 export default film({
     title: 'Eight worlds, one gravity',
     description: 'Keplerian orbits carry eight worlds around the Sun. A shared clock shifts from the inner planets to the giants, then a moving camera explores Saturn’s tilted rings and their shadow. Planet sizes are enlarged, orbital spacing is compressed, and surfaces are stylized.',
-    look: 'midnight', font: 'text-serif', fps: 60, poster: 32, bloom: 0.08,
+    look: 'midnight', font: 'text-serif', fps: 60, poster: 32, bloom: 0.13,
 }, (s) => {
     const kit = sceneKit({ size: 40, heading: { size: 70, y: -460 }, area: { left: -850, right: 850, top: -330, bottom: 335 } })
     s.add(kit.heading('Eight worlds, one gravity'))
     s.add(place(text('Keplerian motion · compressed spacing · enlarged planets · stylized surfaces', { size: 27, color: 'dim' }), new Box(-850, -410, 850, -365), 'left'))
     s.add(place(text('NASA / JPL · approximate J2000 elements', { size: 25, color: 'dim' }), new Box(-850, 351, 850, 390), 'right'))
 
-    // A fixed, sparse sky is stable under arbitrary seeks and has no flicker.
+    // A fixed, sparse sky batched into one path so 130 stars cost one draw call.
+    const starRings: Ring[] = []
     for (let i = 0; i < 130; i++) {
         const x = Math.sin(i * 127.1 + 3.7) * 43758.5453
         const y = Math.sin(i * 269.5 + 9.1) * 19642.349
-        s.add(dot(0.6 + (i % 4) * 0.23, 'dim').opacity(s.look.dark ? 0.3 : 0.17).at(-900 + (x - Math.floor(x)) * 1800, -325 + (y - Math.floor(y)) * 655))
+        starRings.push(circlePath(-900 + (x - Math.floor(x)) * 1800, -325 + (y - Math.floor(y)) * 655, 0.6 + (i % 4) * 0.23)[0]!)
     }
+    s.add(new Node(starRings).fill('dim', s.look.dark ? 0.3 : 0.17))
+
+    // Fixed J2000 orbit ellipses and trail start colors never change across frames.
+    const bgColor = parseColor('bg')
+    const trailStartColors = COLORS.map((color) => mixColor(bgColor, parseColor(color), 0.05))
+    const orbitCurves = PLANETS.map((planet, i) => curve3d((phase) => position(i, phase * planet.period), 0, 1, {
+        color: COLORS[i], width: 1.2, samples: 120,
+    }))
 
     const systemCenter = [0, 18] as const
     s.add(dynamic((t) => {
@@ -66,13 +75,12 @@ export default film({
         for (let i = 0; i < PLANETS.length; i++) {
             const planet = PLANETS[i], bodyOpacity = i < 4 ? 1 - outer : 1
             const p = position(i, at), light: Vec3 = [-p[0], -p[1], -p[2]]
-            view.add(curve3d((phase) => position(i, phase * planet.period), 0, 1, {
-                color: COLORS[i], width: 1.2, opacity: (s.look.dark ? 0.27 : 0.5) * (i < 4 ? 1 - 0.8 * outer : 1), samples: 150,
-            }))
+            view.add(orbitCurves[i]!.opacity((s.look.dark ? 0.27 : 0.5) * (i < 4 ? 1 - 0.8 * outer : 1)))
             if (bodyOpacity < 0.005) continue
             // Each trail is a fixed fraction of this planet's orbital period.
+            // Film-level WebGL bloom carries the glow without 288 per-segment Canvas2D shadow blurs.
             view.add(curve3d((past) => position(i, at - past * planet.period), 0.18, 0, {
-                colors: [mixColor(parseColor('bg'), parseColor(COLORS[i]), 0.05), COLORS[i]], width: 2.9, glow: s.look.dark ? 2 : 0, opacity: bodyOpacity, samples: 72,
+                colors: [trailStartColors[i]!, COLORS[i]], width: 3.1, opacity: bodyOpacity, samples: 48,
             }))
             view.add(planetSurface(i, p, RADII[i], light, t * 0.17).opacity(bodyOpacity))
             if (i === 5) view.add(...saturnRings(p, RADII[i], light, camera))
