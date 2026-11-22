@@ -162,10 +162,10 @@ export class View3D {
     }
 }
 
-function strokeOp(path: Path, color: Paint, alpha: number, width: number, glow = 0, cap: PathOp['cap'] = 'round'): PathOp {
+function strokeOp(path: Path, color: Paint, alpha: number, width: number, glow = 0, cap: PathOp['cap'] = 'round', blend: BlendMode = 'normal'): PathOp {
     return {
         kind: 'path', path, strokePath: path, fill: null, fillAlpha: 0, stroke: color, strokeAlpha: alpha, strokeWidth: width,
-        cap, join: 'round', dash: null, dashOffset: 0, glow, glowColor: null, blend: 'normal',
+        cap, join: 'round', dash: null, dashOffset: 0, glow, glowColor: null, blend,
     }
 }
 
@@ -180,7 +180,7 @@ function strokePiece(owner: Object3D, part: number, halo: boolean, op: PathOp): 
 
 function sameStroke(a: PathOp, b: PathOp): boolean {
     return a.strokeAlpha === b.strokeAlpha && Math.abs(a.strokeWidth - b.strokeWidth) < 1e-8
-        && a.glow === b.glow && a.cap === b.cap
+        && a.glow === b.glow && a.cap === b.cap && a.blend === b.blend
         && Array.isArray(a.stroke) && Array.isArray(b.stroke)
         && a.stroke.every((v, i) => i === 3 ? v === (b.stroke as Rgba)[i] : Math.round(v) === Math.round((b.stroke as Rgba)[i]!))
 }
@@ -305,10 +305,10 @@ function joinUnobstructed(ordered: PathOp[]): PathOp[] {
     return result
 }
 
-function fillOp(path: Path, color: Paint, alpha: number, stroke: Paint | null, strokeAlpha: number, strokeWidth: number): PathOp {
+function fillOp(path: Path, color: Paint, alpha: number, stroke: Paint | null, strokeAlpha: number, strokeWidth: number, glow = 0, blend: BlendMode = 'normal'): PathOp {
     return {
         kind: 'path', path, strokePath: path, fill: color, fillAlpha: alpha, stroke, strokeAlpha, strokeWidth,
-        cap: 'round', join: 'round', dash: null, dashOffset: 0, glow: 0, glowColor: null, blend: 'normal',
+        cap: 'round', join: 'round', dash: null, dashOffset: 0, glow, glowColor: null, blend,
     }
 }
 
@@ -769,7 +769,7 @@ export class Surface3D extends Object3D {
         }
     }
 
-    emit(view: View3D, time: number): void {
+    emit(view: View3D, time = clock.now): void {
         const { options, nu, nv, normals, shadingNormals, faceColors, screenX, screenY, screenZ, valid } = this
         const alpha = this.objectAlpha(view) * (options.opacity ?? 1) * this.get('fillOpacity')
         if (alpha <= 0.002) return
@@ -899,6 +899,8 @@ export interface Line3DStyle {
     width?: number
     opacity?: number
     glow?: number
+    /** Compositing mode for the stroke and its glow. */
+    blend?: BlendMode
     /** Draw over everything else in the scene. */
     onTop?: boolean
     /** Nudge toward the camera so a line lying on a surface stays visible. */
@@ -909,6 +911,8 @@ export interface Line3DStyle {
 
 export interface Curve3DOptions extends Line3DStyle {
     samples?: number
+    /** Recompute the curve on every frame from time. */
+    animate?: boolean
     /** Background-colored occlusion understroke (`true` adds 4 px, or pass pixel padding). Defaults to false. */
     halo?: boolean | number
 }
@@ -930,18 +934,18 @@ const ON_TOP = 1e6
 
 /** A curve in space, cut into pieces so it passes correctly in front of and behind other marks. */
 export class Curve3D extends Object3D {
+    private readonly samples: number
     private readonly points: Float64Array
     private readonly stops: readonly (readonly [number, Rgba])[] | null
+    private computedFor = -Infinity
 
-    constructor(f: (t: number) => Vec3, from: number, to: number, private readonly style: Curve3DOptions = {}) {
+    constructor(private readonly f: (t: number, time: number) => Vec3, private readonly from: number, private readonly to: number, private readonly style: Curve3DOptions = {}) {
         super()
-        const samples = style.samples ?? 240
-        this.points = new Float64Array((samples + 1) * 3)
-        for (let i = 0; i <= samples; i++) {
-            const [x, y, z] = f(from + (to - from) * i / samples)
-            this.points[i * 3] = x
-            this.points[i * 3 + 1] = y
-            this.points[i * 3 + 2] = z
+        this.samples = style.samples ?? 240
+        this.points = new Float64Array((this.samples + 1) * 3)
+        if (!style.animate) {
+            this.compute(0)
+            this.computedFor = 0
         }
         this.base.stroke = toPaint(style.color ?? 'yellow')
         this.base.strokeWidth = style.width ?? 3
@@ -953,9 +957,23 @@ export class Curve3D extends Object3D {
         }
     }
 
-    emit(view: View3D): void {
+    private compute(time: number): void {
+        const { f, from, to, samples, points } = this
+        for (let i = 0; i <= samples; i++) {
+            const [x, y, z] = f(from + (to - from) * i / samples, time)
+            points[i * 3] = x
+            points[i * 3 + 1] = y
+            points[i * 3 + 2] = z
+        }
+    }
+
+    emit(view: View3D, time = clock.now): void {
         const alpha = view.measuring ? 1 : this.objectAlpha(view) * (this.style.opacity ?? 1) * this.get('strokeOpacity')
         if (alpha <= 0.002) return
+        if (this.style.animate ? this.computedFor !== time : this.computedFor === -Infinity) {
+            this.compute(this.style.animate ? time : 0)
+            this.computedFor = time
+        }
         const trim = view.measuring ? 1 : this.get('trimTo')
         const count = this.points.length / 3 - 1
         const last = Math.floor(trim * count)
@@ -974,6 +992,7 @@ export class Curve3D extends Object3D {
         const pad = haloPad(this.style.halo, 0) * view.scale
         const bias = this.style.onTop ? ON_TOP : this.style.bias ?? 0.12
         const glow = (this.style.glow ?? 0) * view.scale
+        const blend = this.style.blend ?? 'normal'
         const glowPath: Ring[] = []
         let glowDepth = Infinity, glowScale = 0, glowCount = 0, glowColorDepth = 0
         for (let start = 0; start < last; start += piece) {
@@ -1007,7 +1026,7 @@ export class Curve3D extends Object3D {
             }
             // Palette curves retain local glow colors. A single solid blur
             // would flatten the ramp to its midpoint color.
-            view.push(strokePiece(this, start, false, strokeOp(seg, color, alpha, width * scale, this.stops ? glow : 0, 'round')), depth + bias)
+            view.push(strokePiece(this, start, false, strokeOp(seg, color, alpha, width * scale, this.stops ? glow : 0, 'round', blend)), depth + bias)
         }
         if (glowCount > 0) {
             // One blurred mask avoids bright caps at every tessellation joint.
@@ -1015,7 +1034,7 @@ export class Curve3D extends Object3D {
             // occluders can suppress glow, but cannot expose a hidden curve.
             const rgb = solidOf(base)
             const color = view.fogged(rgb[0], rgb[1], rgb[2], glowColorDepth / glowCount)
-            const op = strokeOp(glowPath, color, 0, width * glowScale / glowCount, glow)
+            const op = strokeOp(glowPath, color, 0, width * glowScale / glowCount, glow, 'round', blend)
             // The renderer takes glow strength from max(fillAlpha, strokeAlpha).
             // There is no fill and the core stroke is transparent in this pass.
             view.push({ ...op, fillAlpha: alpha }, glowDepth + bias - 0.004)
@@ -1040,7 +1059,7 @@ function chain(points: readonly Vec[]): Ring {
     return { p, closed: false, straight: true }
 }
 
-export function curve3d(f: (t: number) => Vec3, from: number, to: number, style: Curve3DOptions = {}): Curve3D {
+export function curve3d(f: (t: number, time: number) => Vec3, from: number, to: number, style: Curve3DOptions = {}): Curve3D {
     return new Curve3D(f, from, to, style)
 }
 
@@ -1067,6 +1086,10 @@ export class Line3D extends Object3D {
         const width = this.get('strokeWidth') * view.scale
         const pad = haloPad(this.style.halo, 0) * view.scale
         const bias = this.style.onTop ? ON_TOP : this.style.bias ?? 0
+        const glow = (this.style.glow ?? 0) * view.scale
+        const blend = this.style.blend ?? 'normal'
+        const glowPath: Ring[] = []
+        let glowDepth = Infinity, glowScale = 0, glowCount = 0, glowColorDepth = 0
         for (let i = 0; i < pieces; i++) {
             const t0 = (i / pieces) * trim, t1 = ((i + 1) / pieces) * trim
             if (!view.project(a[0] + (b[0] - a[0]) * t0, a[1] + (b[1] - a[1]) * t0, a[2] + (b[2] - a[2]) * t0)) continue
@@ -1076,12 +1099,24 @@ export class Line3D extends Object3D {
             const sMid = (s0 + view.ps) / 2
             const color = view.fogged(base[0], base[1], base[2], depth)
             const seg: Path = [lineRing(x0, y0, view.px, view.py)]
+            if (!view.measuring && glow > 0) {
+                glowPath.push(seg[0]!)
+                glowDepth = Math.min(glowDepth, depth)
+                glowColorDepth += depth
+                glowScale += sMid
+                glowCount++
+            }
             if (!view.measuring && pad > 0) {
                 view.push(strokePiece(this, i, true, strokeOp(seg, view.fogColor, alpha, (width + pad) * sMid, 0, 'round')), depth + bias - 0.002)
             }
             // Opaque caps can overlap without changing intensity. This also
             // closes raster cracks where fog or an occluder prevents joining.
-            view.push(strokePiece(this, i, false, strokeOp(seg, color, alpha, width * sMid, 0, alpha >= 1 ? 'round' : 'butt')), depth + bias)
+            view.push(strokePiece(this, i, false, strokeOp(seg, color, alpha, width * sMid, 0, alpha >= 1 ? 'round' : 'butt', blend)), depth + bias)
+        }
+        if (glowCount > 0) {
+            const color = view.fogged(base[0], base[1], base[2], glowColorDepth / glowCount)
+            const op = strokeOp(glowPath, color, 0, width * glowScale / glowCount, glow, 'round', blend)
+            view.push({ ...op, fillAlpha: alpha }, glowDepth + bias - 0.004)
         }
     }
 }
@@ -1097,6 +1132,8 @@ export class Vector3D extends Line3D {
     private readonly tipSize: number
     private readonly tipBias: number
     private readonly tipOpacity: number | undefined
+    private readonly tipGlow: number
+    private readonly tipBlend: BlendMode
     private readonly haloSetting: boolean | number | undefined
 
     constructor(from: Reactive3, to: Reactive3, style: Vector3DOptions = {}) {
@@ -1111,6 +1148,8 @@ export class Vector3D extends Line3D {
         this.to3 = to
         this.tipSize = style.tip ?? 24
         this.tipOpacity = style.opacity
+        this.tipGlow = style.glow ?? 0
+        this.tipBlend = style.blend ?? 'normal'
         this.haloSetting = style.halo
         // The head sorts with its shaft, so an arrow drawn on top keeps its head.
         this.tipBias = style.onTop ? ON_TOP : style.bias ?? 0
@@ -1138,7 +1177,7 @@ export class Vector3D extends Line3D {
         if (!view.measuring && tipHalo > 0) {
             view.push(strokeOp([ring], view.fogColor, alpha, tipHalo * s, 0, 'round'), depth + 0.008 + this.tipBias)
         }
-        view.push(fillOp([ring], color, alpha, null, 0, 0), depth + 0.01 + this.tipBias)
+        view.push(fillOp([ring], color, alpha, null, 0, 0, this.tipGlow * view.scale, this.tipBlend), depth + 0.01 + this.tipBias)
     }
 }
 
@@ -1153,6 +1192,10 @@ export interface Points3DStyle {
     /** Radius in stage pixels at the focus. */
     radius?: number
     opacity?: number
+    /** Gaussian glow radius around each point, in stage pixels. */
+    glow?: number
+    /** Compositing mode for each point and its glow. */
+    blend?: BlendMode
     onTop?: boolean
     /** Nudge toward the camera so a point resting on a surface is not cut by it. */
     bias?: number
@@ -1176,6 +1219,8 @@ export class Points3D extends Object3D {
         const shown = Math.ceil(points.length * trim)
         const base = solidOf(this.get('fill'))
         const bias = this.style.onTop ? ON_TOP : this.style.bias ?? 0
+        const glow = (this.style.glow ?? 0) * view.scale
+        const blend = this.style.blend ?? 'normal'
         for (let i = 0; i < shown; i++) {
             const point = points[i]!
             if (!view.project(point[0], point[1], point[2])) continue
@@ -1183,9 +1228,9 @@ export class Points3D extends Object3D {
             const color = view.fogged(rgb[0], rgb[1], rgb[2], view.pz)
             const r = radius * view.ps
             if (this.style.halo) {
-                view.push(fillOp([circleRing(view.px, view.py, r * (1 + this.style.halo))], color, alpha * 0.18, null, 0, 0), view.pz + bias - 0.001)
+                view.push(fillOp([circleRing(view.px, view.py, r * (1 + this.style.halo))], color, alpha * 0.18, null, 0, 0, 0, blend), view.pz + bias - 0.001)
             }
-            view.push(fillOp([circleRing(view.px, view.py, r)], color, alpha, null, 0, 0), view.pz + bias)
+            view.push(fillOp([circleRing(view.px, view.py, r)], color, alpha, null, 0, 0, glow, blend), view.pz + bias)
         }
     }
 }
@@ -1229,7 +1274,7 @@ export class Trail3D extends Object3D {
         return value
     }
 
-    emit(view: View3D, time: number): void {
+    emit(view: View3D, time = clock.now): void {
         if (time <= this.from) return
         const alpha = this.objectAlpha(view) * (this.style.opacity ?? 1)
         const rate = this.style.rate ?? 30
@@ -1243,6 +1288,7 @@ export class Trail3D extends Object3D {
         const fade = this.style.fade ?? (tail !== undefined ? 0 : 1)
         const bias = this.style.onTop ? ON_TOP : this.style.bias ?? 0
         const glow = (this.style.glow ?? 0) * view.scale
+        const blend = this.style.blend ?? 'normal'
         // Keep only the samples where the point moved. A point that waits and then travels
         // still gets every piece on the part it travelled, so each piece sorts by its own depth.
         const moved: Vec3[] = []
@@ -1273,7 +1319,7 @@ export class Trail3D extends Object3D {
             const fraction = Math.min(1, (i + piece / 2) / span)
             const light = fade + (1 - fade) * Math.pow(fraction, 1.6)
             const color = view.fogged(base[0], base[1], base[2], depth)
-            view.push(strokeOp([chain(coords)], color, alpha * light, width * scale, glow, 'butt'), depth + bias)
+            view.push(strokeOp([chain(coords)], color, alpha * light, width * scale, glow, 'butt', blend), depth + bias)
         }
     }
 }
