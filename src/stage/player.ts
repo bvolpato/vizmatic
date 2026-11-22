@@ -8,6 +8,12 @@ import { browserImageSource, ImageAssetError } from './image'
 
 export interface PlayerOptions {
     loop?: boolean
+    /** Optional start time (in seconds) of a looping playback window. */
+    loopStart?: number
+    /** Optional end time (in seconds) of a looping playback window. */
+    loopEnd?: number
+    /** Repeat from loopStart (default) or ping-pong smoothly between loopStart and loopEnd. */
+    loopMode?: 'repeat' | 'bounce'
     autoplay?: boolean
     speed?: number
     /** Stop at each chapter and wait for `play()` or `next()`. Use it for presentations. */
@@ -40,6 +46,7 @@ export class FilmPlayer {
     private raf = 0
     private last = 0
     private currentTime = 0
+    private direction: 1 | -1 = 1
     private playing = false
     private playbackSeq = 0
     private destroyed = false
@@ -156,9 +163,25 @@ export class FilmPlayer {
         return bufferChanged || scaleChanged
     }
 
+    private loopBounds(): { start: number; end: number } {
+        const duration = this.film.duration
+        const rawStart = this.options.loopStart
+        const rawEnd = this.options.loopEnd
+        const start = rawStart !== undefined && Number.isFinite(rawStart) ? Math.max(0, Math.min(duration, rawStart)) : 0
+        const end = rawEnd !== undefined && Number.isFinite(rawEnd) ? Math.max(0, Math.min(duration, rawEnd)) : duration
+        return end > start + 1e-4 ? { start, end } : { start: 0, end: duration }
+    }
+
     play(): void {
         if (this.destroyed || this.playing) return
-        if (this.currentTime >= this.film.duration - 1e-6) this.currentTime = 0
+        const { start, end } = this.loopBounds()
+        if (this.options.loopMode === 'bounce') {
+            if (this.currentTime < start) { this.currentTime = start; this.direction = 1 }
+            else if (this.currentTime > end) { this.currentTime = end; this.direction = -1 }
+        } else if (this.currentTime >= end - 1e-6 || this.currentTime < start - 1e-6) {
+            this.currentTime = start
+            this.direction = 1
+        }
         this.playing = true
         const seq = ++this.playbackSeq
         this.last = performance.now()
@@ -231,7 +254,9 @@ export class FilmPlayer {
         const delta = Math.max(0, Math.min(0.1, (now - this.last) / 1000))
         this.last = now
         const before = this.currentTime
-        let next = before + delta * this.speed
+        const { start, end } = this.loopBounds()
+        const span = Math.max(1e-6, end - start)
+        let next = before + delta * this.speed * this.direction
         if (this.options.stepped) {
             const boundary = this.film.chapters.find((chapter) => chapter.time > before && chapter.time <= next)
             if (boundary) {
@@ -242,10 +267,20 @@ export class FilmPlayer {
                 return
             }
         }
-        if (next >= this.film.duration) {
-            if (this.options.loop) next %= this.film.duration
+        if (this.options.loop && this.options.loopMode === 'bounce') {
+            if (next >= end) {
+                const over = (next - end) % (2 * span)
+                if (over <= span) { next = end - over; this.direction = -1 }
+                else { next = start + (over - span); this.direction = 1 }
+            } else if (next <= start) {
+                const under = (start - next) % (2 * span)
+                if (under <= span) { next = start + under; this.direction = 1 }
+                else { next = end - (under - span); this.direction = -1 }
+            }
+        } else if (next >= end) {
+            if (this.options.loop) next = start + ((next - start) % span)
             else {
-                this.currentTime = this.film.duration
+                this.currentTime = end
                 this.paint(undefined, true)
                 this.options.onTime?.(this.currentTime)
                 if (seq === this.playbackSeq) this.pause()
@@ -678,8 +713,16 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
                 }
                 this.dispatchEvent(new CustomEvent('timeupdate', { detail: { time: t } }))
             }
+            const loopStartAttr = this.getAttribute('loop-start')
+            const loopEndAttr = this.getAttribute('loop-end')
+            const loopStart = loopStartAttr !== null && Number.isFinite(Number(loopStartAttr)) ? Number(loopStartAttr) : undefined
+            const loopEnd = loopEndAttr !== null && Number.isFinite(Number(loopEndAttr)) ? Number(loopEndAttr) : undefined
+            const loopMode = this.getAttribute('loop-mode') === 'bounce' ? 'bounce' : 'repeat'
             const player = new FilmPlayer(canvas, film, {
                 loop: this.hasAttribute('loop'),
+                loopStart,
+                loopEnd,
+                loopMode,
                 stepped: this.hasAttribute('stepped'),
                 maxWidth,
                 presentCanvas: bloomCanvas,
@@ -709,8 +752,10 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
             this.player = player
             const startAt = this.getAttribute('start')
             const firstStep = this.hasAttribute('stepped') && !autoplay ? film.chapters.find((c) => c.time > 0) : undefined
-            if (reduced && !this.hasAttribute('start')) player.seek(film.duration)
-            else if (startAt) player.seek(Number(startAt))
+            if (reduced && !this.hasAttribute('start')) {
+                player.seek(loopStart !== undefined && loopEnd !== undefined && loopEnd > loopStart ? (loopStart + loopEnd) / 2 : film.duration)
+            } else if (startAt) player.seek(Number(startAt))
+            else if (loopStart !== undefined) player.seek(loopStart)
             else if (firstStep) player.seek(firstStep.time)
             else onTime(0)
             if (connection !== this.connectionSeq) return

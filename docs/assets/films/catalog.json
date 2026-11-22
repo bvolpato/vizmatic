@@ -10,37 +10,6 @@
     "look": "midnight"
   },
   {
-    "id": "kv-cache",
-    "title": "KV Cache: why decoding stays fast",
-    "summary": "Narrated walkthrough of autoregressive KV caching: why naive decoding repeats 512× projection work, how linear cache growth hits a 24 GiB GPU wall, and how Grouped-Query Attention cuts VRAM 8×.",
-    "topic": "Machine learning",
-    "duration": 67.8,
-    "posterTime": 64.8,
-    "featured": true,
-    "look": "midnight",
-    "audio": "assets/audio/kv-cache.m4a"
-  },
-  {
-    "id": "flash-attention",
-    "title": "FlashAttention: tiling beats memory bandwidth",
-    "summary": "Online running-max softmax streams K and V blocks through fast on-chip SRAM without materializing the N by N attention matrix in HBM.",
-    "topic": "Machine learning",
-    "duration": 46.6,
-    "posterTime": 22.8,
-    "featured": true,
-    "look": "blueprint"
-  },
-  {
-    "id": "rag-citations",
-    "title": "Every claim needs a receipt",
-    "summary": "Retrieved source passages wire directly to generated clauses, catching an unsupported claim when its citation thread snaps.",
-    "topic": "Machine learning",
-    "duration": 41.2,
-    "posterTime": 24,
-    "featured": true,
-    "look": "paper"
-  },
-  {
     "id": "svd-3d",
     "title": "SVD: reorient, stretch, reorient",
     "summary": "A unit sphere becomes an ellipsoid under a real 3D matrix, then collapses exactly to rank two. SVD separates orthogonal factors, which may rotate or reflect, from singular-value scaling.",
@@ -51,13 +20,43 @@
     "look": "chalk"
   },
   {
+    "id": "lorenz",
+    "title": "The rules are exact, the future is not",
+    "summary": "The Lorenz system integrated with real numbers: two starts a hair apart part ways, then 72 fill the butterfly.",
+    "topic": "Physics",
+    "duration": 40.2,
+    "posterTime": 39,
+    "featured": true,
+    "look": "midnight"
+  },
+  {
+    "id": "gradient-descent",
+    "title": "Downhill, one step at a time",
+    "summary": "Real gradient descent on a two-basin loss surface: two starts 0.12 apart travel together, then finish in different minima.",
+    "topic": "Machine learning",
+    "duration": 38.5,
+    "posterTime": 28,
+    "featured": true,
+    "look": "midnight"
+  },
+  {
+    "id": "central-limit",
+    "title": "Twelve coin flips, nine hundred times",
+    "summary": "A Galton board settles into a histogram that meets the Gaussian curve, with mean and deviation measured from the balls.",
+    "topic": "Statistics",
+    "duration": 36.6,
+    "posterTime": 35,
+    "featured": true,
+    "look": "midnight"
+  },
+  {
     "id": "retry-storm",
     "title": "Retry storms: why naive retries keep outages alive",
     "summary": "A two-second brownout triggers synchronized fixed retries that pin a recovered service above saturation, while full-jitter exponential backoff with a 10% retry budget restores steady load.",
     "topic": "Systems",
     "duration": 30,
     "posterTime": 26.2,
-    "featured": true,
+    "featured": false,
     "look": "neon"
   },
   {
@@ -142,16 +141,6 @@
     "look": "blueprint"
   },
   {
-    "id": "lorenz",
-    "title": "The rules are exact, the future is not",
-    "summary": "The Lorenz system integrated with real numbers: two starts a hair apart part ways, then 72 fill the butterfly.",
-    "topic": "Physics",
-    "duration": 40.2,
-    "posterTime": 39,
-    "featured": false,
-    "look": "midnight"
-  },
-  {
     "id": "forecast",
     "title": "A forecast is a range",
     "summary": "A small forecaster reads a seeded metric and draws its own past errors again as 1,000 possible futures. Two bands hold half of them and 9 of 10, the truth lands inside the wide one 43 times of 48, and 1,000 runs show how often that band is right.",
@@ -168,26 +157,6 @@
     "topic": "Chemistry",
     "duration": 40.6,
     "posterTime": 33,
-    "featured": false,
-    "look": "midnight"
-  },
-  {
-    "id": "gradient-descent",
-    "title": "Downhill, one step at a time",
-    "summary": "Real gradient descent on a two-basin loss surface: two starts 0.12 apart travel together, then finish in different minima.",
-    "topic": "Machine learning",
-    "duration": 38.5,
-    "posterTime": 28,
-    "featured": false,
-    "look": "midnight"
-  },
-  {
-    "id": "central-limit",
-    "title": "Twelve coin flips, nine hundred times",
-    "summary": "A Galton board settles into a histogram that meets the Gaussian curve, with mean and deviation measured from the balls.",
-    "topic": "Statistics",
-    "duration": 36.6,
-    "posterTime": 35,
     "featured": false,
     "look": "midnight"
   },
@@ -350,6 +319,37 @@
     "posterTime": 14,
     "featured": false,
     "look": "midnight"
+  },
+  {
+    "id": "kv-cache",
+    "title": "KV Cache: why decoding stays fast",
+    "summary": "Narrated walkthrough of autoregressive KV caching: why naive decoding repeats 512× projection work, how linear cache growth hits a 24 GiB GPU wall, and how Grouped-Query Attention cuts VRAM 8×.",
+    "topic": "Machine learning",
+    "duration": 67.8,
+    "posterTime": 64.8,
+    "featured": false,
+    "look": "midnight",
+    "audio": "assets/audio/kv-cache.m4a"
+  },
+  {
+    "id": "flash-attention",
+    "title": "FlashAttention: tiling beats memory bandwidth",
+    "summary": "Online running-max softmax streams K and V blocks through fast on-chip SRAM without materializing the N by N attention matrix in HBM.",
+    "topic": "Machine learning",
+    "duration": 46.6,
+    "posterTime": 22.8,
+    "featured": false,
+    "look": "blueprint"
+  },
+  {
+    "id": "rag-citations",
+    "title": "Every claim needs a receipt",
+    "summary": "Retrieved source passages wire directly to generated clauses, catching an unsupported claim when its citation thread snaps.",
+    "topic": "Machine learning",
+    "duration": 41.2,
+    "posterTime": 24,
+    "featured": false,
+    "look": "paper"
   },
   {
     "id": "vizmatic-title",

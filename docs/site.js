@@ -820,7 +820,7 @@
 
   function installFilms() {
     const films = $$('vz-film')
-    if (films.length === 0 && !$('[data-live-src]')) return
+    if (films.length === 0 && !$('[data-live-src]') && !$('[data-autoplay-src]')) return
     films.forEach(applyFilmTheme)
     // The hero fades in when it is ready, so the page never shows an empty frame popping into a full one.
     const revealHero = (film) => film.addEventListener('ready', () => film.classList.add('is-ready'), { once: true })
@@ -978,6 +978,63 @@
       if (film) attach(film)
       root.addEventListener('vizmatic-film-replaced', (event) => attach(event.detail.film))
     })
+  }
+
+  /** Curated homepage showcase: auto-plays each film's signature scene as it scrolls into view. */
+  function installHomeShowcase() {
+    const stages = $$('[data-autoplay-src]')
+    if (stages.length === 0) return
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+    const mountStage = (stage) => {
+      if (stage.dataset.showcaseMounted === 'true') return
+      stage.dataset.showcaseMounted = 'true'
+      const film = document.createElement('vz-film')
+      film.setAttribute('src', fromRoot(stage.dataset.autoplaySrc).href)
+      film.setAttribute('nocontrols', '')
+      film.setAttribute('loop', '')
+      if (!reduced) film.setAttribute('autoplay', '')
+      film.setAttribute('tabindex', '-1')
+      film.setAttribute('label', stage.dataset.label ?? 'Live film')
+      if (stage.dataset.loopStart) film.setAttribute('loop-start', stage.dataset.loopStart)
+      if (stage.dataset.loopEnd) film.setAttribute('loop-end', stage.dataset.loopEnd)
+      if (stage.dataset.loopMode) film.setAttribute('loop-mode', stage.dataset.loopMode)
+      if (stage.dataset.maxWidth) film.setAttribute('max-width', stage.dataset.maxWidth)
+      if (stage.dataset.look) {
+        film.setAttribute('data-fixed-look', '')
+        film.setAttribute('look', stage.dataset.look)
+      }
+      applyFilmTheme(film)
+      film.addEventListener('ready', () => {
+        if (!film.isConnected) return
+        stage.classList.add('is-live-ready')
+        stage.closest('.showcase-item')?.classList.add('is-live-ready')
+      }, { once: true })
+      film.addEventListener('error', () => {
+        stage.classList.remove('is-live-ready')
+        stage.closest('.showcase-item')?.classList.remove('is-live-ready')
+        film.remove()
+      }, { once: true })
+      stage.append(film)
+      loadStage().catch(() => {
+        stage.classList.remove('is-live-ready')
+        stage.closest('.showcase-item')?.classList.remove('is-live-ready')
+        film.remove()
+      })
+    }
+
+    if (typeof IntersectionObserver !== 'undefined') {
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return
+          observer.unobserve(entry.target)
+          mountStage(entry.target)
+        })
+      }, { rootMargin: '420px 0px' })
+      stages.forEach((stage) => observer.observe(stage))
+    } else {
+      stages.forEach(mountStage)
+    }
   }
 
   /** Posters become live on hover or focus. Touch devices keep the poster and the link. */
@@ -1308,6 +1365,7 @@
     installFilms()
     installScrub()
     installCodeSync()
+    installHomeShowcase()
     installFilmWall()
     installFilmFilters()
     installFilmPage()

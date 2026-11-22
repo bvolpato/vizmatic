@@ -69,6 +69,47 @@ export function renderFilmFilters(films: readonly FilmEntry[]): string {
     return `<div class="gallery-toolbar films-toolbar" data-film-filters><div class="filter-pills" role="toolbar" aria-label="Filter films by topic">${pills}</div><span class="catalog-count" data-film-count>${shown.length} ${shown.length === 1 ? 'film' : 'films'}</span></div>`
 }
 
+export interface FilmShowcaseSpec {
+    readonly id: string
+    readonly start: number
+    readonly end: number
+    readonly mode?: 'repeat' | 'bounce'
+    readonly lead?: boolean
+    readonly scene?: string
+}
+
+/** Curated auto-playing showcase for the homepage: one wide lead film above a 2x2 gallery. */
+export async function renderHomeShowcase(films: readonly FilmEntry[], specs: readonly FilmShowcaseSpec[]): Promise<string> {
+    const byId = new Map(films.map((film) => [film.id, film]))
+    const chosen = specs
+        .map((spec) => ({ spec, film: byId.get(spec.id) }))
+        .filter((entry): entry is { spec: FilmShowcaseSpec; film: FilmEntry } => entry.film !== undefined)
+    if (chosen.length === 0) return '<p class="film-empty">The first films are rendering. Check back soon.</p>'
+
+    const cards = await Promise.all(chosen.map(async ({ spec, film }) => {
+        const hasPoster = await exists(`docs/assets/site/posters/${film.id}_dark.webp`)
+        const meta = [film.topic, formatDuration(film.duration), spec.scene ?? ''].filter(Boolean).join(' \u00b7 ')
+        const lookLabel = film.look && film.look !== 'midnight' ? film.look[0]!.toUpperCase() + film.look.slice(1) : ''
+        const lookBadge = lookLabel ? `<span class="wall-look" data-palette="${escapeHtml(film.look!)}" title="Original film look: ${escapeHtml(lookLabel)}"><i aria-hidden="true"></i>${escapeHtml(lookLabel)} look</span>` : ''
+        const lookAttr = film.look && film.look !== 'midnight' ? ` data-look="${escapeHtml(film.look)}"` : ''
+        const poster = hasPoster ? `<img data-theme-image src="assets/site/posters/${film.id}_dark.webp" alt="" width="960" height="540" loading="lazy" decoding="async">` : ''
+        const maxWidth = spec.lead ? 1280 : 960
+        const modeAttr = spec.mode === 'bounce' ? ' data-loop-mode="bounce"' : ''
+        return [
+            `<a class="showcase-item${spec.lead ? ' is-lead' : ''}" href="film/${film.id}.html">`,
+            `<span class="showcase-stage" data-autoplay-src="assets/stage/films/${film.id}.js" data-loop-start="${spec.start}" data-loop-end="${spec.end}"${modeAttr} data-max-width="${maxWidth}"${lookAttr} data-label="${escapeHtml(film.summary || film.title)}">`,
+            poster,
+            `</span>`,
+            `<span class="showcase-body">`,
+            `<span class="showcase-copy"><h3>${escapeHtml(film.title)}</h3><p>${escapeHtml(film.summary)}</p></span>`,
+            `<span class="showcase-foot"><span class="wall-meta"><span class="showcase-badge" aria-hidden="true"><i></i>Live</span>${meta ? `<span class="meta">${escapeHtml(meta)}</span>` : ''}${lookBadge}</span><span class="showcase-open" aria-hidden="true">Open film &amp; source →</span></span>`,
+            `</span>`,
+            `</a>`,
+        ].join('')
+    }))
+    return `<div class="showcase">${cards.join('')}</div>`
+}
+
 export async function renderFilmWall(films: readonly FilmEntry[], root: string, options: { limit?: number; emphasize?: boolean } = {}): Promise<string> {
     if (films.length === 0) return '<p class="film-empty">The first films are rendering. Check back soon.</p>'
     // The title film is the hero of the home page, and is not a film to study.
