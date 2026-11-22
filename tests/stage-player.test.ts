@@ -631,6 +631,35 @@ describe('<vz-film> connection lifecycle', () => {
         }
     })
 
+    it('preloads first frame before intersecting and respects speed attribute when playback starts', async () => {
+        const { createElement, intersect } = setupFilmElement()
+        const compiled = await compileFilm(film({ bloom: 0 }, s => { s.wait(10) }))
+        const load = vi.fn(async () => compiled)
+        const el = createElement(load)
+        el.setAttribute('src', './lorenz.js')
+        el.setAttribute('preload', '')
+        el.setAttribute('root-margin', '0px')
+        el.setAttribute('loop', '')
+        el.setAttribute('loop-start', '2')
+        el.setAttribute('loop-end', '5')
+        el.setAttribute('loop-mode', 'bounce')
+        el.setAttribute('speed', '0.5')
+        el.setAttribute('autoplay', '')
+        let readyFired = false
+        el.addEventListener('ready', () => { readyFired = true })
+        el.connectedCallback()
+        try {
+            await vi.waitFor(() => expect(readyFired).toBe(true))
+            expect(el.controller?.time).toBe(2)
+            expect(el.controller?.speed).toBe(0.5)
+            expect(el.controller?.isPlaying).toBe(false)
+            intersect()
+            expect(el.controller?.isPlaying).toBe(true)
+        } finally {
+            el.disconnectedCallback()
+        }
+    })
+
     it('applies theme changes during initial loading without invalidating the connection', async () => {
         const { createElement, intersect } = setupFilmElement()
         const compiled = await compileFilm(film({ bloom: 0 }, s => { s.wait(2) }))

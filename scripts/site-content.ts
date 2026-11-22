@@ -74,6 +74,7 @@ export interface FilmShowcaseSpec {
     readonly start: number
     readonly end: number
     readonly mode?: 'repeat' | 'bounce'
+    readonly speed?: number
     readonly lead?: boolean
     readonly scene?: string
 }
@@ -95,9 +96,10 @@ export async function renderHomeShowcase(films: readonly FilmEntry[], specs: rea
         const poster = hasPoster ? `<img data-theme-image src="assets/site/posters/${film.id}_dark.webp" alt="" width="960" height="540" loading="lazy" decoding="async">` : ''
         const maxWidth = spec.lead ? 1280 : 960
         const modeAttr = spec.mode === 'bounce' ? ' data-loop-mode="bounce"' : ''
+        const speedAttr = spec.speed !== undefined && spec.speed !== 1 ? ` data-speed="${spec.speed}"` : ''
         return [
             `<a class="showcase-item${spec.lead ? ' is-lead' : ''}" href="film/${film.id}.html">`,
-            `<span class="showcase-stage" data-autoplay-src="assets/stage/films/${film.id}.js" data-loop-start="${spec.start}" data-loop-end="${spec.end}"${modeAttr} data-max-width="${maxWidth}"${lookAttr} data-label="${escapeHtml(film.summary || film.title)}">`,
+            `<span class="showcase-stage" data-autoplay-src="assets/stage/films/${film.id}.js" data-loop-start="${spec.start}" data-loop-end="${spec.end}"${modeAttr}${speedAttr} data-max-width="${maxWidth}"${lookAttr} data-label="${escapeHtml(film.summary || film.title)}">`,
             poster,
             `</span>`,
             `<span class="showcase-body">`,
