@@ -158,7 +158,7 @@ describe('smooth node glow', () => {
         // Enlarging the filter must not uncover any clipped halo pixels.
         const enlarged = svg.replace(filter!, filter!.replace(/ (x|y|width|height)="[^"]+"/g, '')
             .replace('>', ' x="-320" y="-240" width="960" height="720">'))
-        const pixels = glowPixels(frame), reference = new Resvg(enlarged).render().pixels
+        const pixels = glowPixels(frame), reference = new Resvg(enlarged, { font: { loadSystemFonts: false } }).render().pixels
         expect(Math.max(...pixels.filter((_, i) => i % 4 === 3).map((a, i) => Math.abs(a - reference[i * 4 + 3])))).toBeLessThanOrEqual(1)
         expect(pixels[(120 * 320 + 230) * 4 + 3]).toBe(0)
         expect(pixels[(110 * 320 + 70) * 4 + 3]).toBeGreaterThan(5)
@@ -473,8 +473,8 @@ describe('fromSvg and fromComponent markers, radial gradients, and data-* node l
             s.add(fromSvg(source))
             s.wait(1)
         }))
-        const actual = new Resvg(frameToSvg(compiled.frame(0), { transparent: true })).render().pixels
-        const expected = new Resvg(source).render().pixels
+        const actual = new Resvg(frameToSvg(compiled.frame(0), { transparent: true }), { font: { loadSystemFonts: false } }).render().pixels
+        const expected = new Resvg(source, { font: { loadSystemFonts: false } }).render().pixels
         const at = (pixels: Uint8Array, x: number, y: number) => [...pixels.slice((y * 240 + x) * 4, (y * 240 + x) * 4 + 4)]
         for (const [x, y] of [[120, 5], [120, 25], [120, 115], [120, 125], [10, 10], [230, 70]]) {
             expect(at(actual, x!, y!)).toEqual(at(expected, x!, y!))

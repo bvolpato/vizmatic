@@ -1,9 +1,9 @@
-import { spawnSync } from "child_process"
+import { spawnSync, type SpawnSyncOptionsWithBufferEncoding } from "child_process"
 import { closeSync, openSync } from "fs"
 import { readFile, rm, writeFile } from "fs/promises"
 import { join } from "path"
 import { describe, expect, it } from "vitest"
-import { QUIET, TIMING, TOOLS, audioSamples, ffmpeg, filmFolder, loudness, ready, tool, twoTakes } from "./narrated-tools-support"
+import { QUIET, TIMING, TOOLS, audioPython, audioSamples, ffmpeg, filmFolder, loudness, ready, tool, twoTakes } from "./narrated-tools-support"
 
 describe.skipIf(!ready)("narration tools: mix and bed", () => {
     it('lists each beat with its start and the end of its voice, on the timeline of the film', async () => {
@@ -75,20 +75,24 @@ describe.skipIf(!ready)("narration tools: mix and bed", () => {
         const pcm = audioSamples(bed)
         const excerpt = join(dir, 'excerpt.wav')
         const stream = ffmpeg('-i', voice, '-c:a', 'pcm_s16le', '-f', 'wav', 'pipe:1')
-        const excerptArgs = ['run', join(TOOLS, 'soundbed.py'), 'bed', '--voice', '-', '--palette', 'low',
+        const py = audioPython()
+        const runSoundbed = (args: string[], options: SpawnSyncOptionsWithBufferEncoding) => py
+            ? spawnSync(py, ['-B', join(TOOLS, 'soundbed.py'), ...args], { ...options, env: { ...process.env, ...QUIET, PYTHONPATH: TOOLS } })
+            : spawnSync('uv', ['run', join(TOOLS, 'soundbed.py'), ...args], { ...options, env: { ...process.env, ...QUIET } })
+        const excerptArgs = ['bed', '--voice', '-', '--palette', 'low',
             '--seed', '17', '--timing', timing, '--out', excerpt, '--start-sample', String(start), '--end-sample', String(end)]
-        const partial = spawnSync('uv', excerptArgs, { input: stream, env: { ...process.env, ...QUIET } })
+        const partial = runSoundbed(excerptArgs, { input: stream })
         expect(partial.status, partial.stderr.toString()).toBe(0)
-        const streamArgs = ['run', join(TOOLS, 'soundbed.py'), 'bed', '--voice', '-', '--out', '-',
+        const streamArgs = ['bed', '--voice', '-', '--out', '-',
             '--palette', 'low', '--seed', '17', '--timing', timing]
-        const streamed = spawnSync('uv', streamArgs, { input: stream, maxBuffer: 4 * 1024 * 1024, env: { ...process.env, ...QUIET } })
+        const streamed = runSoundbed(streamArgs, { input: stream, maxBuffer: 4 * 1024 * 1024 })
         expect(streamed.status, streamed.stderr.toString()).toBe(0)
         expect(streamed.stdout.readUInt32LE(4)).toBe(streamed.stdout.length - 8)
         expect(streamed.stdout.readUInt32LE(40)).toBe(streamed.stdout.length - 44)
         const redirectedPath = join(dir, 'redirected.wav')
         const fd = openSync(redirectedPath, 'w')
         try {
-            const redirected = spawnSync('uv', streamArgs, { input: stream, stdio: ['pipe', fd, 'pipe'], env: { ...process.env, ...QUIET } })
+            const redirected = runSoundbed(streamArgs, { input: stream, stdio: ['pipe', fd, 'pipe'] })
             expect(redirected.status, redirected.stderr.toString()).toBe(0)
         } finally {
             closeSync(fd)

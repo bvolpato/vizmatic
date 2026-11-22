@@ -254,7 +254,7 @@ export const create = () => <div style={{ display: 'flex', position: 'absolute',
         expect(svgRoot(svg)).toEqual({ width: 500, height: 368, viewBox: '0 32 500 368' })
         expect(detail).toMatchObject({ width: 500, height: 368 })
 
-        const raster = new Resvg(svg).render()
+        const raster = new Resvg(svg, { font: { loadSystemFonts: false } }).render()
         const pixels = new Uint8Array(raster.pixels.buffer)
         expect(detectContentBounds(pixels, raster.width, raster.height, detectBackgroundColor(pixels), 0)).toEqual({
             x: 24, y: 24, width: 452, height: 320,

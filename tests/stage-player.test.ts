@@ -59,8 +59,9 @@ describe('FilmPlayer lifecycle', () => {
     it('paints once on construction and skips unchanged paused resizes', async () => {
         const compiled = await compileFilm(film({ bloom: 0 }, s => { s.wait(2) }))
         const { canvas, fills } = createCanvasMock()
-        const player = new FilmPlayer(canvas, compiled, { pixelRatio: 2 })
+        const player = new FilmPlayer(canvas, compiled, { pixelRatio: 2, initialTime: 1.25 })
         try {
+            expect(player.time).toBe(1.25)
             expect(fills).toHaveLength(1)
             player.resize()
             expect(fills).toHaveLength(1)
@@ -603,6 +604,31 @@ describe('<vz-film> connection lifecycle', () => {
     afterEach(() => {
         vi.restoreAllMocks()
         vi.unstubAllGlobals()
+    })
+
+    it('starts eager elements immediately at their start time without waiting for IntersectionObserver', async () => {
+        const { createElement } = setupFilmElement()
+        const compiled = await compileFilm(film({ bloom: 0 }, s => { s.wait(5) }))
+        const evaluate = vi.spyOn(compiled, 'frame')
+        const load = vi.fn(async () => compiled)
+        const el = createElement(load)
+        el.setAttribute('src', './hero.js')
+        el.setAttribute('start', '1.7')
+        el.setAttribute('eager', '')
+        el.setAttribute('autoplay', '')
+        let readyFired = false
+        el.addEventListener('ready', () => { readyFired = true })
+        el.connectedCallback()
+        try {
+            await vi.waitFor(() => expect(readyFired).toBe(true))
+            expect(load).toHaveBeenCalledTimes(1)
+            expect(el.controller?.time).toBe(1.7)
+            expect(el.controller?.isPlaying).toBe(true)
+            expect(evaluate).toHaveBeenCalledTimes(1)
+            expect(evaluate).toHaveBeenCalledWith(1.7)
+        } finally {
+            el.disconnectedCallback()
+        }
     })
 
     it('applies theme changes during initial loading without invalidating the connection', async () => {

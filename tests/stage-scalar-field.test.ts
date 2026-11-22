@@ -13,7 +13,7 @@ describe('sampled scalar fields', () => {
             s.wait(1)
         }))
         const first = compiled.frame(0), later = compiled.frame(1)
-        const bytes = (frame: typeof first) => new Resvg(frameToSvg(frame)).render().pixels
+        const bytes = (frame: typeof first) => new Resvg(frameToSvg(frame), { font: { loadSystemFonts: false } }).render().pixels
         const a = bytes(first), b = bytes(later)
         expect(a[0]).toBe(255)
         expect(a[8 * 9 * 4]).toBe(0)
@@ -40,7 +40,7 @@ describe('sampled scalar fields', () => {
         expect(images).toHaveLength(2)
         expect(images[0].node).not.toBe(images[1].node)
         expect(images.map(op => op.alpha)).toEqual([1, 0.5])
-        const pixels = new Resvg(frameToSvg(frame)).render().pixels
+        const pixels = new Resvg(frameToSvg(frame), { font: { loadSystemFonts: false } }).render().pixels
         expect(pixels[(6 * 24 + 3) * 4 + 3]).toBe(0)
         expect(pixels[(6 * 24 + 8) * 4 + 3]).toBe(255)
         expect(pixels[(6 * 24 + 20) * 4 + 3]).toBe(128)
@@ -58,13 +58,13 @@ describe('sampled scalar fields', () => {
             s.add(scalarField(x => 10 ** x, { x: [0, 2], y: [0, 1], domain: [1, 100], scale: 'log', colors: ['#000000', '#ff0000', '#ffffff'], width: 3, height: 3, resolution: 3 }))
             s.wait(1)
         }))
-        const pixels = new Resvg(frameToSvg(compiled.frame(0))).render().pixels
+        const pixels = new Resvg(frameToSvg(compiled.frame(0)), { font: { loadSystemFonts: false } }).render().pixels
         expect(Array.from(pixels.slice(0, 12))).toEqual([0, 0, 0, 255, 255, 0, 0, 255, 255, 255, 255, 255])
         const symmetric = await compileFilm(film({ width: 3, height: 3, bloom: 0 }, s => {
             s.add(scalarField(x => x, { x: [-100, 100], y: [0, 1], domain: [-100, 100], scale: 'symlog', colors: ['#000000', '#ff0000', '#ffffff'], width: 3, height: 3, resolution: 3 }))
             s.wait(1)
         }))
-        expect(new Resvg(frameToSvg(symmetric.frame(0))).render().pixels).toEqual(pixels)
+        expect(new Resvg(frameToSvg(symmetric.frame(0)), { font: { loadSystemFonts: false } }).render().pixels).toEqual(pixels)
     })
 
     it('samples finite extreme domains without overflowing intermediate grid coordinates', async () => {

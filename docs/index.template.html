@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   {{SITE_HEAD}}
+  {{HERO_PRELOADS}}
   <script type="module" src="playground-redirect.js"></script>
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Vizmatic","applicationCategory":"DeveloperApplication","operatingSystem":"Linux, macOS, Windows, Web","url":"https://bvolpato.github.io/vizmatic/","description":"A vector animation engine and diagram library for TypeScript. Films play live in the browser, seek instantly, and export to exact MP4.","license":"https://opensource.org/license/mit","codeRepository":"https://github.com/bvolpato/vizmatic","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
 </head>
@@ -9,7 +10,7 @@
   {{SITE_NAV}}
   <main id="main-content" tabindex="-1">
     <section class="hero" aria-labelledby="hero-title">
-      <vz-film class="hero-film" src="{{HERO_FILM}}" start="1.7" autoplay loop nocontrols label="Lit curves gather into the word vizmatic and let go again"></vz-film>
+      <vz-film class="hero-film" src="{{HERO_FILM}}" start="1.7" eager autoplay loop nocontrols label="Lit curves gather into the word vizmatic and let go again"></vz-film>
       <div class="hero-scrim"></div>
       <div class="hero-copy">
         <h1 id="hero-title">Moving pictures of ideas, <em>written as code.</em></h1>

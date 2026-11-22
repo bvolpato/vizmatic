@@ -92,7 +92,7 @@ try {
         return readFile(path)
     }
     const ready = async (target = page) => {
-        await target.waitForTimeout(400)
+        await target.waitForTimeout(40)
         await target.waitForFunction(() => ['ready', 'error'].includes(document.querySelector('#playgroundStatus')?.dataset.state ?? ''), undefined, { timeout: 45_000 })
         const error = target.locator('#playgroundError')
         assert.equal(await target.locator('#playgroundStatus').getAttribute('data-state'), 'ready', await error.textContent())

@@ -8,6 +8,8 @@ import { browserImageSource, ImageAssetError } from './image'
 
 export interface PlayerOptions {
     loop?: boolean
+    /** Optional initial playhead time (in seconds) painted on construction, avoiding a redundant t=0 frame. */
+    initialTime?: number
     /** Optional start time (in seconds) of a looping playback window. */
     loopStart?: number
     /** Optional end time (in seconds) of a looping playback window. */
@@ -68,6 +70,9 @@ export class FilmPlayer {
         this.options = options
         this.presentCanvas = options.presentCanvas ?? null
         this.speed = options.speed ?? 1
+        if (options.initialTime !== undefined && Number.isFinite(options.initialTime)) {
+            this.currentTime = Math.max(0, Math.min(film.duration, options.initialTime))
+        }
         this.gpuBloom = supportsWebGLBloom(canvas)
         const ctx = canvas.getContext('2d', { alpha: film.background === null, willReadFrequently: !this.gpuBloom })
         if (!ctx) throw new Error('This browser could not create a 2D canvas.')
@@ -475,6 +480,11 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
                 }
             }, { rootMargin: '240px' })
             this.intersection.observe(this)
+            // Above-the-fold films marked `eager` kick off module loading immediately instead of waiting an IO tick.
+            if (this.hasAttribute('eager') && !this.started) {
+                this.visible = true
+                this.startPromise = this.start()
+            }
         }
 
         disconnectedCallback(): void {
@@ -718,7 +728,20 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
             const loopStart = loopStartAttr !== null && Number.isFinite(Number(loopStartAttr)) ? Number(loopStartAttr) : undefined
             const loopEnd = loopEndAttr !== null && Number.isFinite(Number(loopEndAttr)) ? Number(loopEndAttr) : undefined
             const loopMode = this.getAttribute('loop-mode') === 'bounce' ? 'bounce' : 'repeat'
+            const startAt = this.getAttribute('start')
+            const firstStep = this.hasAttribute('stepped') && !autoplay ? film.chapters.find((c) => c.time > 0) : undefined
+            let initialTime = 0
+            if (reduced && !this.hasAttribute('start')) {
+                initialTime = loopStart !== undefined && loopEnd !== undefined && loopEnd > loopStart ? (loopStart + loopEnd) / 2 : film.duration
+            } else if (startAt && Number.isFinite(Number(startAt))) {
+                initialTime = Number(startAt)
+            } else if (loopStart !== undefined) {
+                initialTime = loopStart
+            } else if (firstStep) {
+                initialTime = firstStep.time
+            }
             const player = new FilmPlayer(canvas, film, {
+                initialTime,
                 loop: this.hasAttribute('loop'),
                 loopStart,
                 loopEnd,
@@ -750,14 +773,8 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
                 },
             })
             this.player = player
-            const startAt = this.getAttribute('start')
-            const firstStep = this.hasAttribute('stepped') && !autoplay ? film.chapters.find((c) => c.time > 0) : undefined
-            if (reduced && !this.hasAttribute('start')) {
-                player.seek(loopStart !== undefined && loopEnd !== undefined && loopEnd > loopStart ? (loopStart + loopEnd) / 2 : film.duration)
-            } else if (startAt) player.seek(Number(startAt))
-            else if (loopStart !== undefined) player.seek(loopStart)
-            else if (firstStep) player.seek(firstStep.time)
-            else onTime(0)
+            if (audio && player.time > 0) syncAudioTime(player.time)
+            onTime(player.time)
             if (connection !== this.connectionSeq) return
             toggle.addEventListener('click', () => player.toggle())
             canvas.addEventListener('click', () => player.toggle())

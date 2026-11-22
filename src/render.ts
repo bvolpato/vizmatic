@@ -298,6 +298,46 @@ export async function getFonts(): Promise<FontData[]> {
     return cachedFonts
 }
 
+const RESVG_NO_SYSTEM_FONTS = { loadSystemFonts: false } as const
+const VENDORED_RESVG_FONT_FILES = [
+    'Inter-Regular.ttf',
+    'Inter-SemiBold.ttf',
+    'Inter-Bold.ttf',
+    'JetBrainsMono-Regular.ttf',
+    'InstrumentSerif-Regular.ttf',
+    'InstrumentSerif-Italic.ttf',
+    'NotoSans-Regular.ttf',
+    'NotoSansMath-Regular.ttf',
+] as const
+
+let cachedResvgFontFiles: string[] | null = null
+
+function svgNeedsResvgFonts(svg: string): boolean {
+    if (svg.includes('<text')) return true
+    if (!svg.includes('image/svg+xml')) return false
+    for (const match of svg.matchAll(/data:image\/svg\+xml;(base64|utf8),([^"'<>]+)/g)) {
+        const encoding = match[1]
+        const payload = match[2] ?? ''
+        if (encoding === 'utf8') {
+            if (payload.includes('<text') || /%3[cC]text\b/.test(payload)) return true
+        } else if (Buffer.from(payload, 'base64').toString('utf8').includes('<text')) {
+            return true
+        }
+    }
+    return false
+}
+
+/** Skip scanning host system fonts on every Resvg instance; Satori already outlines text as paths. */
+export function getResvgFontOptions(svg: string): { loadSystemFonts: boolean; fontFiles?: string[]; defaultFontFamily?: string } {
+    if (!svgNeedsResvgFonts(svg)) return RESVG_NO_SYSTEM_FONTS
+    cachedResvgFontFiles ??= VENDORED_RESVG_FONT_FILES
+        .map((filename) => fontReadPaths(filename).find((candidate) => existsSync(candidate)))
+        .filter((candidate): candidate is string => Boolean(candidate))
+    return cachedResvgFontFiles.length > 0
+        ? { loadSystemFonts: false, fontFiles: cachedResvgFontFiles, defaultFontFamily: 'Inter' }
+        : { loadSystemFonts: true }
+}
+
 // ─── SVG Sanitization ────────────────────────────────────────────────────────
 
 /**
@@ -573,6 +613,7 @@ async function renderToPngInContext(
     const detectResvg = new Resvg(svg, {
         fitTo: { mode: 'width', value: options.width },
         background: 'rgba(0, 0, 0, 0)',
+        font: getResvgFontOptions(svg),
     })
     const detectResult = detectResvg.render()
     const pixelData = pixelView(detectResult.pixels)
@@ -634,6 +675,7 @@ async function renderToPngInContext(
         const cropCheck = new Resvg(candidateSvg, {
             fitTo: { mode: 'width', value: finalWidth },
             background: 'rgba(0, 0, 0, 0)',
+            font: getResvgFontOptions(candidateSvg),
         }).render()
         const cropPixels = pixelView(cropCheck.pixels)
         const cropBg = detectBackgroundColor(cropPixels)
@@ -702,6 +744,7 @@ async function renderToPngInContext(
                 value: finalWidth * scale,
             },
             background: 'rgba(0, 0, 0, 0)',
+            font: getResvgFontOptions(finalSvg),
         })
         const pngData = resvg.render()
         outputPixels = pixelView(pngData.pixels)
@@ -791,6 +834,7 @@ async function renderToBufferInContext(
     const resvg = new Resvg(svg, {
         fitTo: { mode: 'width', value: width * (options.scale ?? 2) },
         background: 'rgba(0, 0, 0, 0)',
+        font: getResvgFontOptions(svg),
     })
 
     const pngData = resvg.render()

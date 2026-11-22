@@ -7,7 +7,7 @@ import { parseCssRgba } from './color-utils'
 import { wrapWithWatermark, type WatermarkInput } from './brand'
 import type { CropRegion, OverflowResult } from './autocrop'
 import { measureRegionChange } from './region-change'
-import { CanvasOverflowError, getFonts, loadAdditionalAsset, type AnimationOverflowContext } from './render'
+import { CanvasOverflowError, getFonts, getResvgFontOptions, loadAdditionalAsset, type AnimationOverflowContext } from './render'
 import { withRenderContext, type RenderBackground } from './renderContext'
 import { satori, type SatoriNode } from './satori'
 import { getThemeColors } from './theme'
@@ -125,6 +125,7 @@ async function renderToPixels(
     const resvg = new Resvg(svg, {
         fitTo: { mode: 'width', value: width * scale },
         background: rasterBackground(background, theme),
+        font: getResvgFontOptions(svg),
     })
     const rendered = resvg.render()
     const output = {

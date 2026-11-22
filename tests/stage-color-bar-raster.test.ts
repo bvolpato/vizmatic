@@ -35,7 +35,7 @@ describe('rendered numeric color legend', () => {
             }).at((fraction - 0.5) * 400, -20))
             s.wait(1)
         }))
-        comparePixels(new Resvg(frameToSvg(compiled.frame(0))).render().pixels)
+        comparePixels(new Resvg(frameToSvg(compiled.frame(0)), { font: { loadSystemFonts: false } }).render().pixels)
     })
 
     it.runIf(process.env.VIZMATIC_BROWSER_TESTS === '1')('matches actual scalar field pixels in Canvas', async () => {

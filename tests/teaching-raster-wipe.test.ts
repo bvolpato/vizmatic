@@ -65,7 +65,7 @@ describe('raster wipe', () => {
                 snapToPixels: true, color: value => palette[value],
             })
             const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="8">${rectangles.join('')}</svg>`
-            const pixels = new Resvg(svg).render().pixels
+            const pixels = new Resvg(svg, { font: { loadSystemFonts: false } }).render().pixels
             for (let row = 0; row < 8; row++) {
                 for (let column = 0; column < 16; column++) {
                     const u = (column + 0.5 - x) / width

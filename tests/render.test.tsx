@@ -578,7 +578,7 @@ if (typeof asset !== 'string' || !asset.startsWith('data:image/svg+xml;base64,')
         else expect(Math.abs(pixelAt(image, 0, 0)[3] - alpha)).toBeLessThanOrEqual(1)
         if (alpha > 0) {
             const svg = await renderToSvg(frame.create('dark'), 520, 320, options)
-            const svgImage = decodePng(new Resvg(svg).render().asPng())
+            const svgImage = decodePng(new Resvg(svg, { font: { loadSystemFonts: false } }).render().asPng())
             expect(Math.abs(pixelAt(svgImage, 0, 0)[3] - alpha)).toBeLessThanOrEqual(1)
         }
     }, 30_000)
@@ -1228,7 +1228,7 @@ if (typeof asset !== 'string' || !asset.startsWith('data:image/svg+xml;base64,')
 
         const svg = await renderToSvg(createGraph(), 640, 360)
         const repeatedSvg = await renderToSvg(createGraph(), 640, 360)
-        const rendered = new Resvg(svg).render()
+        const rendered = new Resvg(svg, { font: { loadSystemFonts: false } }).render()
 
         expect(svg).toContain('role="group" aria-labelledby="vizmatic-svg-title"')
         expect(svg).toContain('<title id="vizmatic-svg-title">Checkout &amp; data flow</title>')
