@@ -194,6 +194,8 @@ export function openExportDialog(app: App): void {
         qualitySelect.closest('label')!.hidden = !(next === 'mp4' || next === 'webm')
         hint.textContent = FORMATS.find((entry) => entry.id === next)!.hint
         status.textContent = ''
+        delete status.dataset['done']
+        delete status.dataset['error']
         if (next === 'gif') widthSelect.value = options[0]!.value
     }
     const finish = (result: ExportResult) => {
@@ -213,6 +215,7 @@ export function openExportDialog(app: App): void {
             return
         }
         delete status.dataset['done']
+        delete status.dataset['error']
         if (format === 'tsx') {
             const source = code ? project.source : app.generatedSource()
             download(source, 'text/plain', 'film.tsx')

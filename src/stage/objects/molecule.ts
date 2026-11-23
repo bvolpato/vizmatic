@@ -1,25 +1,39 @@
-import { ELEMENT_SYMBOLS, type ElementSymbol } from '../../chemistry-elements'
-import type { MoleculeBond } from '../../primitives/science-chemistry'
+import { ELEMENT_SYMBOLS } from '../../chemistry-elements'
 import type { ColorInput } from '../color'
 import { rebindCloneParts, type Node } from '../node'
 import { Scene3D, line3d, sphere, type Line3D, type Scene3DOptions, type Surface3D, type Vec3 } from '../three'
 
+export type Molecule3DElement =
+    | 'H' | 'He' | 'Li' | 'Be' | 'B' | 'C' | 'N' | 'O' | 'F' | 'Ne' | 'Na' | 'Mg' | 'Al' | 'Si' | 'P' | 'S' | 'Cl' | 'Ar'
+    | 'K' | 'Ca' | 'Sc' | 'Ti' | 'V' | 'Cr' | 'Mn' | 'Fe' | 'Co' | 'Ni' | 'Cu' | 'Zn' | 'Ga' | 'Ge' | 'As' | 'Se' | 'Br' | 'Kr'
+    | 'Rb' | 'Sr' | 'Y' | 'Zr' | 'Nb' | 'Mo' | 'Tc' | 'Ru' | 'Rh' | 'Pd' | 'Ag' | 'Cd' | 'In' | 'Sn' | 'Sb' | 'Te' | 'I' | 'Xe'
+    | 'Cs' | 'Ba' | 'La' | 'Ce' | 'Pr' | 'Nd' | 'Pm' | 'Sm' | 'Eu' | 'Gd' | 'Tb' | 'Dy' | 'Ho' | 'Er' | 'Tm' | 'Yb' | 'Lu'
+    | 'Hf' | 'Ta' | 'W' | 'Re' | 'Os' | 'Ir' | 'Pt' | 'Au' | 'Hg' | 'Tl' | 'Pb' | 'Bi' | 'Po' | 'At' | 'Rn' | 'Fr' | 'Ra' | 'Ac'
+    | 'Th' | 'Pa' | 'U' | 'Np' | 'Pu' | 'Am' | 'Cm' | 'Bk' | 'Cf' | 'Es' | 'Fm' | 'Md' | 'No' | 'Lr' | 'Rf' | 'Db' | 'Sg' | 'Bh'
+    | 'Hs' | 'Mt' | 'Ds' | 'Rg' | 'Cn' | 'Nh' | 'Fl' | 'Mc' | 'Lv' | 'Ts' | 'Og'
+
 export interface Molecule3DAtom {
     id: string
-    element: ElementSymbol
+    element: Molecule3DElement
     /** Author-supplied or imported coordinates, in one consistent unit. */
     position: Vec3
 }
 
+export interface Molecule3DBond {
+    from: string
+    to: string
+    order?: 1 | 1.5 | 2 | 3
+}
+
 export interface Molecule3DData {
     atoms: readonly Molecule3DAtom[]
-    bonds: readonly Pick<MoleculeBond, 'from' | 'to' | 'order'>[]
+    bonds: readonly Molecule3DBond[]
 }
 
 export interface Molecule3DOptions extends Scene3DOptions {
     /** Display radius in coordinate units, not an atomic or van der Waals radius. */
     atomRadius?: number
-    atomColors?: Partial<Record<ElementSymbol, ColorInput>>
+    atomColors?: Partial<Record<Molecule3DElement, ColorInput>>
     bondColor?: ColorInput
     /** Stroke width in stage pixels at the camera focus. */
     bondWidth?: number
@@ -63,7 +77,7 @@ function readMol(source: string): Molecule3DData {
         const element = record.slice(31, 34).trim()
         if (!elements.has(element)) throw new TypeError(`molecule3d MOL atom ${i + 1} has an invalid element symbol.`)
         plain(record.slice(34), `atom ${i + 1} charge, isotope, stereo, or query field`)
-        return { id: String(i + 1), element: element as ElementSymbol, position: coordinates as [number, number, number] }
+        return { id: String(i + 1), element: element as Molecule3DElement, position: coordinates as [number, number, number] }
     })
     const bonds: Molecule3DData['bonds'] = Array.from({ length: bondCount }, (_, i) => {
         const record = lines[4 + atomCount + i]
@@ -126,7 +140,7 @@ function validate(data: Molecule3DData): Map<string, Molecule3DAtom> {
     return atoms
 }
 
-function atomColor(element: ElementSymbol): ColorInput {
+function atomColor(element: Molecule3DElement): ColorInput {
     if (element === 'O') return 'red'
     if (element === 'N') return 'blue'
     if (element === 'S' || element === 'P') return 'yellow'

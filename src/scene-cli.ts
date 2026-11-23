@@ -11,10 +11,20 @@ async function main(): Promise<void> {
         process.stdout.write('Usage: vizmatic-scene --input request.json --output scene.png|scene.mp4\nAll request time values are in seconds. Source is bare TSX, never a Node module.\nOptional JSON outputScale (0.25 to 1) reduces raster resolution; previewFps (MP4 only) reduces output fps while preserving logical scene globals. Metadata reports effective output dimensions and fps.\n')
         return
     }
-    if (args.length !== 4 || args[0] !== '--input' || args[2] !== '--output') {
+    let input: string | undefined
+    let outputPath: string | undefined
+    for (let i = 0; i < args.length; i += 2) {
+        const flag = args[i], value = args[i + 1]
+        if (!value || value.startsWith('--')) {
+            throw new Error('Usage: vizmatic-scene --input request.json --output scene.png|scene.mp4')
+        }
+        if (flag === '--input' && input === undefined) input = value
+        else if (flag === '--output' && outputPath === undefined) outputPath = value
+        else throw new Error('Usage: vizmatic-scene --input request.json --output scene.png|scene.mp4')
+    }
+    if (!input || !outputPath) {
         throw new Error('Usage: vizmatic-scene --input request.json --output scene.png|scene.mp4')
     }
-    const input = args[1], outputPath = args[3]
     const extension = extname(outputPath).toLowerCase()
     if (extension !== '.png' && extension !== '.mp4') throw new Error('Scene output must be a PNG or MP4 file.')
     if ((await stat(input)).size > SCENE_LIMITS.sourceBytes * 6 + 32_768) throw new Error('Scene request file exceeds its size limit.')

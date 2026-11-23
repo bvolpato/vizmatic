@@ -236,6 +236,12 @@ export class SandboxHost {
     }
 
     exportFilm(settings: ExportSettings, control: { signal?: AbortSignal; onProgress?: (progress: ExportProgress) => void }): Promise<ExportResult> {
+        if (control.signal?.aborted) {
+            return Promise.reject(new DOMException('Export cancelled.', 'AbortError'))
+        }
+        if (!this.ready) {
+            return Promise.reject(new Error('The code sandbox is still starting. Wait a moment and try again.'))
+        }
         const id = ++this.exportId
         control.signal?.addEventListener('abort', () => this.send({ t: 'cancel', id }), { once: true })
         return new Promise((resolve, reject) => {

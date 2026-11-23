@@ -1,6 +1,6 @@
 /** Browser entry: the engine, the player, and the <vz-film> element. */
 export * from './index'
-export { FilmPlayer, defineFilmElement, type PlayerOptions, type FilmLoadOptions } from './player'
+export { FilmPlayer, defineFilmElement, type PlayerOptions, type FilmLoadOptions, type VzFilmElement } from './player'
 import { setAssetBase } from './assets'
 import { resolveLook } from './look'
 import { defineFilmElement, type FilmLoadOptions } from './player'

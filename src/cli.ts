@@ -1194,10 +1194,13 @@ async function parseCheckArgs(argv: string[]): Promise<CheckArgs> {
 async function findFrameFiles(inputs: string[]): Promise<string[]> {
     const files = new Set<string>()
 
-    async function walk(path: string) {
+    async function walk(path: string, explicit: boolean) {
         const resolved = resolve(path)
         const entries = await readdir(resolved, { withFileTypes: true }).catch(() => undefined)
         if (!entries) {
+            if (explicit && !existsSync(resolved)) {
+                throw new Error(`Input path not found: ${path}`)
+            }
             if (RENDER_EXTENSIONS.has(extname(resolved)) && !resolved.endsWith('.d.ts')) {
                 files.add(resolved)
             }
@@ -1208,7 +1211,7 @@ async function findFrameFiles(inputs: string[]): Promise<string[]> {
             const next = join(resolved, entry.name)
             if (entry.isDirectory()) {
                 if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name.startsWith('_')) continue
-                await walk(next)
+                await walk(next, false)
             } else if (RENDER_EXTENSIONS.has(extname(entry.name)) && !entry.name.endsWith('.d.ts')) {
                 files.add(next)
             }
@@ -1216,7 +1219,7 @@ async function findFrameFiles(inputs: string[]): Promise<string[]> {
     }
 
     for (const input of inputs) {
-        await walk(input)
+        await walk(input, true)
     }
 
     return [...files].sort()
@@ -1675,14 +1678,28 @@ function looksForThemes(themes: readonly ThemeMode[], explicit: boolean): LookNa
     return themes.map((theme) => theme === 'light' ? 'paper' : 'midnight')
 }
 
+function filmBackgroundFromCli(background: RenderBackground | undefined): string | null | undefined {
+    if (background === undefined || background === 'theme') return undefined
+    if (background === 'transparent' || background === 'none') return null
+    return background
+}
+
 /** Show a film's frames from the static commands. A single render writes its poster. */
-async function renderFilmFromFrameCommand(file: string, stem: string, args: RenderArgs, explicitTheme: boolean, formats: Array<'png' | 'svg' | 'mp4'>): Promise<void> {
+async function renderFilmsFromFrameCommand(
+    filmFiles: string[],
+    stems: Map<string, string>,
+    args: RenderArgs,
+    explicitTheme: boolean,
+    formats: Array<'png' | 'svg' | 'mp4'>,
+): Promise<void> {
+    if (filmFiles.length === 0) return
     const { parseFilmArgs, runFilmCommand } = await loadFilmCli()
-    const filmArgs = parseFilmArgs([file, '--out', args.outDir])
+    const filmArgs = parseFilmArgs([filmFiles[0]!, '--out', args.outDir])
     filmArgs.looks = looksForThemes(args.themes, explicitTheme)
     filmArgs.formats = formats
     filmArgs.fps = args.fps
-    await runFilmCommand(filmArgs, [file], new Map([[file, stem]]), importFrame)
+    filmArgs.background = filmBackgroundFromCli(args.background)
+    await runFilmCommand(filmArgs, filmFiles, stems, importFrame)
 }
 
 async function renderCommand(argv: string[]) {
@@ -1711,11 +1728,11 @@ async function renderCommand(argv: string[]) {
         }>
     }> = []
 
+    const routedFilms: string[] = []
     for (const file of files) {
         const rawMod = await importFrame(file)
         if (isFilmModule(rawMod)) {
-            const formats: Array<'png' | 'svg'> = args.format === 'both' ? ['png', 'svg'] : [args.format]
-            await renderFilmFromFrameCommand(file, stems.get(file) ?? basename(file).replace(/\.[^.]+$/, ''), args, explicitTheme, formats)
+            routedFilms.push(file)
             continue
         }
         const mod = normalizeFrameModule(rawMod)
@@ -1803,7 +1820,14 @@ async function renderCommand(argv: string[]) {
         })
     }
 
-    await writeFile(join(args.outDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
+    if (routedFilms.length > 0) {
+        const formats: Array<'png' | 'svg'> = args.format === 'both' ? ['png', 'svg'] : [args.format]
+        await renderFilmsFromFrameCommand(routedFilms, stems, args, explicitTheme, formats)
+    }
+
+    if (manifest.length > 0) {
+        await writeFile(join(args.outDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
+    }
 }
 
 interface CapturedConsoleMessage {
@@ -1957,42 +1981,64 @@ async function checkCommandWithArgs(args: CheckArgs) {
             const { checkFilmFile, printFilmCheck } = await loadFilmCli()
             const looks = args.looks.length > 0 ? args.looks : looksForThemes(args.themes, args.explicitTheme)
             const module = imported.value
-            const filmReports = await checkFilmFile(file, async () => module, looks, { motion: args.motion, contentTop: args.contentTop, textMargin: args.textMargin, textGap: args.textGap, textSize: args.textSize, emptySpace: args.emptySpace, emptySeconds: args.emptySeconds, readingSpeed: args.readingSpeed, stepped: args.stepped })
-            filmReports.forEach((filmReport, index) => {
-                reports.push({
-                    source,
-                    ok: filmReport.ok,
-                    diagnostics: filmReport.diagnostics,
-                    themes: [],
-                    film: {
-                        title: filmReport.title, width: filmReport.width, height: filmReport.height,
-                        duration: filmReport.duration, sampled: filmReport.sampled,
-                        ...(filmReport.frames === undefined ? {} : { frames: filmReport.frames }),
-                        ...(looks[index] ? { look: looks[index] } : {}),
-                    },
+            try {
+                const filmReports = await checkFilmFile(file, async () => module, looks, { motion: args.motion, contentTop: args.contentTop, textMargin: args.textMargin, textGap: args.textGap, textSize: args.textSize, emptySpace: args.emptySpace, emptySeconds: args.emptySeconds, readingSpeed: args.readingSpeed, stepped: args.stepped })
+                filmReports.forEach((filmReport, index) => {
+                    const mergedDiagnostics = [...diagnostics, ...filmReport.diagnostics]
+                    const ok = filmReport.ok && !diagnostics.some((diagnostic) => diagnostic.severity === 'error')
+                    reports.push({
+                        source,
+                        ok,
+                        diagnostics: mergedDiagnostics,
+                        themes: [],
+                        film: {
+                            title: filmReport.title, width: filmReport.width, height: filmReport.height,
+                            duration: filmReport.duration, sampled: filmReport.sampled,
+                            ...(filmReport.frames === undefined ? {} : { frames: filmReport.frames }),
+                            ...(looks[index] ? { look: looks[index] } : {}),
+                        },
+                    })
+                    if (!args.json) {
+                        for (const entry of diagnostics) console.error(`${entry.severity} ${entry.code}: ${entry.message}`)
+                        printFilmCheck(filmReport)
+                    }
                 })
-                if (!args.json) printFilmCheck(filmReport)
-            })
+            } catch (error) {
+                diagnostics.push({
+                    code: 'frame.load_error',
+                    severity: 'error',
+                    message: describeThrown(error),
+                })
+                reports.push({ source, ok: false, diagnostics, themes: [] })
+            }
             continue
         }
 
         const [, { checkFrame }] = await Promise.all([loadReact(), loadPublicApi()])
         const mod = normalizeFrameModule(imported.value)
         const themeReports: CheckThemeReport[] = []
-        for (const theme of args.themes) {
-            const background = sourceFrameBackground(mod, theme, args.background)
-            const checked = await checkFrame({
-                source,
-                width: mod.width,
-                height: mod.height,
-                autoSize: mod.autoSize,
-                create: (nextTheme) => frameElement(mod, nextTheme, background),
-            }, {
-                themes: [theme],
-                background,
-                failOn: 'error',
+        try {
+            for (const theme of args.themes) {
+                const background = sourceFrameBackground(mod, theme, args.background)
+                const checked = await checkFrame({
+                    source,
+                    width: mod.width,
+                    height: mod.height,
+                    autoSize: mod.autoSize,
+                    create: (nextTheme) => frameElement(mod, nextTheme, background),
+                }, {
+                    themes: [theme],
+                    background,
+                    failOn: 'error',
+                })
+                themeReports.push(...checked.themes)
+            }
+        } catch (error) {
+            diagnostics.push({
+                code: 'frame.load_error',
+                severity: 'error',
+                message: describeThrown(error),
             })
-            themeReports.push(...checked.themes)
         }
         const ok = !diagnostics.some((diagnostic) => diagnostic.severity === 'error')
             && themeReports.every((theme) => theme.ok)
@@ -2153,17 +2199,11 @@ async function videoCommand(argv: string[]) {
     process.once('SIGTERM', abort)
     try {
         await mkdir(args.outDir, { recursive: true })
+        const routedFilms: string[] = []
         for (const file of files) {
             const imported = await importFrame(file)
             if (isFilmModule(imported)) {
-                const { parseFilmArgs, runFilmCommand } = await loadFilmCli()
-                const filmArgs = parseFilmArgs([file, '--out', args.outDir])
-                filmArgs.looks = looksForThemes(args.themes, explicitTheme)
-                filmArgs.formats = ['mp4']
-                filmArgs.fps = args.fps
-                filmArgs.audioPath = args.audioPath
-                filmArgs.ffmpegPath = args.ffmpegPath
-                await runFilmCommand(filmArgs, [file], new Map([[file, stems.get(file) ?? basename(file).replace(/\.[^.]+$/, '')]]), importFrame)
+                routedFilms.push(file)
                 continue
             }
             const [, { renderAnimationVideo }] = await Promise.all([loadReact(), loadPublicApi()])
@@ -2209,7 +2249,21 @@ async function videoCommand(argv: string[]) {
                 outputDetails,
             })
         }
-        await writeFile(join(args.outDir, 'video-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
+        if (routedFilms.length > 0) {
+            const { parseFilmArgs, runFilmCommand } = await loadFilmCli()
+            const filmArgs = parseFilmArgs([routedFilms[0]!, '--out', args.outDir])
+            filmArgs.looks = looksForThemes(args.themes, explicitTheme)
+            filmArgs.formats = ['mp4']
+            filmArgs.fps = args.fps
+            filmArgs.audioPath = args.audioPath
+            filmArgs.ffmpegPath = args.ffmpegPath
+            filmArgs.background = filmBackgroundFromCli(args.background)
+            if (args.threads !== undefined) filmArgs.workers = args.threads
+            await runFilmCommand(filmArgs, routedFilms, stems, importFrame)
+        }
+        if (manifest.length > 0) {
+            await writeFile(join(args.outDir, 'video-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
+        }
     } finally {
         process.removeListener('SIGINT', abort)
         process.removeListener('SIGTERM', abort)
@@ -2275,6 +2329,13 @@ async function main() {
     if (command === 'sounds') {
         const { runSoundsCommand } = await loadNarratedCli()
         runSoundsCommand(rest)
+    } else if (command === 'narrated') {
+        const { runNarratedCommand } = await loadNarratedCli()
+        await runNarratedCommand(rest)
+    } else if (command === '--version' || command === '-v') {
+        const pkgPath = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'package.json')
+        const pkg = JSON.parse(await readFile(pkgPath, 'utf8')) as { version?: string }
+        console.log(pkg.version ?? '0.0.0')
     } else if (rest.includes('--help') || rest.includes('-h')) {
         help()
     } else if (command === 'render') {
@@ -2301,9 +2362,6 @@ async function main() {
     } else if (command === 'new') {
         const { runNewCommand } = await loadFilmCli()
         await runNewCommand(rest)
-    } else if (command === 'narrated') {
-        const { runNarratedCommand } = await loadNarratedCli()
-        await runNarratedCommand(rest)
     } else if (command === 'doctor') {
         const { runDoctorCommand } = await loadFilmCli()
         await runDoctorCommand(rest)

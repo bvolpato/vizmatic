@@ -60,5 +60,12 @@ describe.skipIf(!ready)("narration tools: chimes", () => {
         const rest = loudness(raw, 3.82, 3.98) / loudness(bed, 3.82, 3.98)
         expect(rest).toBeGreaterThan(0.85)
         expect(rest).toBeLessThan(1.02)
+        // Full bells must also stop cleanly by `until`, including the lower octave bell.
+        await twoTakes(folder, { mix: { seed: 3, swells: [], chimes: [{ at: 2.5, full: true, until: { at: 3.8 } }] } })
+        const fullCut = tool('mix', folder)
+        expect(fullCut.status, fullCut.stderr).toBe(0)
+        const afterCut = loudness(raw, 3.82, 3.98) / loudness(bed, 3.82, 3.98)
+        expect(afterCut).toBeGreaterThan(0.85)
+        expect(afterCut).toBeLessThan(1.02)
     }, 180_000)
 })
