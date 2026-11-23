@@ -71,6 +71,16 @@ describe('vizmatic film', () => {
             },
         })
         expect(report.cpuCores).toBeGreaterThan(0)
+        // Missing --ffmpeg value and unknown flags must fail cleanly rather than consuming adjacent flags.
+        const badDoctor = cli(['doctor', '--ffmpeg', '--json'])
+        expect(badDoctor.status).toBe(1)
+        expect(badDoctor.stderr).toContain('--ffmpeg requires a path')
+        const version = cli(['--version'])
+        expect(version.status, version.stderr).toBe(0)
+        expect(version.stdout.trim()).toMatch(/^\d+\.\d+\.\d+/)
+        const narratedHelp = cli(['narrated', '--help'])
+        expect(narratedHelp.status, narratedHelp.stderr).toBe(0)
+        expect(narratedHelp.stdout).toContain('vizmatic narrated')
     }, 30_000)
     it.skipIf(!hasFfmpeg).each(['narration', 'narrated'])('renders intact synthetic %s captions into WebVTT and MP4', async (caller) => {
         const directory = await tempDirectory()

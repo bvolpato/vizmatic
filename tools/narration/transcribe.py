@@ -55,7 +55,15 @@ def main(found, only, _options):
     line = film.place(found.timing)
     only = set(only)
     for name in only:
-        line.beat(name.split("/")[0], 0)
+        parts = name.split("/")
+        if len(parts) > 2:
+            film.fail(f"{name!r}: expected a scene id or scene/beat index")
+        if len(parts) == 2:
+            if not parts[1].isdigit():
+                film.fail(f"{name!r}: beat index must be a non-negative integer")
+            line.beat(parts[0], int(parts[1]))
+        else:
+            line.beat(parts[0], 0)
     forms = spoken_forms(found.script.get("pronounce", {}))
     model = speech.whisper()
     checked, wrong = 0, []

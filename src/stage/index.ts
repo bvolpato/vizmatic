@@ -12,7 +12,8 @@ export {
     parseColor, css, mixColor, linearGradient, radialGradient, along as colorAlong, ramp,
     type Rgba, type Paint, type ColorInput, type Gradient,
 } from './color'
-export { Node, group, dynamic, type NodeProps, type PropName, type Side, type Edge, type BlendMode, type StageImage } from './node'
+export { Node, group, dynamic, rebindCloneParts, type NodeProps, type PropName, type Side, type Edge, type BlendMode, type StageImage } from './node'
+export { Track, type Key } from './track'
 export * from './anim'
 export { Stage, film, isFilm, compileFilm, CompiledFilm, Suspend, isSuspend } from './stage'
 export type { FilmOptions, FilmDefinition, Aspect, Chapter, Clip, Caption, PlayOptions, CompileOverrides } from './stage'
@@ -32,7 +33,7 @@ export { colorBar, type ColorBarOptions } from './color-bar'
 export type { AxisScale } from './scales'
 export { integrateTrajectory, type Trajectory, type TrajectoryOptions, type TrajectoryDerivative } from './trajectory'
 export { isosurface, Isosurface3D, type IsosurfaceOptions, type IsosurfaceGeometry, type ScalarField3D } from './three/implicit'
-export { molecule3d, Molecule3D, type Molecule3DAtom, type Molecule3DData, type Molecule3DOptions } from './objects/molecule'
+export { molecule3d, Molecule3D, type Molecule3DAtom, type Molecule3DBond, type Molecule3DData, type Molecule3DElement, type Molecule3DOptions } from './objects/molecule'
 export { fromSvg, SvgNode, type FromSvgOptions } from './svg-import'
 export { resolveImageAsset, ImageAssetError, type ImageAsset, type ImageAssetOptions, type ImageFitOptions, type ImageCrop } from './image'
 export { narration, Narration, SceneClock, captionLines } from './narration'

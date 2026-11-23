@@ -140,7 +140,11 @@ def bells(samples, line, chimes):
         track = track + bell
         if spec.get("full"):
             # The last card gets a fuller chord: the same bell, and one an octave lower.
-            track = track + chime(samples, at + 0.03, LOW_BELL, 0.07)
+            low_until = until if until is not None and until - (at + 0.03) >= 1.0 else until
+            low_bell = chime(samples, at + 0.03, LOW_BELL, 0.07, low_until)
+            if low_until is not None and low_until < line.total:
+                assert np.abs(low_bell[int(low_until * RATE):]).max() == 0, "the lower bell is silent from the time that the film gives"
+            track = track + low_bell
         placed.append((at, until))
     return track, placed
 

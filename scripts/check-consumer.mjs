@@ -94,9 +94,17 @@ void renderToSvg(React.createElement('div', null, 'Typed consumer'), 240, 80, {
 })
 `)
     await copyFile(join(consumer, 'consumer.ts'), join(consumer, 'consumer.cts'))
+    await writeFile(join(consumer, 'stage-consumer.ts'), `import { circle, film, Node, type Value } from 'vizmatic/stage'
+import type { VzFilmElement } from 'vizmatic/stage/browser'
+export const myCircle = circle(40)
+export const myFilm = film((s) => { s.add(myCircle); s.wait(1) })
+export function readTrack(v: Value) { return v.track }
+export function readNodeTrack(n: Node) { return n.track('x') }
+export type MyFilmElement = VzFilmElement
+`)
     await run(process.execPath, [join(repository, 'node_modules/typescript/bin/tsc'),
-        '--strict', '--noEmit', '--module', 'NodeNext', '--target', 'ES2022',
-        '--types', 'node,react', 'consumer.ts', 'consumer.cts',
+        '--strict', '--declaration', '--emitDeclarationOnly', '--module', 'NodeNext', '--target', 'ES2022',
+        '--types', 'node,react', 'consumer.ts', 'consumer.cts', 'stage-consumer.ts',
     ], { cwd: consumer, encoding: 'utf8', timeout: 60_000 })
     console.log('Installed package TypeScript declarations passed')
     await copyFile(join(repository, 'scripts/check-runtime.mjs'), join(consumer, 'check-runtime.mjs'))

@@ -192,6 +192,8 @@ async function render(request: PlaygroundRenderRequest): Promise<PlaygroundRende
         onNodeDetected: (node) => layoutNodes.push(node),
     })
     const svg = addSvgAccessibility(renderedSvg, preparedSvg.graphs, layoutNodes)
+        .replace(/(?<=\s)width="0"/g, 'width="1"')
+        .replace(/(?<=\s)height="0"/g, 'height="1"')
     const resvg = new Resvg(svg, { font: { loadSystemFonts: false } })
     try {
         const image = resvg.render()
@@ -245,6 +247,8 @@ async function exportGif(request: PlaygroundRenderRequest): Promise<PlaygroundGi
             onNodeDetected: (node) => layoutNodes.push(node),
         })
         const svg = addSvgAccessibility(renderedSvg, accessible.graphs, layoutNodes)
+            .replace(/(?<=\s)width="0"/g, 'width="1"')
+            .replace(/(?<=\s)height="0"/g, 'height="1"')
         const resvg = new Resvg(svg, { font: { loadSystemFonts: false } })
         try {
             const image = resvg.render()

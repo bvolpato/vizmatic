@@ -561,7 +561,11 @@ const LOOK_NOTES: Record<LookName, string> = {
 }
 
 export function runLooksCommand(argv: readonly string[]): void {
-    const json = argv.includes('--json')
+    let json = false
+    for (const arg of argv) {
+        if (arg === '--json') json = true
+        else throw new Error(`Unknown option for looks: ${arg}`)
+    }
     const looks = Object.values(LOOKS).map((look) => ({
         name: look.name, dark: look.dark, background: look.background, bloom: look.bloom,
         note: LOOK_NOTES[look.name as LookName] ?? '', colors: look.colors,
@@ -580,7 +584,11 @@ function midnightColors(): Record<string, string> {
 }
 
 export function runObjectsCommand(argv: readonly string[]): void {
-    const json = argv.includes('--json')
+    let json = false
+    for (const arg of argv) {
+        if (arg === '--json') json = true
+        else throw new Error(`Unknown option for objects: ${arg}`)
+    }
     const known = new Set(FILM_OBJECTS.map((entry) => entry.name))
     // fromComponent lives in the Node-only export module, because it needs the layout engine.
     const exported = [...Object.keys(stageApi), 'fromComponent']
@@ -602,10 +610,21 @@ export function runObjectsCommand(argv: readonly string[]): void {
 
 /** Report local CPU, FFmpeg, native hardware H.264 encoders, GPU browser, and uv readiness. */
 export async function runDoctorCommand(argv: readonly string[]): Promise<void> {
-    const json = argv.includes('--json')
-    const probeGpu = argv.includes('--probe-gpu')
-    const ffmpegIndex = argv.indexOf('--ffmpeg')
-    const ffmpegPath = ffmpegIndex >= 0 && argv[ffmpegIndex + 1] ? argv[ffmpegIndex + 1]! : 'ffmpeg'
+    let json = false
+    let probeGpu = false
+    let ffmpegPath = 'ffmpeg'
+    for (let i = 0; i < argv.length; i++) {
+        const arg = argv[i]!
+        if (arg === '--json') json = true
+        else if (arg === '--probe-gpu') probeGpu = true
+        else if (arg === '--ffmpeg') {
+            const next = argv[++i]
+            if (!next || next.startsWith('-')) throw new Error('--ffmpeg requires a path to an FFmpeg executable')
+            ffmpegPath = next
+        } else {
+            throw new Error(`Unknown option for doctor: ${arg}`)
+        }
+    }
     const ffmpegCheck = spawnSync(ffmpegPath, ['-version'], { encoding: 'utf8' })
     const ffmpegAvailable = ffmpegCheck.status === 0
     const ffmpegVersion = ffmpegAvailable ? (ffmpegCheck.stdout.split(/\r?\n/)[0] ?? '').trim() : null

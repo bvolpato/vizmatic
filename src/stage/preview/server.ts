@@ -203,10 +203,12 @@ export async function startPreview(options: PreviewOptions): Promise<PreviewHand
         for (const input of inputs) {
             const directory = dirname(input)
             if (directories.has(directory)) continue
-            directories.set(directory, watch(directory, (_event, name) => {
+            const watcher = watch(directory, (_event, name) => {
                 // Editors often save by replacing the file, so watch folders and match by name.
                 if (name && inputs.has(join(directory, name.toString()))) schedule()
-            }))
+            })
+            watcher.on('error', (error) => log(`Watch error for ${directory}: ${error.message}`))
+            directories.set(directory, watcher)
         }
     }
 
@@ -345,8 +347,16 @@ export async function startPreview(options: PreviewOptions): Promise<PreviewHand
             else response.end()
         })
     })
-    port = await bindPort(server, options.port)
-    await rebuild()
+    try {
+        port = await bindPort(server, options.port)
+        await rebuild()
+    } catch (error) {
+        if (timer) clearTimeout(timer)
+        for (const watcher of directories.values()) watcher.close()
+        await context.dispose().catch(() => {})
+        server.close()
+        throw error
+    }
     const url = `http://127.0.0.1:${port}/`
 
     return {

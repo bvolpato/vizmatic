@@ -52,6 +52,7 @@ const CPU_SECONDS: Readonly<Record<string, number>> = {
     paxos: 151, attention: 72, forecast: 143, 'complex-maps': 140, 'linear-maps': 130,
     'euler-circle': 126, 'beam-search': 72, pythagoras: 58, 'taylor-series': 105,
     'deck-example': 31, pathlines: 65, 'hydrogen-orbitals': 278,
+    'retry-storm': 120, 'transformer-residual': 135, 'fp8-quantization': 115, 'kv-cache': 160,
 }
 
 /** Longest jobs first, assigning each to the least loaded shard. Ties are deterministic. */

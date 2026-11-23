@@ -191,4 +191,20 @@ export default film((s) => {
         expect(missing.status).not.toBe(0)
         expect(missing.stderr + missing.stdout).toContain('--empty-seconds needs a positive number of seconds')
     }, 120_000)
+
+    it('emits structured JSON error diagnostics when a film throws during compile', async () => {
+        const directory = await tempDirectory()
+        await writeFile(join(directory, 'broken.ts'), `import { film } from 'vizmatic/stage'
+export default film(() => {
+    throw new Error('Compile boom')
+})
+`)
+        const result = cli(['check', 'broken.ts', '--json'], directory)
+        expect(result.status).toBe(1)
+        const report = JSON.parse(result.stdout)
+        expect(report.ok).toBe(false)
+        expect(report.files[0].diagnostics).toEqual(expect.arrayContaining([
+            expect.objectContaining({ code: 'frame.load_error', severity: 'error', message: expect.stringContaining('Compile boom') }),
+        ]))
+    }, 60_000)
 })

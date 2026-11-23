@@ -128,8 +128,6 @@ function toArrayBuffer(buffer: Buffer): ArrayBuffer {
 }
 
 async function loadFonts(): Promise<FontData[]> {
-    await mkdir(FONT_CACHE_DIR, { recursive: true })
-
     const fonts: FontData[] = []
 
     try {

@@ -486,9 +486,31 @@ export function lockFolder(request: NarratedRequest): () => void {
             return () => rmSync(path, { force: true })
         } catch (error) {
             if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
-            const other = existsSync(path) ? readFileSync(path, 'utf8') : ''
-            const alive = (pid: number) => { try { process.kill(pid, 0); return true } catch { return false } }
-            if (alive(Number(/process (\d+)$/.exec(other)?.[1]))) {
+            let other = ''
+            try {
+                other = readFileSync(path, 'utf8')
+            } catch (readError) {
+                if ((readError as NodeJS.ErrnoException).code === 'ENOENT') continue
+                throw readError
+            }
+            const pidMatch = /process (\d+)$/.exec(other.trim())
+            if (!pidMatch) {
+                // Another process may have just created the file before flushing its contents.
+                const deadline = Date.now() + 50
+                while (Date.now() < deadline) { /* brief yield */ }
+                try {
+                    other = readFileSync(path, 'utf8')
+                } catch (readError) {
+                    if ((readError as NodeJS.ErrnoException).code === 'ENOENT') continue
+                    throw readError
+                }
+            }
+            const parsedPid = Number(/process (\d+)$/.exec(other.trim())?.[1])
+            const alive = (pid: number) => {
+                if (!Number.isInteger(pid) || pid <= 0) return false
+                try { process.kill(pid, 0); return true } catch { return false }
+            }
+            if (alive(parsedPid)) {
                 throw new Error(`Another run works on ${request.shown}: ${other}. Two runs at once on one folder can spoil a movie. Wait for that run to end, then run this command again.`)
             }
             rmSync(path, { force: true })
@@ -498,7 +520,7 @@ export function lockFolder(request: NarratedRequest): () => void {
 
 /** Run one command of `vizmatic narrated`. The lines about the steps go to the error stream, so the output of a step that prints data stays data. */
 export async function runNarratedCommand(argv: readonly string[]): Promise<void> {
-    if (argv.length === 0) {
+    if (argv.length === 0 || argv.includes('--help') || argv.includes('-h')) {
         console.log(usageText())
         return
     }
