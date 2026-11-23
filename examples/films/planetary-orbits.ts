@@ -55,7 +55,7 @@ export default film({
         color: COLORS[i], width: 1.2, samples: 120,
     }))
 
-    const systemCenter = [0, 18] as const
+    const systemCenter = [0, 2] as const
     s.add(dynamic((t) => {
         const opacity = 1 - saturnIn(t)
         if (opacity < 0.001) return []
@@ -65,12 +65,13 @@ export default film({
         const pushIn = smooth((t - 1) / 4) * (1 - smooth((t - 9) / 5))
         const theta = -1.15 + 0.014 * t, phi = 1.22 + 0.05 * Math.sin(t * 0.08)
         const camera: Vec3 = [Math.sin(phi) * Math.cos(theta), Math.sin(phi) * Math.sin(theta), Math.cos(phi)]
+        const unit = 96 + 44 * pushIn
         const view = scene3d({
-            theta, phi, unit: 96 + 52 * pushIn,
+            theta, phi, unit,
             perspective: false, fog: 0, ambient: 0.4, shine: 0, brightness: 1,
         }).at(...systemCenter).opacity(opacity)
         view.clipPath = rectPath(-850, -300, 1700, 580)
-        view.add(point3d([0, 0, 0], { radius: 0.34 * (96 + 52 * pushIn), color: '#f2c46e' }))
+        view.add(point3d([0, 0, 0], { radius: 0.34 * unit, color: '#f2c46e' }))
         const at = years(t), outer = outerOnly(t)
         for (let i = 0; i < PLANETS.length; i++) {
             const planet = PLANETS[i], bodyOpacity = i < 4 ? 1 - outer : 1

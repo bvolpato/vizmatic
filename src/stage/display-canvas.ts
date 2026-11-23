@@ -97,7 +97,7 @@ function paintFrameContents(ctx: Canvas2D, frame: Frame, scale: number, images?:
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.globalAlpha = 1
     ctx.globalCompositeOperation = 'source-over'
-    ctx.clearRect(0, 0, frame.width * scale, frame.height * scale)
+    ctx.clearRect(0, 0, ctx.canvas?.width ?? frame.width * scale, ctx.canvas?.height ?? frame.height * scale)
     ctx.setTransform(scale, 0, 0, scale, 0, 0)
     if (frame.background) {
         ctx.fillStyle = frame.background
@@ -193,7 +193,7 @@ function paintFrameContents(ctx: Canvas2D, frame: Frame, scale: number, images?:
                     ctx.restore()
                 }
             }
-            if (op.fill) {
+            if (op.fill && op.fillAlpha > 0) {
                 ctx.globalAlpha = op.fillAlpha
                 if (op.fill !== lastFillPaint) {
                     lastFillPaint = op.fill
@@ -202,7 +202,7 @@ function paintFrameContents(ctx: Canvas2D, frame: Frame, scale: number, images?:
                 }
                 ctx.fill(ringsToPath2D(op.path))
             }
-            if (op.stroke && op.strokePath.length) {
+            if (op.stroke && op.strokeAlpha > 0 && op.strokePath.length) {
                 ctx.globalAlpha = op.strokeAlpha
                 if (op.stroke !== lastStrokePaint) {
                     lastStrokePaint = op.stroke

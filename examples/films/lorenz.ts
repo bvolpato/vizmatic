@@ -4,19 +4,84 @@
  * nearby runs part are measured from the same integration that gets drawn.
  */
 import {
-    Node, axes, dot, dynamic, fadeIn, fadeOut, film, integrateTrajectory, line, linear, polyPath, ramp, rect, smoother, text, tex, write,
+    Node, axes, dot, dynamic, fadeIn, fadeOut, film, line, linear, polyPath, ramp, rect, smoother, text, tex, write,
     type Rgba, type Vec,
 } from 'vizmatic/stage'
 
 const SIGMA = 10, RHO = 28, BETA = 8 / 3
 const DT = 0.004
+const SPAN = 15000
+const CLOUD = 72
+// Chapter 3 only advances `clock` from 0 to 24 (6,000 steps of DT = 0.004).
+const CLOUD_SPAN = 6001
+const OFFSET = 1e-5
 const COLUMN = 480
 const CENTER: Vec = [-232, 8]
 
-type Samples = readonly (readonly number[])[]
+function integrateLorenz(x0: number, y0: number, z0: number, steps: number): Float64Array {
+    const out = new Float64Array(steps * 3)
+    let x = x0, y = y0, z = z0
+    out[0] = x; out[1] = y; out[2] = z
+    const half = DT * 0.5
+    const sixth = DT / 6
+    for (let i = 1; i < steps; i++) {
+        const k1x = SIGMA * (y - x)
+        const k1y = x * (RHO - z) - y
+        const k1z = x * y - BETA * z
 
-function derivative(_time: number, [x, y, z]: readonly number[]): readonly number[] {
-    return [SIGMA * (y - x), x * (RHO - z) - y, x * y - BETA * z]
+        const x2 = x + half * k1x, y2 = y + half * k1y, z2 = z + half * k1z
+        const k2x = SIGMA * (y2 - x2)
+        const k2y = x2 * (RHO - z2) - y2
+        const k2z = x2 * y2 - BETA * z2
+
+        const x3 = x + half * k2x, y3 = y + half * k2y, z3 = z + half * k2z
+        const k3x = SIGMA * (y3 - x3)
+        const k3y = x3 * (RHO - z3) - y3
+        const k3z = x3 * y3 - BETA * z3
+
+        const x4 = x + DT * k3x, y4 = y + DT * k3y, z4 = z + DT * k3z
+        const k4x = SIGMA * (y4 - x4)
+        const k4y = x4 * (RHO - z4) - y4
+        const k4z = x4 * y4 - BETA * z4
+
+        x += sixth * (k1x + 2 * k2x + 2 * k3x + k4x)
+        y += sixth * (k1y + 2 * k2y + 2 * k3y + k4y)
+        z += sixth * (k1z + 2 * k2z + 2 * k3z + k4z)
+        const o = i * 3
+        out[o] = x; out[o + 1] = y; out[o + 2] = z
+    }
+    return out
+}
+
+interface LorenzData {
+    runA: Float64Array
+    runB: Float64Array
+    separation: Float64Array
+    partedAt: number
+    cloud: readonly Float64Array[]
+}
+
+let cachedLorenz: LorenzData | undefined
+
+// Compute deterministic RK4 trajectories once per module load so Suspend retries and theme switches cost 0 ms.
+function getLorenzData(): LorenzData {
+    if (cachedLorenz) return cachedLorenz
+    // Settle onto the attractor first, so every drawn run starts on it.
+    const warmup = integrateLorenz(1, 1, 1, 6001)
+    const sx = warmup[6000 * 3]!, sy = warmup[6000 * 3 + 1]!, sz = warmup[6000 * 3 + 2]!
+    const runA = integrateLorenz(sx, sy, sz, SPAN)
+    const runB = integrateLorenz(sx + OFFSET, sy, sz, SPAN)
+    const separation = new Float64Array(SPAN)
+    let partedAt = -1
+    for (let i = 0; i < SPAN; i++) {
+        const o = i * 3
+        const d = Math.hypot(runA[o]! - runB[o]!, runA[o + 1]! - runB[o + 1]!, runA[o + 2]! - runB[o + 2]!)
+        separation[i] = d
+        if (partedAt < 0 && d > 10) partedAt = i * DT
+    }
+    const cloud = Array.from({ length: CLOUD }, (_, i) => integrateLorenz(sx + (i - CLOUD / 2) * 0.012, sy, sz, CLOUD_SPAN))
+    cachedLorenz = { runA, runB, separation, partedAt, cloud }
+    return cachedLorenz
 }
 
 export default film({
@@ -25,23 +90,8 @@ export default film({
     fps: 60,
     bloom: 0.2,
 }, (s) => {
-    const SPAN = 15000
-    // Settle onto the attractor first, so every drawn run starts on it.
-    const settled = integrateTrajectory(derivative, { initial: [1, 1, 1], to: 6000 * DT, step: DT }).sample(6000 * DT)
-
-    const OFFSET = 1e-5
-    const runA = integrateTrajectory(derivative, { initial: settled, to: (SPAN - 1) * DT, step: DT }).states
-    const runB = integrateTrajectory(derivative, { initial: [settled[0] + OFFSET, settled[1], settled[2]], to: (SPAN - 1) * DT, step: DT }).states
-    const separation = new Float64Array(SPAN)
-    let partedAt = -1
-    for (let i = 0; i < SPAN; i++) {
-        separation[i] = Math.hypot(runA[i]![0]! - runB[i]![0]!, runA[i]![1]! - runB[i]![1]!, runA[i]![2]! - runB[i]![2]!)
-        if (partedAt < 0 && separation[i]! > 10) partedAt = i * DT
-    }
-
-    const CLOUD = 72
+    const { runA, runB, separation, partedAt, cloud } = getLorenzData()
     const cloudColors: readonly Rgba[] = ramp(CLOUD, 'blue', 'teal', 'green', 'yellow', 'orange', 'pink', 'purple')
-    const cloud = Array.from({ length: CLOUD }, (_, i) => integrateTrajectory(derivative, { initial: [settled[0] + (i - CLOUD / 2) * 0.012, settled[1], settled[2]], to: (SPAN - 1) * DT, step: DT }).states)
 
     const clock = s.value(0)
     const showSingle = s.value(1)
@@ -62,32 +112,41 @@ export default film({
         return [CENTER[0] + X * scale, CENTER[1] - (Y * se + Z * ce) * scale]
     }
 
-    const sampleHead = (data: Samples, headFloat: number): Vec => {
-        const i0 = Math.min(SPAN - 1, Math.max(0, Math.floor(headFloat)))
-        const i1 = Math.min(SPAN - 1, i0 + 1)
-        const frac = headFloat - i0
-        const a = data[i0]!, b = data[i1]!
+    const sampleHead = (data: Float64Array, headFloat: number): Vec => {
+        const maxIdx = data.length / 3 - 1
+        const clamped = Math.max(0, Math.min(maxIdx, headFloat))
+        const i0 = Math.floor(clamped)
+        const i1 = Math.min(maxIdx, i0 + 1)
+        const frac = clamped - i0
+        const o0 = i0 * 3, o1 = i1 * 3
         return project(
-            a[0]! + (b[0]! - a[0]!) * frac,
-            a[1]! + (b[1]! - a[1]!) * frac,
-            a[2]! + (b[2]! - a[2]!) * frac,
+            data[o0]! + (data[o1]! - data[o0]!) * frac,
+            data[o0 + 1]! + (data[o1 + 1]! - data[o0 + 1]!) * frac,
+            data[o0 + 2]! + (data[o1 + 2]! - data[o0 + 2]!) * frac,
         )
     }
 
-    const tail = (data: Samples, from: number, to: number, stride: number, tip?: Vec): Vec[] => {
+    const tail = (data: Float64Array, from: number, to: number, stride: number, tip?: Vec): Vec[] => {
         const out: Vec[] = []
-        for (let i = Math.max(0, from); i <= to; i += stride) out.push(project(data[i]![0]!, data[i]![1]!, data[i]![2]!))
+        const maxIdx = data.length / 3 - 1
+        const limit = Math.min(maxIdx, to)
+        for (let i = Math.max(0, from); i <= limit; i += stride) {
+            const o = i * 3
+            out.push(project(data[o]!, data[o + 1]!, data[o + 2]!))
+        }
         if (tip) out.push(tip)
         return out
     }
 
     /** A line that fades into its own past, in four stretches. */
-    const comet = (data: Samples, headFloat: number, length: number, color: string | Rgba, width: number, stride: number, alpha: number, tip: Vec): Node[] => {
-        const head = Math.min(SPAN - 1, Math.floor(headFloat))
+    const comet = (data: Float64Array, headFloat: number, length: number, color: string | Rgba, width: number, stride: number, alpha: number, tip: Vec): Node[] => {
+        const maxIdx = data.length / 3 - 1
+        const clamped = Math.max(0, Math.min(maxIdx, headFloat))
+        const head = Math.floor(clamped)
         const out: Node[] = []
         const stops = [[1, 0.6, 0.1], [0.6, 0.32, 0.26], [0.32, 0.12, 0.55], [0.12, 0, 1]] as const
         for (const [far, near, opacity] of stops) {
-            const from = Math.floor(headFloat - length * far), to = Math.floor(headFloat - length * near)
+            const from = Math.floor(clamped - length * far), to = Math.floor(clamped - length * near)
             if (to <= 0 || to <= from) continue
             const points = tail(data, Math.max(0, from), Math.min(head, to), stride, near === 0 ? tip : undefined)
             if (points.length > 1) out.push(new Node(polyPath(points)).stroke(color, width, opacity * alpha))

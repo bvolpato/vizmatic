@@ -414,12 +414,12 @@ export function frameToSvg(frame: Frame, options: { scale?: number; transparent?
                 body.push(`<path d="${pathData(path)}" fill="none" stroke="${css([color[0], color[1], color[2], 1])}" stroke-opacity="${fmt(profile.alpha * base)}" stroke-width="${fmt(profile.width)}" stroke-linecap="round" stroke-linejoin="round" filter="url(#${id})"${mode}/>`)
             }
         }
-        if (op.fill && op.stroke && op.strokePath === op.path) {
+        if (op.fill && op.fillAlpha > 0 && op.stroke && op.strokeAlpha > 0 && op.strokePath === op.path) {
             body.push(`<path d="${pathData(op.path)}" ${paintAttr(op.fill, 'fill', op.fillAlpha)} ${paintAttr(op.stroke, 'stroke', op.strokeAlpha)} stroke-width="${fmt(op.strokeWidth)}"${strokeAttrs(op)}${style}/>`)
             continue
         }
-        if (op.fill) body.push(`<path d="${pathData(op.path)}" ${paintAttr(op.fill, 'fill', op.fillAlpha)}${style}/>`)
-        if (op.stroke && op.strokePath.length) {
+        if (op.fill && op.fillAlpha > 0) body.push(`<path d="${pathData(op.path)}" ${paintAttr(op.fill, 'fill', op.fillAlpha)}${style}/>`)
+        if (op.stroke && op.strokeAlpha > 0 && op.strokePath.length) {
             body.push(`<path d="${pathData(op.strokePath)}" fill="none" ${paintAttr(op.stroke, 'stroke', op.strokeAlpha)} stroke-width="${fmt(op.strokeWidth)}"${strokeAttrs(op)}${style}/>`)
         }
     }

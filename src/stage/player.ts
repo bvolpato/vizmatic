@@ -201,6 +201,7 @@ export class FilmPlayer {
         cancelAnimationFrame(this.raf)
         this.raf = 0
         this.options.onState?.({ playing: false })
+        this.releasePresenter(true)
     }
 
     toggle(): void {
@@ -304,6 +305,26 @@ export class FilmPlayer {
         return element
     }
 
+    private releasePresenter(preserveFrame: boolean): void {
+        if (!this.presenter) return
+        if (preserveFrame && this.presentingBloom && this.presentCanvas && this.presentCanvas.width > 0 && this.presentCanvas.height > 0) {
+            try {
+                this.ctx.save()
+                this.ctx.setTransform(1, 0, 0, 1, 0, 0)
+                this.ctx.globalAlpha = 1
+                this.ctx.globalCompositeOperation = 'copy'
+                this.ctx.drawImage(this.presentCanvas, 0, 0, this.canvas.width, this.canvas.height)
+                this.ctx.restore()
+            } catch {
+                // Keep the 2D canvas pixels if the WebGL buffer was already lost.
+            }
+        }
+        const active = this.presenter
+        this.presenter = undefined
+        this.setDirectBloomVisible(false)
+        active.dispose()
+    }
+
     private paint(prepared?: Frame, skipIfSame = false): void {
         if (this.destroyed) return
         let frame: Frame
@@ -331,8 +352,28 @@ export class FilmPlayer {
         this.lastFrame = frame
         paintFrame(this.ctx, frame, this.scale, this.lookupImage)
         if (this.options.bloom !== false && frame.bloom > 0 && frame.dark) {
-            if (this.presentCanvas && this.gpuBloom) {
-                if (this.presenter === undefined) this.presenter = createWebGLBloomPresenter(this.presentCanvas)
+            // Use a dedicated direct-present WebGL2 context only while actively playing so paused
+            // films hold zero WebGL contexts and multi-film pages stay under browser context limits.
+            if (this.presentCanvas && this.gpuBloom && this.playing) {
+                if (this.presenter === undefined) {
+                    this.presenter = createWebGLBloomPresenter(this.presentCanvas, () => {
+                        if (this.destroyed) return
+                        if (this.presentingBloom && this.presentCanvas && this.presentCanvas.width > 0 && this.presentCanvas.height > 0) {
+                            try {
+                                this.ctx.save()
+                                this.ctx.setTransform(1, 0, 0, 1, 0, 0)
+                                this.ctx.globalAlpha = 1
+                                this.ctx.globalCompositeOperation = 'copy'
+                                this.ctx.drawImage(this.presentCanvas, 0, 0, this.canvas.width, this.canvas.height)
+                                this.ctx.restore()
+                            } catch {
+                                // Context already lost; 2D canvas still holds the unbloomed frame.
+                            }
+                        }
+                        this.presenter = undefined
+                        this.setDirectBloomVisible(false)
+                    })
+                }
                 if (this.presenter) {
                     const bgKey = frame.background ?? '#000000'
                     if (this.bloomBgKey !== bgKey) {
@@ -346,10 +387,13 @@ export class FilmPlayer {
                     this.presenter.dispose()
                     this.presenter = null
                 }
+            } else if (this.presenter) {
+                this.releasePresenter(false)
             }
             this.setDirectBloomVisible(false)
             this.bloomState = paintCanvasBloom(this.canvas, this.ctx, frame.bloom, frame.background, this.bloomState)
         } else {
+            this.releasePresenter(false)
             this.setDirectBloomVisible(false)
         }
     }
@@ -402,7 +446,7 @@ canvas.bloom { position: absolute; inset: 0; pointer-events: none; }
 :host(:not(:hover):not(:focus-within):not([data-paused])) .caption { bottom: 18px; }
 :host([nocontrols]) .caption { display: none !important; }
 .chrome { position: absolute; inset: auto 0 0 0; display: flex; align-items: center; gap: 12px; padding: 28px 14px 12px; background: linear-gradient(to top, rgba(0,0,0,.62), rgba(0,0,0,0)); opacity: 0; transition: opacity .18s ease; }
-:host(:hover) .chrome, :host(:focus-within) .chrome, :host([data-paused]) .chrome { opacity: 1; }
+:host(:hover) .chrome, :host(:focus-within) .chrome, :host([data-paused]) .chrome, :host([data-muted-notice]) .chrome { opacity: 1; }
 :host([nocontrols]) .chrome { display: none; }
 button { all: unset; cursor: pointer; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 6px; }
 button:focus-visible { outline: 2px solid currentColor; outline-offset: 1px; }
@@ -417,6 +461,7 @@ button:hover { background: rgba(255,255,255,.12); }
 .time { font-variant-numeric: tabular-nums; opacity: .82; white-space: nowrap; }
 svg { width: 14px; height: 14px; fill: currentColor; }
 @media (hover: none), (pointer: coarse) {
+  .caption, :host(:not(:hover):not(:focus-within):not([data-paused])) .caption { bottom: 66px; }
   .chrome { opacity: .92; padding: 20px 10px 8px; gap: 8px; }
   button { width: 34px; height: 34px; }
   .track { height: 28px; }
@@ -500,8 +545,10 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
             if (this.audio) {
                 this.audio.pause()
                 this.audio.removeAttribute('src')
+                this.audio.load?.()
                 this.audio = null
             }
+            this.removeAttribute('data-muted-notice')
             this.started = false
             this.visible = false
             this.wantsPlay = false
@@ -626,8 +673,17 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
             const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
             const autoplay = this.hasAttribute('autoplay') && !reduced
 
+            const loopStartAttr = this.getAttribute('loop-start')
+            const loopEndAttr = this.getAttribute('loop-end')
+            const loopStart = loopStartAttr !== null && Number.isFinite(Number(loopStartAttr)) ? Number(loopStartAttr) : undefined
+            const loopEnd = loopEndAttr !== null && Number.isFinite(Number(loopEndAttr)) ? Number(loopEndAttr) : undefined
+            const loopMode = this.getAttribute('loop-mode') === 'bounce' ? 'bounce' : 'repeat'
+            const speedAttr = Number(this.getAttribute('speed'))
+            const speed = Number.isFinite(speedAttr) && speedAttr > 0 ? speedAttr : undefined
+
             const audioSrc = this.getAttribute('audio')?.trim()
             let audio: HTMLAudioElement | null = null
+            let scrubbing = false
             const syncMuteUi = () => {
                 if (!audio) return
                 muteBtn.innerHTML = audio.muted ? ICON_MUTE : ICON_VOLUME
@@ -655,6 +711,7 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
                             || this.audio !== currentAudio || !this.player?.isPlaying || currentAudio.muted) return
                         currentAudio.muted = true
                         syncMuteUi()
+                        this.setAttribute('data-muted-notice', '')
                         const retry = currentAudio.play()
                         if (retry && typeof retry.catch === 'function') retry.catch(() => {})
                     })
@@ -665,7 +722,8 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
                 audio.preload = 'metadata'
                 audio.src = audioSrc
                 audio.hidden = true
-                audio.loop = this.hasAttribute('loop')
+                // Only native-loop audio for full-film loops; windowed or bounce loops sync explicitly.
+                audio.loop = this.hasAttribute('loop') && loopStart === undefined && loopEnd === undefined && loopMode !== 'bounce'
                 if (this.hasAttribute('muted')) audio.muted = true
                 root.append(audio)
                 this.audio = audio
@@ -719,21 +777,15 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
                     lastAriaVal = ariaVal
                 }
                 updateCaption(t)
-                if (audio && this.player?.isPlaying) {
+                if (audio && this.player?.isPlaying && !scrubbing) {
                     if (audio.playbackRate !== this.player.speed) audio.playbackRate = this.player.speed
-                    if (!audio.paused && Math.abs(audio.currentTime - t) > 0.35) {
+                    const audioLimit = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : Infinity
+                    if (!audio.paused && t < audioLimit - 0.1 && Math.abs(audio.currentTime - t) > 0.35) {
                         syncAudioTime(t)
                     }
                 }
                 this.dispatchEvent(new CustomEvent('timeupdate', { detail: { time: t } }))
             }
-            const loopStartAttr = this.getAttribute('loop-start')
-            const loopEndAttr = this.getAttribute('loop-end')
-            const loopStart = loopStartAttr !== null && Number.isFinite(Number(loopStartAttr)) ? Number(loopStartAttr) : undefined
-            const loopEnd = loopEndAttr !== null && Number.isFinite(Number(loopEndAttr)) ? Number(loopEndAttr) : undefined
-            const loopMode = this.getAttribute('loop-mode') === 'bounce' ? 'bounce' : 'repeat'
-            const speedAttr = Number(this.getAttribute('speed'))
-            const speed = Number.isFinite(speedAttr) && speedAttr > 0 ? speedAttr : undefined
             const startAt = this.getAttribute('start')
             const firstStep = this.hasAttribute('stepped') && !autoplay ? film.chapters.find((c) => c.time > 0) : undefined
             let initialTime = 0
@@ -759,7 +811,7 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
                 onTime,
                 onSeek: (t) => {
                     syncAudioTime(t)
-                    if (audio && player.isPlaying && audio.paused && Number.isFinite(audio.duration) && t < audio.duration - 0.05) {
+                    if (!scrubbing && audio && player.isPlaying && audio.paused && Number.isFinite(audio.duration) && t < audio.duration - 0.05) {
                         playAudio()
                     }
                 },
@@ -768,7 +820,7 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
                     toggle.setAttribute('aria-label', playing ? 'Pause' : 'Play')
                     if (playing) {
                         this.removeAttribute('data-paused')
-                        if (audio) {
+                        if (audio && !scrubbing) {
                             audio.playbackRate = player.speed
                             syncAudioTime(player.time)
                             playAudio()
@@ -793,13 +845,21 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
             muteBtn.addEventListener('click', () => {
                 if (!audio) return
                 audio.muted = !audio.muted
+                this.removeAttribute('data-muted-notice')
                 syncMuteUi()
                 if (player.isPlaying && audio.paused) playAudio()
             })
-            root.querySelector('.full')!.addEventListener('click', () => {
-                if (document.fullscreenElement) void document.exitFullscreen()
-                else void this.requestFullscreen()
-            })
+            const fullBtn = root.querySelector<HTMLElement>('.full')!
+            const canFullscreen = typeof this.requestFullscreen === 'function' && document.fullscreenEnabled !== false
+            if (!canFullscreen) fullBtn.hidden = true
+            const toggleFullscreen = () => {
+                if (document.fullscreenElement === this) {
+                    void Promise.resolve(document.exitFullscreen?.()).catch(() => {})
+                } else if (canFullscreen) {
+                    void Promise.resolve(this.requestFullscreen()).catch(() => {})
+                }
+            }
+            fullBtn.addEventListener('click', toggleFullscreen)
             const seekFrom = (event: PointerEvent) => {
                 const rect = track.getBoundingClientRect()
                 if (rect.width <= 0) return
@@ -808,13 +868,20 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
             }
             track.addEventListener('pointerdown', (event) => {
                 track.setPointerCapture(event.pointerId)
+                scrubbing = true
+                audio?.pause()
                 seekFrom(event)
                 const move = (next: PointerEvent) => seekFrom(next)
                 const end = () => {
+                    scrubbing = false
                     track.removeEventListener('pointermove', move)
                     track.removeEventListener('pointerup', end)
                     track.removeEventListener('pointercancel', end)
                     track.removeEventListener('lostpointercapture', end)
+                    if (audio && player.isPlaying) {
+                        syncAudioTime(player.time)
+                        if (!Number.isFinite(audio.duration) || player.time < audio.duration - 0.05) playAudio()
+                    }
                 }
                 track.addEventListener('pointermove', move)
                 track.addEventListener('pointerup', end)
@@ -864,11 +931,11 @@ export function defineFilmElement(load: (src: string, options?: FilmLoadOptions)
                     updateCaption(player.time)
                 } else if (lower === 'm' && audio) {
                     audio.muted = !audio.muted
+                    this.removeAttribute('data-muted-notice')
                     syncMuteUi()
                     if (player.isPlaying && audio.paused) playAudio()
                 } else if (lower === 'f') {
-                    if (document.fullscreenElement) void document.exitFullscreen()
-                    else void this.requestFullscreen()
+                    toggleFullscreen()
                 }
             }, { signal: this.keys.signal })
             if (autoplay && this.visible) player.play()

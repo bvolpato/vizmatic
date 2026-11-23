@@ -26,19 +26,29 @@ let lastRenderedJob: { width: number; height: number; dither: boolean; frames: r
 function samePaint(a: unknown, b: unknown): boolean {
     if (a === b) return true
     if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false
-    if (Array.isArray(a) && Array.isArray(b)) {
-        if (a.length !== b.length) return false
+    if (Array.isArray(a) || Array.isArray(b)) {
+        if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false
         for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false
         return true
     }
-    const ga = a as { kind?: string; from?: readonly number[]; to?: readonly number[]; stops?: readonly { offset: number; color: readonly number[] }[] }
+    const ga = a as {
+        type?: string
+        from?: readonly number[]
+        to?: readonly number[]
+        center?: readonly number[]
+        radius?: number
+        stops?: readonly (readonly [number, readonly number[]])[]
+    }
     const gb = b as typeof ga
-    if (ga.kind !== gb.kind || !ga.stops || !gb.stops || ga.stops.length !== gb.stops.length) return false
+    if (ga.type !== gb.type || !ga.stops || !gb.stops || ga.stops.length !== gb.stops.length) return false
+    if (Boolean(ga.from) !== Boolean(gb.from) || Boolean(ga.to) !== Boolean(gb.to)) return false
     if (ga.from && gb.from && (ga.from[0] !== gb.from[0] || ga.from[1] !== gb.from[1])) return false
     if (ga.to && gb.to && (ga.to[0] !== gb.to[0] || ga.to[1] !== gb.to[1])) return false
+    if (Boolean(ga.center) !== Boolean(gb.center) || ga.radius !== gb.radius) return false
+    if (ga.center && gb.center && (ga.center[0] !== gb.center[0] || ga.center[1] !== gb.center[1])) return false
     for (let i = 0; i < ga.stops.length; i++) {
         const sa = ga.stops[i]!, sb = gb.stops[i]!
-        if (sa.offset !== sb.offset || !samePaint(sa.color, sb.color)) return false
+        if (sa[0] !== sb[0] || !samePaint(sa[1], sb[1])) return false
     }
     return true
 }
@@ -48,10 +58,19 @@ function samePath(a: Path, b: Path): boolean {
     if (a.length !== b.length) return false
     for (let i = 0; i < a.length; i++) {
         const ra = a[i]!, rb = b[i]!
-        if (ra.closed !== rb.closed || ra.p.length !== rb.p.length) return false
+        if (ra.closed !== rb.closed || Boolean(ra.straight) !== Boolean(rb.straight) || ra.p.length !== rb.p.length) return false
         for (let j = 0; j < ra.p.length; j++) if (ra.p[j] !== rb.p[j]) return false
     }
     return true
+}
+
+function sameCrop(
+    a?: { x: number; y: number; width: number; height: number },
+    b?: { x: number; y: number; width: number; height: number },
+): boolean {
+    if (a === b) return true
+    if (!a || !b) return false
+    return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height
 }
 
 function sameClips(a?: readonly Path[], b?: readonly Path[]): boolean {
@@ -72,6 +91,7 @@ function sameFrame(a: Frame, b: Frame): boolean {
             if (oa.image.pixels || ob.image.pixels) return false
             if (oa.alpha !== ob.alpha || oa.blend !== ob.blend || oa.dim !== ob.dim
                 || !samePaint(oa.backdrop, ob.backdrop) || !sameClips(oa.clips, ob.clips)
+                || !sameCrop(oa.image.crop, ob.image.crop)
                 || oa.image.src !== ob.image.src || oa.image.width !== ob.image.width || oa.image.height !== ob.image.height) return false
             for (let m = 0; m < 6; m++) if (oa.matrix[m] !== ob.matrix[m]) return false
         } else if (oa.kind === 'path' && ob.kind === 'path') {
@@ -260,9 +280,10 @@ async function run(): Promise<void> {
             next.catch(() => {})
             const job: GpuFrameJob = 'times' in decoded ? { ...decoded, frames: await Promise.all(decoded.times.map(sample)) } : decoded
             const { repeat, pixels, rasterMs, bloomMs, readbackStarted } = await paint(job)
-            const prior = repeat ? pending[pending.length - 1] : undefined
+            // Keep pixel readback pipelined, but serialize HTTP delivery so full frames
+            // never overtake each other and corrupt a subsequent x-frame-repeat snapshot.
+            const prior = pending[pending.length - 1]
             const sent = pixels.then(async buffer => {
-                // Ensure the referenced full frame finished delivery before its 0-byte repeat arrives.
                 if (prior) await prior
                 const headers: Record<string, string> = {
                     'x-raster-ms': String(rasterMs),
