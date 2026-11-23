@@ -213,7 +213,7 @@ export default film({
         trail(pathB, stepB.value, 'pink', showB.value)
 
         const alpha = arrowAlpha.value
-        if (alpha > 0) {
+        if (alpha > 1e-3) {
             const index = Math.min(pathA.length - 1, Math.floor(stepA.value))
             const [x, y] = pathA[index]!
             const [gx, gy] = gradient(x, y)
@@ -232,7 +232,7 @@ export default film({
             away.moveTo([(a.p[0] + b.p[0]) / 2 + sideX * 72, (a.p[1] + b.p[1]) / 2 + sideY * 72])
             const bb = away.bounds()
             items.push({ depth: a.depth - 0.5, node: new Node().add(
-                rect(bb.width + 28, bb.height + 26, { fill: 'bg', stroke: null, radius: 6 }).at(bb.x + bb.width / 2, bb.y + bb.height / 2),
+                rect(bb.width + 28, bb.height + 26, { fill: 'bg', stroke: null, radius: 6 }).at(bb.x + bb.width / 2, bb.y + bb.height / 2).opacity(Math.min(1, alpha * 10)),
                 away,
             ) })
         }

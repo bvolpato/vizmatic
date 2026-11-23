@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-29T03:46:48.801Z",
+  "generatedAt": "2026-11-23T01:09:17.854Z",
   "revision": {
-    "commit": "c9775bf9f2fa",
-    "workingTree": "clean"
+    "commit": "c794061be42a",
+    "workingTree": "modified"
   },
   "environment": {
-    "node": "v22.22.2",
-    "platform": "linux",
-    "release": "6.17.0-1025-oem",
-    "arch": "x64",
-    "cpuModel": "AMD Ryzen 9 9950X3D 16-Core Processor",
-    "cpuCount": 32,
-    "totalMemoryBytes": 130150158336
+    "node": "v26.12.0",
+    "platform": "darwin",
+    "release": "25.6.0",
+    "arch": "arm64",
+    "cpuModel": "Apple M5 Max",
+    "cpuCount": 18,
+    "totalMemoryBytes": 68719476736
   },
   "methodology": {
     "measuredRunsPerExampleTheme": 3,
@@ -30,10 +30,10 @@
   "qualityCheck": {
     "command": "vizmatic check examples --theme dark,light --json",
     "examples": {
-      "checked": 37,
-      "available": 37
+      "checked": 64,
+      "available": 64
     },
-    "themesChecked": 74,
+    "themesChecked": 128,
     "diagnostics": {
       "errors": 0,
       "warnings": 0,
@@ -48,31 +48,31 @@
       "theme": "dark",
       "runs": [
         {
-          "renderMs": 1019.5,
-          "pngBytes": 161582,
-          "pixelWidth": 1120,
-          "pixelHeight": 1360
+          "renderMs": 156.78,
+          "pngBytes": 125038,
+          "pixelWidth": 1112,
+          "pixelHeight": 1134
         },
         {
-          "renderMs": 1010.27,
-          "pngBytes": 161582,
-          "pixelWidth": 1120,
-          "pixelHeight": 1360
+          "renderMs": 216.17,
+          "pngBytes": 125038,
+          "pixelWidth": 1112,
+          "pixelHeight": 1134
         },
         {
-          "renderMs": 1026.65,
-          "pngBytes": 161582,
-          "pixelWidth": 1120,
-          "pixelHeight": 1360
+          "renderMs": 200.34,
+          "pngBytes": 125038,
+          "pixelWidth": 1112,
+          "pixelHeight": 1134
         }
       ],
       "summary": {
-        "medianRenderMs": 1019.5,
-        "p95RenderMs": 1026.65,
-        "peakRssBytes": 355147776,
-        "pngBytes": 161582,
-        "pixelWidth": 1120,
-        "pixelHeight": 1360
+        "medianRenderMs": 200.34,
+        "p95RenderMs": 216.17,
+        "peakRssBytes": 394870784,
+        "pngBytes": 125038,
+        "pixelWidth": 1112,
+        "pixelHeight": 1134
       }
     },
     {
@@ -81,31 +81,31 @@
       "theme": "light",
       "runs": [
         {
-          "renderMs": 1018.56,
-          "pngBytes": 173225,
-          "pixelWidth": 1120,
-          "pixelHeight": 1360
+          "renderMs": 151.61,
+          "pngBytes": 123994,
+          "pixelWidth": 1112,
+          "pixelHeight": 1134
         },
         {
-          "renderMs": 1000.78,
-          "pngBytes": 173225,
-          "pixelWidth": 1120,
-          "pixelHeight": 1360
+          "renderMs": 140.81,
+          "pngBytes": 123994,
+          "pixelWidth": 1112,
+          "pixelHeight": 1134
         },
         {
-          "renderMs": 998.05,
-          "pngBytes": 173225,
-          "pixelWidth": 1120,
-          "pixelHeight": 1360
+          "renderMs": 137.02,
+          "pngBytes": 123994,
+          "pixelWidth": 1112,
+          "pixelHeight": 1134
         }
       ],
       "summary": {
-        "medianRenderMs": 1000.78,
-        "p95RenderMs": 1018.56,
-        "peakRssBytes": 366010368,
-        "pngBytes": 173225,
-        "pixelWidth": 1120,
-        "pixelHeight": 1360
+        "medianRenderMs": 140.81,
+        "p95RenderMs": 151.61,
+        "peakRssBytes": 399212544,
+        "pngBytes": 123994,
+        "pixelWidth": 1112,
+        "pixelHeight": 1134
       }
     },
     {
@@ -114,31 +114,31 @@
       "theme": "dark",
       "runs": [
         {
-          "renderMs": 693.46,
-          "pngBytes": 135859,
+          "renderMs": 159.7,
+          "pngBytes": 94312,
           "pixelWidth": 1120,
-          "pixelHeight": 780
+          "pixelHeight": 667
         },
         {
-          "renderMs": 696.92,
-          "pngBytes": 135859,
+          "renderMs": 129.39,
+          "pngBytes": 94312,
           "pixelWidth": 1120,
-          "pixelHeight": 780
+          "pixelHeight": 667
         },
         {
-          "renderMs": 708.11,
-          "pngBytes": 135859,
+          "renderMs": 151.64,
+          "pngBytes": 94312,
           "pixelWidth": 1120,
-          "pixelHeight": 780
+          "pixelHeight": 667
         }
       ],
       "summary": {
-        "medianRenderMs": 696.92,
-        "p95RenderMs": 708.11,
-        "peakRssBytes": 288591872,
-        "pngBytes": 135859,
+        "medianRenderMs": 151.64,
+        "p95RenderMs": 159.7,
+        "peakRssBytes": 309362688,
+        "pngBytes": 94312,
         "pixelWidth": 1120,
-        "pixelHeight": 780
+        "pixelHeight": 667
       }
     },
     {
@@ -147,31 +147,31 @@
       "theme": "light",
       "runs": [
         {
-          "renderMs": 707.76,
-          "pngBytes": 142585,
+          "renderMs": 154.74,
+          "pngBytes": 96516,
           "pixelWidth": 1120,
-          "pixelHeight": 780
+          "pixelHeight": 667
         },
         {
-          "renderMs": 696.32,
-          "pngBytes": 142585,
+          "renderMs": 134.72,
+          "pngBytes": 96516,
           "pixelWidth": 1120,
-          "pixelHeight": 780
+          "pixelHeight": 667
         },
         {
-          "renderMs": 696.18,
-          "pngBytes": 142585,
+          "renderMs": 128.42,
+          "pngBytes": 96516,
           "pixelWidth": 1120,
-          "pixelHeight": 780
+          "pixelHeight": 667
         }
       ],
       "summary": {
-        "medianRenderMs": 696.32,
-        "p95RenderMs": 707.76,
-        "peakRssBytes": 294301696,
-        "pngBytes": 142585,
+        "medianRenderMs": 134.72,
+        "p95RenderMs": 154.74,
+        "peakRssBytes": 303857664,
+        "pngBytes": 96516,
         "pixelWidth": 1120,
-        "pixelHeight": 780
+        "pixelHeight": 667
       }
     },
     {
@@ -180,31 +180,31 @@
       "theme": "dark",
       "runs": [
         {
-          "renderMs": 616.91,
-          "pngBytes": 86627,
+          "renderMs": 137.39,
+          "pngBytes": 65830,
           "pixelWidth": 1750,
-          "pixelHeight": 700
+          "pixelHeight": 616
         },
         {
-          "renderMs": 620,
-          "pngBytes": 86627,
+          "renderMs": 124.33,
+          "pngBytes": 65830,
           "pixelWidth": 1750,
-          "pixelHeight": 700
+          "pixelHeight": 616
         },
         {
-          "renderMs": 631.15,
-          "pngBytes": 86627,
+          "renderMs": 112.9,
+          "pngBytes": 65830,
           "pixelWidth": 1750,
-          "pixelHeight": 700
+          "pixelHeight": 616
         }
       ],
       "summary": {
-        "medianRenderMs": 620,
-        "p95RenderMs": 631.15,
-        "peakRssBytes": 316829696,
-        "pngBytes": 86627,
+        "medianRenderMs": 124.33,
+        "p95RenderMs": 137.39,
+        "peakRssBytes": 331759616,
+        "pngBytes": 65830,
         "pixelWidth": 1750,
-        "pixelHeight": 700
+        "pixelHeight": 616
       }
     },
     {
@@ -213,31 +213,31 @@
       "theme": "light",
       "runs": [
         {
-          "renderMs": 632.91,
-          "pngBytes": 91133,
+          "renderMs": 143.51,
+          "pngBytes": 66001,
           "pixelWidth": 1750,
-          "pixelHeight": 700
+          "pixelHeight": 616
         },
         {
-          "renderMs": 622.32,
-          "pngBytes": 91133,
+          "renderMs": 110.08,
+          "pngBytes": 66001,
           "pixelWidth": 1750,
-          "pixelHeight": 700
+          "pixelHeight": 616
         },
         {
-          "renderMs": 645.2,
-          "pngBytes": 91133,
+          "renderMs": 111.06,
+          "pngBytes": 66001,
           "pixelWidth": 1750,
-          "pixelHeight": 700
+          "pixelHeight": 616
         }
       ],
       "summary": {
-        "medianRenderMs": 632.91,
-        "p95RenderMs": 645.2,
-        "peakRssBytes": 320454656,
-        "pngBytes": 91133,
+        "medianRenderMs": 111.06,
+        "p95RenderMs": 143.51,
+        "peakRssBytes": 343146496,
+        "pngBytes": 66001,
         "pixelWidth": 1750,
-        "pixelHeight": 700
+        "pixelHeight": 616
       }
     },
     {
@@ -246,31 +246,31 @@
       "theme": "dark",
       "runs": [
         {
-          "renderMs": 603.76,
-          "pngBytes": 85850,
+          "renderMs": 81.03,
+          "pngBytes": 63857,
           "pixelWidth": 1400,
-          "pixelHeight": 830
+          "pixelHeight": 783
         },
         {
-          "renderMs": 610.51,
-          "pngBytes": 85850,
+          "renderMs": 79.84,
+          "pngBytes": 63857,
           "pixelWidth": 1400,
-          "pixelHeight": 830
+          "pixelHeight": 783
         },
         {
-          "renderMs": 605.22,
-          "pngBytes": 85850,
+          "renderMs": 72.36,
+          "pngBytes": 63857,
           "pixelWidth": 1400,
-          "pixelHeight": 830
+          "pixelHeight": 783
         }
       ],
       "summary": {
-        "medianRenderMs": 605.22,
-        "p95RenderMs": 610.51,
-        "peakRssBytes": 319389696,
-        "pngBytes": 85850,
+        "medianRenderMs": 79.84,
+        "p95RenderMs": 81.03,
+        "peakRssBytes": 300171264,
+        "pngBytes": 63857,
         "pixelWidth": 1400,
-        "pixelHeight": 830
+        "pixelHeight": 783
       }
     },
     {
@@ -279,31 +279,31 @@
       "theme": "light",
       "runs": [
         {
-          "renderMs": 597.99,
-          "pngBytes": 90712,
+          "renderMs": 87.36,
+          "pngBytes": 63945,
           "pixelWidth": 1400,
-          "pixelHeight": 830
+          "pixelHeight": 783
         },
         {
-          "renderMs": 610.65,
-          "pngBytes": 90712,
+          "renderMs": 80.92,
+          "pngBytes": 63945,
           "pixelWidth": 1400,
-          "pixelHeight": 830
+          "pixelHeight": 783
         },
         {
-          "renderMs": 607.97,
-          "pngBytes": 90712,
+          "renderMs": 83.18,
+          "pngBytes": 63945,
           "pixelWidth": 1400,
-          "pixelHeight": 830
+          "pixelHeight": 783
         }
       ],
       "summary": {
-        "medianRenderMs": 607.97,
-        "p95RenderMs": 610.65,
-        "peakRssBytes": 319062016,
-        "pngBytes": 90712,
+        "medianRenderMs": 83.18,
+        "p95RenderMs": 87.36,
+        "peakRssBytes": 317358080,
+        "pngBytes": 63945,
         "pixelWidth": 1400,
-        "pixelHeight": 830
+        "pixelHeight": 783
       }
     }
   ]

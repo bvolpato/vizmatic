@@ -11,7 +11,7 @@ import { buildSiteMedia } from './build-site-media'
 import { applySiteShell, configureSiteShell, registerSitePages, sitePages } from './site-shell'
 import { highlight, highlightGalleryExample, highlightPage } from './site-highlight'
 import { escapeHtml } from './site-markdown'
-import { formatDuration, loadFilmCatalog, renderClaims, renderFigures, renderFilmFilters, renderFilmWall, renderHomeShowcase } from './site-content'
+import { formatDuration, HOME_SHOWCASE_SPECS, loadFilmCatalog, renderClaims, renderFigures, renderFilmFilters, renderFilmWall, renderHomeShowcase } from './site-content'
 import { toPlaygroundExample } from './playground-example'
 
 const templatePath = 'docs/index.template.html'
@@ -419,13 +419,7 @@ const [besideSource, hasHeroTitle, figures, landingWall, fullWall, claims] = awa
         { name: 'engineering-dashboard', label: 'Dashboard', alt: 'An engineering platform health dashboard with small multiples, latency heatmap, charts, and endpoint tables', caption: 'Small multiples, heatmaps, charts, and tables that share one scale of type and rule.' },
         { name: 'data-pipeline-lineage', label: 'Data lineage', alt: 'End-to-end revenue data lineage across bronze, silver, and gold tables with freshness and schemas', caption: 'Column-level schemas, streaming and batch flows, and SLA freshness from event to board metric.' },
     ]),
-    renderHomeShowcase(films, [
-        { id: 'planetary-orbits', start: 0.8, end: 12.4, mode: 'repeat', lead: true, scene: 'Spinning orbits' },
-        { id: 'svd-3d', start: 2.2, end: 6.8, mode: 'bounce', scene: 'Unit sphere on the plane' },
-        { id: 'lorenz', start: 30.7, end: 33.4, mode: 'bounce', speed: 0.48, scene: '72 butterfly trajectories' },
-        { id: 'gradient-descent', start: 11.2, end: 19.2, mode: 'repeat', scene: 'Downhill on a rotating surface' },
-        { id: 'central-limit', start: 13.5, end: 33.2, mode: 'repeat', scene: '900 balls forming the bell curve' },
-    ]),
+    renderHomeShowcase(films, HOME_SHOWCASE_SPECS),
     renderFilmWall(films, ''),
     renderClaims(catalogComponentCount),
 ])

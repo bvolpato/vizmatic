@@ -16,7 +16,7 @@ Create a film from a starter that renders as written and passes the check.
 npx vizmatic new intro --template explainer
 ```
 
-The templates are `explainer`, `equation`, `architecture`, `chart`, and `deck`. Each one is one file. The `narrated` template writes a folder: a film that follows a recorded voice, with its script, its scenes, and its build.
+The templates are `explainer`, `story`, `equation`, `architecture`, `chart`, and `deck`. Each one is one file. The `narrated` template writes a folder: a film that follows a recorded voice, with its script, its scenes, and its build.
 
 ### vizmatic preview
 
@@ -154,12 +154,21 @@ npx vizmatic film intro.ts --out dist/films --look midnight,paper --quality high
 | `--poster` | Also write a poster frame. |
 | `--workers <n>` | Rasterizer threads. |
 | `--backend auto\|cpu\|gpu` | Movie renderer. Auto compares local GPU speed and sampled pixels for longer, demanding HD exports; CI uses CPU. GPU requires installed Chrome, Edge, or Chromium. |
-| `--encoder auto\|libx264\|nvenc\|videotoolbox` | MP4 encoder. Auto preserves x264 film tuning. An explicit hardware encoder must pass a real encode probe. |
+| `--encoder auto\|libx264\|nvenc\|videotoolbox\|vaapi\|qsv\|amf` | MP4 encoder. Auto probes local hardware H.264 encoders on non-grain HD exports (`>= 720p`, `>= 60` frames) and keeps `libx264` for grain, short clips, and CI. An explicit hardware encoder must pass a real encode probe. |
 | `--audio <file>` | Add a sound track. |
 | `--name <name>` | Name the output files, in place of the name of the film file. For one film. |
 | `--background <color\|none>` | Replace the background. |
 | `--ffmpeg <path>` | Use this FFmpeg. |
 | `--json` | Print a report as JSON. |
+
+### vizmatic doctor
+
+Inspect the local machine for CPU count, FFmpeg, native hardware H.264 encoders (`videotoolbox`, `nvenc`, `vaapi`, `qsv`, `amf`), GPU browser availability, and `uv`.
+
+```bash
+npx vizmatic doctor
+npx vizmatic doctor --probe-gpu --json
+```
 
 ### vizmatic narrated
 

@@ -15,7 +15,7 @@ For pnpm 11, allow esbuild's install script with `allowBuilds: { esbuild: true }
 
 ## Films
 
-Start from a template, or write the function yourself. Templates are `explainer`, `equation`, `architecture`, `chart`, `deck`, and `narrated`.
+Start from a template, or write the function yourself. Templates are `explainer`, `story`, `equation`, `architecture`, `chart`, `deck`, and `narrated`.
 
 ```bash
 npx vizmatic new intro --template explainer
@@ -69,7 +69,7 @@ npx vizmatic film intro.ts --frame 3,6.5,12 --width 1280 --out stills
 npx vizmatic film intro.ts --out dist/films --look midnight,paper --quality high
 ```
 
-Movie exports default to `--backend auto`: longer, demanding HD exports compare local CPU/GPU speed and sampled image quality. GPU rendering needs an installed Chrome, Edge, or Chromium; CI uses the CPU. `--backend cpu` forces software rendering, and `--backend gpu` requires a working GPU. `--encoder nvenc` requests NVIDIA H.264 encoding and fails if unavailable. Automatic film encoding retains `libx264` animation/grain settings. Hardware CQ and software CRF are different quality scales; inspect the resulting gradients and fine lines. `--json` records the selected backend, encoder, and selection reason.
+Movie exports default to `--backend auto`: longer, demanding HD exports compare local CPU/GPU speed and sampled image quality. GPU rendering needs an installed Chrome, Edge, or Chromium, and CI uses the CPU. `--backend cpu` forces software rendering, and `--backend gpu` requires a working GPU. Local non-grain HD MP4 exports (`>= 720p`, `>= 60` frames) automatically probe native hardware H.264 encoders (`videotoolbox`, `nvenc`, `vaapi`, `qsv`, `amf`) and fall back to `libx264`. Dithered grain exports, short clips, and CI keep `libx264` tuning. Pass `--encoder libx264|nvenc|videotoolbox|vaapi|qsv|amf` to require an encoder, or run `npx vizmatic doctor [--probe-gpu] --json` to inspect local accelerators. Hardware CQ and software CRF are different quality scales, so inspect the resulting gradients and fine lines. `--json` records the selected backend, encoder, and selection reason.
 
 `vizmatic check` samples the moments where the film comes to rest. It reports `film.off_canvas`, `film.text_edge`, `film.text_overlap`, `film.text_crossed`, and `film.missing_glyph`, each with times, a `box` in canvas pixels, and a `stage` center in authoring coordinates. Fix every error, then open the stills and look at them. `vizmatic preview intro.ts` opens a live player with a timeline for a person to review. The [Studio](https://bvolpato.github.io/vizmatic/studio.html) is a visual film editor in the browser for a person who wants to edit by hand.
 
