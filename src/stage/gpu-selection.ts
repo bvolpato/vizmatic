@@ -96,11 +96,12 @@ export async function selectGpuRenderer(film: CompiledFilm, options: GpuExportOp
     const { width, height, dither, subframes, shutterSpan, workers } = options
     let count = 3
     if (options.request === 'auto') {
-        // Time one whole CPU worker batch (capped at 12 frames) to measure sustained throughput without bloated probes.
+        // Time one whole CPU worker batch (or up to the memory budget when workers > 12) without bloated probes.
         const budget = options.memoryBudget ?? Math.min(2 * 1024 ** 3, totalmem() * 0.25)
-        const capacity = Math.min(12, Math.max(3, workers), Math.floor(budget / (width * height * 4 * 4)))
-        count = Math.floor(capacity / workers) * workers
-        if (count < 3) return { source: false, reason: 'GPU probe needs at least three frames and a whole CPU worker batch' }
+        const target = Math.max(12, workers)
+        const capacity = Math.min(target, Math.floor(budget / (width * height * 4 * 4)))
+        count = capacity >= workers ? Math.floor(capacity / workers) * workers : capacity
+        if (count < 3) return { source: false, reason: 'GPU probe needs at least three frames within the memory budget' }
     }
     let gpu: GpuRasterizer | undefined
     let keep = false
@@ -108,8 +109,8 @@ export async function selectGpuRenderer(film: CompiledFilm, options: GpuExportOp
     try {
         gpu = await GpuRasterizer.create(options.signal, gpuSourceOf(film))
         const source = gpu.usesFilmSource
-        // Explicit GPU mode only needs up to 3 CPU workers for pixel parity verification, not the entire CPU pool.
-        const probeWorkers = options.request === 'gpu' ? Math.min(options.workers, count) : options.workers
+        // Never allocate more probe CPU workers than probed frames.
+        const probeWorkers = Math.min(options.workers, count)
         const pool = new RasterPool(probeWorkers)
         let keepPool = false
         const timesAt = (time: number) => Array.from({ length: subframes }, (_, index) => time + index / subframes * shutterSpan)

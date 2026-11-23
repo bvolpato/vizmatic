@@ -452,7 +452,11 @@ export class WebGLSubframeAccumulator {
                 alpha: true, premultipliedAlpha: true, antialias: false, depth: false, stencil: false,
                 preserveDrawingBuffer: false, failIfMajorPerformanceCaveat: true,
             })
-            if (!gl || !gl.getExtension('EXT_color_buffer_float')) { this.broken = true; return false }
+            if (!gl || !gl.getExtension('EXT_color_buffer_float') || !gl.getExtension('EXT_float_blend')) {
+                gl?.getExtension('WEBGL_lose_context')?.loseContext()
+                this.broken = true
+                return false
+            }
             const link = (frag: string) => {
                 const p = gl.createProgram()!
                 const vs = gl.createShader(gl.VERTEX_SHADER)!
@@ -466,7 +470,13 @@ export class WebGLSubframeAccumulator {
             }
             const addProgram = link(ACCUM_ADD)
             const resolveProgram = link(ACCUM_RESOLVE)
-            if (!addProgram || !resolveProgram) { this.broken = true; return false }
+            if (!addProgram || !resolveProgram) {
+                if (addProgram) gl.deleteProgram(addProgram)
+                if (resolveProgram) gl.deleteProgram(resolveProgram)
+                gl.getExtension('WEBGL_lose_context')?.loseContext()
+                this.broken = true
+                return false
+            }
             gl.disable(gl.DITHER)
             gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true)
             gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE)
@@ -497,7 +507,11 @@ export class WebGLSubframeAccumulator {
             this.accumFbo = gl.createFramebuffer()!
             gl.bindFramebuffer(gl.FRAMEBUFFER, this.accumFbo)
             gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.accumTex, 0)
-            if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) { this.broken = true; return false }
+            if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+                this.dispose()
+                this.broken = true
+                return false
+            }
             this.canvas!.width = width
             this.canvas!.height = height
             this.width = width
@@ -586,25 +600,30 @@ export class WebGLSubframeAccumulator {
 }
 
 let renderer: BloomRenderer | null | undefined
+let rendererCanvas: HTMLCanvasElement | null = null
 
 /** Select the canvas backing before its first paint; repeated CPU readbacks can otherwise change rasterization. */
 export function supportsWebGLBloom(target: HTMLCanvasElement): boolean {
     try {
         if (renderer === undefined) {
             renderer = null
-            const canvas = target.ownerDocument.createElement('canvas')
+            const canvas = rendererCanvas ?? target.ownerDocument.createElement('canvas')
+            const freshCanvas = canvas !== rendererCanvas
+            rendererCanvas = canvas
             const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: true, antialias: false, depth: false, stencil: false, preserveDrawingBuffer: false, failIfMajorPerformanceCaveat: true })
             if (gl) {
                 renderer = new BloomRenderer(canvas, gl)
                 renderer.init()
-                canvas.addEventListener('webglcontextlost', (event) => {
-                    event.preventDefault()
-                    renderer?.dispose(false)
-                    renderer = null
-                })
-                canvas.addEventListener('webglcontextrestored', () => {
-                    renderer = undefined
-                })
+                if (freshCanvas) {
+                    canvas.addEventListener('webglcontextlost', (event) => {
+                        event.preventDefault()
+                        renderer?.dispose(false)
+                        renderer = null
+                    })
+                    canvas.addEventListener('webglcontextrestored', () => {
+                        renderer = undefined
+                    })
+                }
             }
         }
         return renderer !== null
@@ -632,19 +651,53 @@ export interface WebGLBloomPresenter {
     dispose(): void
 }
 
+// Keep direct WebGL2 presenters safely below Safari/WebKit's 8-context page limit
+// (leaving room for the shared probe/fallback context and user canvases).
+const MAX_DIRECT_PRESENTERS = 5
+interface ActivePresenter {
+    readonly evict: () => void
+}
+const activePresenters = new Set<ActivePresenter>()
+
+function touchPresenter(entry: ActivePresenter): void {
+    if (activePresenters.has(entry)) {
+        activePresenters.delete(entry)
+        activePresenters.add(entry)
+    }
+}
+
 /**
  * Present WebGL bloom directly on a visible canvas, skipping the WebGL2-to-2D
  * drawImage copy on every frame (a major bottleneck in Firefox).
  */
-export function createWebGLBloomPresenter(display: HTMLCanvasElement): WebGLBloomPresenter | null {
+export function createWebGLBloomPresenter(display: HTMLCanvasElement, onLostOrEvicted?: () => void): WebGLBloomPresenter | null {
     if (!supportsWebGLBloom(display)) return null
+    while (activePresenters.size >= MAX_DIRECT_PRESENTERS) {
+        const oldest = activePresenters.values().next().value
+        if (!oldest) break
+        activePresenters.delete(oldest)
+        oldest.evict()
+    }
     let instance: BloomRenderer | null = null
     let broken = false
+    let entry: ActivePresenter
+    const release = (lose: boolean) => {
+        broken = true
+        activePresenters.delete(entry)
+        display.removeEventListener?.('webglcontextlost', onLost)
+        instance?.dispose(lose)
+        instance = null
+    }
     const onLost = (event: Event) => {
         event.preventDefault()
-        broken = true
-        instance?.dispose(false)
-        instance = null
+        release(false)
+        onLostOrEvicted?.()
+    }
+    entry = {
+        evict: () => {
+            onLostOrEvicted?.()
+            release(true)
+        },
     }
     try {
         const gl = display.getContext('webgl2', {
@@ -655,28 +708,24 @@ export function createWebGLBloomPresenter(display: HTMLCanvasElement): WebGLBloo
         instance = new BloomRenderer(display, gl)
         instance.init()
         display.addEventListener?.('webglcontextlost', onLost)
+        activePresenters.add(entry)
         return {
             paint(source: HTMLCanvasElement, amount: number, background: readonly number[], dither = true): boolean {
                 if (broken || !instance || !Number.isFinite(amount) || amount < 0 || !background.slice(0, 3).every(Number.isFinite)) return false
+                touchPresenter(entry)
                 try {
                     return instance.paint(source, null, amount, background, dither)
                 } catch {
-                    broken = true
-                    instance?.dispose(false)
-                    instance = null
+                    release(true)
                     return false
                 }
             },
             dispose(): void {
-                broken = true
-                display.removeEventListener?.('webglcontextlost', onLost)
-                instance?.dispose(true)
-                instance = null
+                release(true)
             },
         }
     } catch {
-        display.removeEventListener?.('webglcontextlost', onLost)
-        instance?.dispose(true)
+        release(true)
         return null
     }
 }

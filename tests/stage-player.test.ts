@@ -504,13 +504,18 @@ describe('<vz-film> live reconfigure, captions overlay, and synced audio', () =>
             const muteBtn = root.querySelector('.mute')!
             const audio = createdAudios[0]!
 
-            // Autoplay rejected unmuted audio -> fell back to muted without stalling playback.
+            // Autoplay rejected unmuted audio -> fell back to muted without stalling playback and surfaced mute notice.
             await vi.waitFor(() => expect(audio.muted).toBe(true))
+            expect(el.hasAttribute('data-muted-notice')).toBe(true)
             expect(player.isPlaying).toBe(true)
             expect(audio.paused).toBe(false)
             expect(muteBtn.hidden).toBe(false)
             expect(muteBtn.getAttribute('aria-pressed')).toBe('true')
             expect(muteBtn.getAttribute('aria-label')).toBe('Unmute')
+            // Without Element.prototype.requestFullscreen (e.g. iPhone Safari), fullscreen button hides and `f` does not throw.
+            expect(root.querySelector('.full')!.hidden).toBe(true)
+            expect(root.innerHTML).toContain('bottom: 66px')
+            expect(() => el.dispatchEvent({ type: 'keydown', key: 'f', preventDefault: vi.fn(), composedPath: () => [el] } as unknown as Event)).not.toThrow()
 
             // Captions enabled by default and updated on seek.
             expect(ccBtn.hidden).toBe(false)
@@ -593,6 +598,8 @@ describe('<vz-film> live reconfigure, captions overlay, and synced audio', () =>
             }
 
             el.disconnectedCallback()
+            expect(audio.loadedCount).toBeGreaterThanOrEqual(1)
+            expect(el.hasAttribute('data-muted-notice')).toBe(false)
         } finally {
             vi.restoreAllMocks()
             vi.unstubAllGlobals()
@@ -762,6 +769,10 @@ function setupFilmElement() {
         currentTime = 0
         duration = 10
         playbackRate = 1
+        loadedCount = 0
+        load(): void {
+            this.loadedCount++
+        }
         playImpl: () => Promise<void> = async () => {
             this.paused = false
         }
