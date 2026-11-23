@@ -115,7 +115,7 @@ function captureQualityCheck(availableSources: string[]): CheckReport {
     const check = spawnSync(process.execPath, [
         join(root, 'dist', 'cli.js'),
         'check',
-        'examples',
+        ...availableSources,
         '--theme',
         themes.join(','),
         '--json',

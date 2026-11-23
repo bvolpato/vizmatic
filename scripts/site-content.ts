@@ -79,6 +79,15 @@ export interface FilmShowcaseSpec {
     readonly scene?: string
 }
 
+/** Single source of truth for the homepage showcase and its start-frame posters. */
+export const HOME_SHOWCASE_SPECS: readonly FilmShowcaseSpec[] = [
+    { id: 'planetary-orbits', start: 0.8, end: 12.4, mode: 'repeat', lead: true, scene: 'Spinning orbits' },
+    { id: 'svd-3d', start: 2.2, end: 6.8, mode: 'bounce', scene: 'Unit sphere on the plane' },
+    { id: 'lorenz', start: 30.7, end: 33.4, mode: 'bounce', speed: 0.48, scene: '72 butterfly trajectories' },
+    { id: 'gradient-descent', start: 11.2, end: 19.2, mode: 'repeat', scene: 'Downhill on a rotating surface' },
+    { id: 'central-limit', start: 13.5, end: 33.2, mode: 'repeat', scene: '900 balls forming the bell curve' },
+]
+
 /** Curated auto-playing showcase for the homepage: one wide lead film above a 2x2 gallery. */
 export async function renderHomeShowcase(films: readonly FilmEntry[], specs: readonly FilmShowcaseSpec[]): Promise<string> {
     const byId = new Map(films.map((film) => [film.id, film]))
@@ -88,12 +97,18 @@ export async function renderHomeShowcase(films: readonly FilmEntry[], specs: rea
     if (chosen.length === 0) return '<p class="film-empty">The first films are rendering. Check back soon.</p>'
 
     const cards = await Promise.all(chosen.map(async ({ spec, film }) => {
-        const hasPoster = await exists(`docs/assets/site/posters/${film.id}_dark.webp`)
+        const showcasePoster = `docs/assets/site/posters/showcase-${film.id}_dark.webp`
+        const defaultPoster = `docs/assets/site/posters/${film.id}_dark.webp`
+        const posterHref = (await exists(showcasePoster))
+            ? `assets/site/posters/showcase-${film.id}_dark.webp`
+            : (await exists(defaultPoster))
+                ? `assets/site/posters/${film.id}_dark.webp`
+                : ''
         const meta = [film.topic, formatDuration(film.duration), spec.scene ?? ''].filter(Boolean).join(' \u00b7 ')
         const lookLabel = film.look && film.look !== 'midnight' ? film.look[0]!.toUpperCase() + film.look.slice(1) : ''
         const lookBadge = lookLabel ? `<span class="wall-look" data-palette="${escapeHtml(film.look!)}" title="Original film look: ${escapeHtml(lookLabel)}"><i aria-hidden="true"></i>${escapeHtml(lookLabel)} look</span>` : ''
         const lookAttr = film.look && film.look !== 'midnight' ? ` data-look="${escapeHtml(film.look)}"` : ''
-        const poster = hasPoster ? `<img data-theme-image src="assets/site/posters/${film.id}_dark.webp" alt="" width="960" height="540" loading="lazy" decoding="async">` : ''
+        const poster = posterHref ? `<img data-theme-image src="${posterHref}" alt="" width="960" height="540" loading="lazy" decoding="async">` : ''
         const maxWidth = spec.lead ? 1280 : 960
         const modeAttr = spec.mode === 'bounce' ? ' data-loop-mode="bounce"' : ''
         const speedAttr = spec.speed !== undefined && spec.speed !== 1 ? ` data-speed="${spec.speed}"` : ''

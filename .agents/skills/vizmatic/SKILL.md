@@ -29,7 +29,7 @@ npm install vizmatic
 
 ## Film workflow
 
-1. Start from `assets/starter-film.ts`, or scaffold with `npx vizmatic new intro --template explainer`. Templates are `explainer`, `equation`, `architecture`, `chart`, `deck`, and `narrated` (writes a folder for a voice-driven lesson).
+1. Start from `assets/starter-film.ts`, or scaffold with `npx vizmatic new intro --template explainer`. Templates are `explainer`, `story`, `equation`, `architecture`, `chart`, `deck`, and `narrated` (writes a folder for a voice-driven lesson).
 2. Read `references/films.md` for engine rules, relational layout, and domain objects. Lay out every scene with `sceneKit`, `sceneArea`, `row`, `column`, `grid`, `place`, `beside`, `between`, `fitted`, and `boxOf` before typing coordinates; use raw coordinates only for data-driven marks. Run `npx vizmatic objects` and `npx vizmatic looks` to inspect the installed catalog and looks (`midnight`, `paper`, `blueprint`, `chalk`, `neon`).
 3. Check static and motion frames, and fix reported errors. Each finding includes timestamps, `box` in canvas pixels, and `stage` center in authoring coordinates.
    ```bash
@@ -51,7 +51,7 @@ npm install vizmatic
 
 For interactive authoring, `npx vizmatic preview intro.ts` opens a live timeline player that reloads on save, and [Studio](https://bvolpato.github.io/vizmatic/studio.html) provides a browser editor with object tracks that writes film source. Agents should edit source directly.
 
-For movie performance, keep `--backend auto`: demanding local HD exports compare CPU/GPU speed and sampled pixels, while short exports and CI use CPU. `--backend gpu` requires installed Chrome, Edge, or Chromium and hardware acceleration; `--backend cpu` forces software rendering. `--encoder nvenc` explicitly requests NVIDIA H.264 encoding. Automatic film encoding retains x264 animation/grain tuning, because hardware CQ and software CRF are different quality scales. Inspect dark gradients and fine lines after changing encoders, and report the actual renderer/encoder from `--json`; GPU availability alone does not prove a speedup.
+For movie performance, keep `--backend auto`: demanding local HD exports compare CPU/GPU speed and sampled pixels, while short exports and CI use CPU. `--backend gpu` requires installed Chrome, Edge, or Chromium and hardware acceleration, and `--backend cpu` forces software rendering. Local non-grain HD MP4 exports (`>= 720p`, `>= 60` frames) automatically probe native hardware H.264 encoders (`videotoolbox`, `nvenc`, `vaapi`, `qsv`, `amf`) and fall back to `libx264`, while dithered grain exports, short clips, and CI keep `libx264` tuning. Pass `--encoder libx264|nvenc|videotoolbox|vaapi|qsv|amf` to require a specific encoder, or run `npx vizmatic doctor [--probe-gpu] --json` to inspect local accelerators. Inspect dark gradients and fine lines after changing encoders, and report the actual renderer and encoder from `--json`. GPU availability alone does not prove a speedup.
 
 ### Engine and timing traps
 

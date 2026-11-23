@@ -984,7 +984,8 @@
   function installHomeShowcase() {
     const stages = $$('[data-autoplay-src]')
     if (stages.length === 0) return
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    // Under prefers-reduced-motion, keep the static start-frame posters without compiling 5 live films.
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
 
     const mountStage = (stage) => {
       if (stage.dataset.showcaseMounted === 'true') return
@@ -996,7 +997,7 @@
       film.setAttribute('preload', '')
       film.setAttribute('root-margin', '0px')
       film.setAttribute('threshold', '0.18')
-      if (!reduced) film.setAttribute('autoplay', '')
+      film.setAttribute('autoplay', '')
       film.setAttribute('tabindex', '-1')
       film.setAttribute('label', stage.dataset.label ?? 'Live film')
       if (stage.dataset.loopStart) film.setAttribute('loop-start', stage.dataset.loopStart)

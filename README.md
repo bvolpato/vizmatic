@@ -68,11 +68,11 @@ npx vizmatic film intro.ts --every 2 --sheet --out stills  # timestamped contact
 npx vizmatic film intro.ts --look midnight,paper --quality high --out dist
 ```
 
-Scaffold a working project with `npx vizmatic new intro --template explainer`. Built-in templates are `explainer`, `equation`, `architecture`, `chart`, `deck`, and `narrated`.
+Scaffold a working project with `npx vizmatic new intro --template explainer`. Built-in templates are `explainer`, `story`, `equation`, `architecture`, `chart`, `deck`, and `narrated`.
 
 MP4 and WebM exports automatically compare CPU and GPU rendering for longer, demanding HD films when Chrome, Edge, or Chromium is installed locally. The comparison includes frame transfer and startup cost, and checks sampled pixels against the CPU renderer. Short exports and CI use the CPU. Use `--backend cpu` for reproducible software rendering or `--backend gpu` to require hardware rendering. Set `VIZMATIC_BROWSER_EXECUTABLE_PATH` if the browser is outside the usual locations.
 
-For NVIDIA hardware encoding, use `--encoder nvenc`; FFmpeg must provide `h264_nvenc` and a working NVIDIA driver. A CUDA toolkit installation is not required. Drawing uses the browser's graphics backend, while NVENC encodes the video. Automatic film exports retain `libx264` animation and grain settings; hardware encoders have different quality scales, so inspect fine lines and dark gradients before delivery. `--json` reports the selected renderer, encoder, GPU, and selection reason.
+Local non-grain HD MP4 exports (`>= 720p`, `>= 60` frames) automatically probe native hardware H.264 encoders (`videotoolbox` on macOS, `nvenc`, `vaapi`, `qsv`, and `amf`) and fall back to `libx264` when none pass. Dithered grain exports, short clips, and CI stay on `libx264`. Pass `--encoder libx264|nvenc|videotoolbox|vaapi|qsv|amf` to require a specific encoder, or run `npx vizmatic doctor [--probe-gpu]` to inspect local FFmpeg, hardware encoders, GPU browser, and `uv` availability. Hardware encoders use different quality scales than x264 CRF, so inspect fine lines and dark gradients before delivery. `--json` reports the selected renderer, encoder, GPU, and selection reason.
 
 <table>
   <tr>
@@ -186,11 +186,12 @@ Browse the [component catalog](https://bvolpato.github.io/vizmatic/components.ht
 
 | Command | Purpose |
 |---|---|
-| `vizmatic new <name> [--template ...]` | Scaffold a film (`explainer`, `equation`, `architecture`, `chart`, `deck`, or `narrated`) |
+| `vizmatic new <name> [--template ...]` | Scaffold a film (`explainer`, `story`, `equation`, `architecture`, `chart`, `deck`, or `narrated`) |
 | `vizmatic preview <file> [--port <n>] [--open]` | Live browser player with timeline scrubbing and hot reload |
 | `vizmatic check <file-or-dir...> [--motion] [--json]` | Check films (`--motion`, `--text-gap`, `--text-size`, `--empty-space`, `--stepped`) or TSX frames (`--theme dark,light`) |
 | `vizmatic film <file...> [--out <dir>]` | Export MP4, WebM, GIF, PNG stills (`--frame`, `--every`, `--sheet`), SVG, posters, captions, and chapters |
 | `vizmatic narrated <step> <folder>` | Build, voice, mix, check, stills, sheet, beats, transcribe, sync, lag, probe, or resound narrated lessons |
+| `vizmatic doctor [--probe-gpu] [--json]` | Check local CPU, FFmpeg, native hardware H.264 encoders, GPU browser, and `uv` readiness |
 | `vizmatic objects [--json]` / `vizmatic looks [--json]` | List stage domain objects and color looks |
 | `vizmatic sounds <list\|render\|bed>` | List or synthesize sound effects and ducked stereo ambient beds |
 | `vizmatic [render] <file-or-dir...>` | Render TSX figures to dark/light PNG and SVG (`--density`, `--background`, `--format png\|svg\|both`) |
