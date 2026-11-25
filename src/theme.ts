@@ -555,15 +555,42 @@ export function getGradient(name: ColorName): string {
 
 // ─── Heat Scale ──────────────────────────────────────────────────────────────
 
+function isLightTheme(c?: ThemeColors): boolean {
+    if (!c) return false
+    const lum = colorLuminance(c.bg)
+    return lum !== undefined && lum > 0.5
+}
+
 /**
- * Map a value 0..1 to a heat color: slate, then blue, then gold, then red at the top end.
+ * Map a value 0..1 to a calm sequential ramp.
+ * When `c` is provided, adapts the low end to the theme ground so light/print
+ * figures start from warm paper rather than dark slate.
  */
-export function heatColor(value: number): string {
+export function heatColor(value: number, c?: ThemeColors): string {
     const v = Math.max(0, Math.min(1, value))
+    if (isLightTheme(c)) {
+        if (v < 0.55) return lerpColor('#f5f1e6', '#1f6fb2', v / 0.55)
+        if (v < 0.82) return lerpColor('#1f6fb2', '#c48b22', (v - 0.55) / 0.27)
+        return lerpColor('#c48b22', '#c62f2f', (v - 0.82) / 0.18)
+    }
     // A calm sequential ramp. Rainbow scales invent boundaries that the data does not have.
     if (v < 0.5) return lerpColor('#1b2430', '#1f6f9e', v / 0.5)
     if (v < 0.8) return lerpColor('#1f6f9e', '#c89a3c', (v - 0.5) / 0.3)
     return lerpColor('#c89a3c', '#d9573f', (v - 0.8) / 0.2)
+}
+
+/**
+ * Map a value 0..1 to a theme-aware diverging ramp centered at 0.5 (blue <- neutral -> red).
+ * Useful for signed logits, gradients, correlations, and attention deltas.
+ */
+export function divergingColor(value: number, c?: ThemeColors): string {
+    const v = Math.max(0, Math.min(1, value))
+    const light = isLightTheme(c)
+    const neutral = light ? '#f5f1e6' : '#1b2029'
+    const low = light ? '#1f6fb2' : '#4fb4e8'
+    const high = light ? '#c62f2f' : '#e85d5d'
+    if (v <= 0.5) return lerpColor(low, neutral, v / 0.5)
+    return lerpColor(neutral, high, (v - 0.5) / 0.5)
 }
 
 function lerpColor(a: string, b: string, t: number): string {

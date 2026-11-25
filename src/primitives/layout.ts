@@ -9,11 +9,14 @@ import {
     type ToneName,
     getToneColor,
     getToneGradient,
+    withColorAlpha,
     densityOf,
     typeOf,
     hasShadow,
 } from '../theme'
 import { getRenderBackground } from '../renderContext'
+
+export type SurfaceVariant = 'card' | 'ghost' | 'tinted'
 
 export type IllustrationBuilder = (c: ThemeColors) => React.ReactElement
 
@@ -561,6 +564,8 @@ interface PanelProps {
     align?: FlexAlign
     justify?: FlexJustify
     shadow?: boolean
+    /** Surface framing: 'card' (default boxed), 'ghost' (transparent editorial top rule), 'tinted' (soft accent wash). */
+    variant?: SurfaceVariant
     background?: string
     borderColor?: string
     titleFontSize?: number
@@ -586,6 +591,7 @@ export function Panel({
     align = 'stretch',
     justify = 'start',
     shadow = false,
+    variant = 'card',
     background,
     borderColor,
     titleFontSize,
@@ -593,10 +599,28 @@ export function Panel({
     accentHeight,
     bodyStyle,
 }: PanelProps): React.ReactElement {
-    const padding = paddingProp ?? densityOf(c).s(14)
+    const padding = paddingProp ?? (variant === 'ghost' ? `${densityOf(c).s(10)}px 0 0 0` : densityOf(c).s(14))
     const radius = radiusProp ?? densityOf(c).r(8)
     const gap = gapProp ?? densityOf(c).s(10)
     const engineering = c.preset === 'engineering'
+    const accent = tone ? getToneColor(tone, c) : undefined
+    const surfaceStyle: React.CSSProperties = variant === 'ghost'
+        ? {
+            backgroundColor: background ?? 'transparent',
+            borderTop: `1px solid ${borderColor ?? (accent ? withColorAlpha(accent, 0.45) : c.borderSubtle)}`,
+        }
+        : variant === 'tinted'
+            ? {
+                borderRadius: engineering ? 5 : radius,
+                border: `1px solid ${borderColor ?? (accent ? withColorAlpha(accent, 0.3) : c.borderSubtle)}`,
+                backgroundColor: background ?? (accent ? withColorAlpha(accent, 0.08) : withColorAlpha(c.textPrimary, 0.04)),
+            }
+            : {
+                borderRadius: engineering ? 5 : radius,
+                border: `1px solid ${borderColor ?? c.borderSubtle}`,
+                backgroundColor: background ?? c.bgCard,
+                ...(shadow && !engineering && hasShadow(c) ? { boxShadow: `0 9px 24px ${c.shadow}` } : {}),
+            }
     return React.createElement('div', {
         'data-vizmatic-layout-container': 'panel',
         style: {
@@ -610,10 +634,7 @@ export function Panel({
             ...(height != null ? { height } : {}),
             ...(minHeight != null ? { minHeight } : {}),
             padding,
-            borderRadius: engineering ? 5 : radius,
-            border: `1px solid ${borderColor ?? c.borderSubtle}`,
-            backgroundColor: background ?? c.bgCard,
-            ...(shadow && !engineering && hasShadow(c) ? { boxShadow: `0 9px 24px ${c.shadow}` } : {}),
+            ...surfaceStyle,
         }
     },
         ...compactChildren([

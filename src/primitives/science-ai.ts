@@ -81,12 +81,19 @@ export interface AttentionMatrixProps {
     title?: string
     width?: number
     height?: number
+    /** Root background fill; defaults to transparent so the matrix blends into host pages. */
+    background?: string
+    /** Show the title and KEYS/QUERY column header band. Defaults to true. */
+    showHeader?: boolean
+    /** Show the bottom scale legend line. Defaults to true. */
+    showFooter?: boolean
 }
 
 /** Inspect normalized attention probabilities; this component does not invent scores. */
 export function AttentionMatrix({
     c, weights, queryLabels, keyLabels, mask, activeQuery, activeKey,
     title = 'Attention probabilities', width = 760, height = 420,
+    background = 'transparent', showHeader = true, showFooter = true,
 }: AttentionMatrixProps): React.ReactElement {
     const columns = matrixShape(weights, 'Attention weights')
     const rows = weights.length
@@ -113,26 +120,31 @@ export function AttentionMatrix({
     }
     if (![width, height].every(Number.isFinite) || width < 280 || height < 240) throw new Error('AttentionMatrix requires finite width >= 280 and height >= 240')
     const left = Math.max(70, Math.max(...queryNames.map(value => value.length)) * 9 + 24)
-    const top = 106
+    const top = showHeader ? 106 : 36
     const right = 76
-    const bottom = 64
+    const bottom = showFooter ? 64 : 18
+    const backdrop = background === 'transparent' ? c.bg : background
     const cellWidth = (width - left - right) / columns
     const cellHeight = (height - top - bottom) / rows
     if (cellWidth < 24 || cellHeight < 20 || keyNames.some(value => value.length * 7 > cellWidth - 6)) {
         throw new Error('AttentionMatrix dimensions must leave room for readable cells and labels')
     }
-    const text = (key: string, value: string, x: number, y: number, size = 14, fill = c.textPrimary, anchor: 'start' | 'middle' | 'end' = 'middle', background?: string) => {
+    const text = (key: string, value: string, x: number, y: number, size = 14, fill = c.textPrimary, anchor: 'start' | 'middle' | 'end' = 'middle', labelBg?: string) => {
         const label = SvgMathText({ text: value, x, y, fill, fontSize: size, fontFamily: c.fontSans, fontWeight: 500, textAnchor: anchor, dominantBaseline: 'alphabetic' })
         const style = (label.props as { style: React.CSSProperties }).style
-        return React.cloneElement(label, { key, ...(background ? { style: { ...style, backgroundColor: background } } : {}) })
+        return React.cloneElement(label, { key, ...(labelBg ? { style: { ...style, backgroundColor: labelBg } } : {}) })
     }
     const marks: React.ReactNode[] = [
         React.createElement('title', { key: 'title' }, title),
         React.createElement('desc', { key: 'description' }, 'Rows are queries and columns are keys. Visible rows sum to one. Crosses denote masked keys. Values are attention probabilities, not explanations of model reasoning.'),
-        text('heading', title, 22, 30, 20, c.textPrimary, 'start'),
-        text('keys', 'KEYS', left + (width - left - right) / 2, 58, 12, c.textSecondary),
-        text('query-heading', 'QUERY', 22, 81, 12, c.textSecondary, 'start'),
-        text('sum-heading', 'Σ', width - 30, 81, 16, c.textSecondary),
+        ...(showHeader ? [
+            text('heading', title, 22, 30, 20, c.textPrimary, 'start'),
+            text('keys', 'KEYS', left + (width - left - right) / 2, 58, 12, c.textSecondary),
+            text('query-heading', 'QUERY', 22, 81, 12, c.textSecondary, 'start'),
+            text('sum-heading', 'Σ', width - 30, 81, 16, c.textSecondary),
+        ] : [
+            text('sum-heading', 'Σ', width - 30, top - 13, 14, c.textSecondary),
+        ]),
     ]
     keyNames.forEach((label, j) => marks.push(text(`key-${j}`, label, left + (j + 0.5) * cellWidth, top - 13, 14, activeKey === j ? getReadableColor('primary', c) : c.textSecondary)))
     weights.forEach((row, i) => {
@@ -142,7 +154,7 @@ export function AttentionMatrix({
             const x = left + j * cellWidth
             const masked = mask?.[i][j] === false
             const selected = activeQuery === i && (activeKey === undefined || activeKey === j)
-            const fill = masked ? c.bgCardAlt : compositeColor(withColorAlpha(c.primary, 0.12 + 0.88 * weight), c.bg)
+            const fill = masked ? c.bgCardAlt : compositeColor(withColorAlpha(c.primary, 0.12 + 0.88 * weight), backdrop)
             marks.push(React.createElement('rect', { key: `cell-${i}-${j}`, x: x + 2, y: y + 2, width: cellWidth - 4, height: cellHeight - 4,
                 rx: 4, fill, stroke: selected ? c.primary : c.borderSubtle, strokeWidth: selected ? 2.5 : 1 }))
             if (masked) {
@@ -150,15 +162,17 @@ export function AttentionMatrix({
                 marks.push(React.createElement('path', { key: `mask-${i}-${j}`, d: `M${centerX - 4},${centerY - 4}l8,8m-8,0l8,-8`, stroke: c.textMuted, strokeWidth: 1.4 }))
             } else {
                 const label = weight.toFixed(2)
-                if (cellWidth >= 38 && cellHeight >= 24) marks.push(text(`value-${i}-${j}`, label, x + cellWidth / 2, y + cellHeight / 2 + 5, 14, getReadableTextColor(fill, c, c.bg), 'middle', fill))
+                if (cellWidth >= 38 && cellHeight >= 24) marks.push(text(`value-${i}-${j}`, label, x + cellWidth / 2, y + cellHeight / 2 + 5, 14, getReadableTextColor(fill, c, backdrop), 'middle', fill))
             }
         })
         const total = row.reduce((sum, value) => sum + value, 0)
         marks.push(text(`sum-${i}`, total.toFixed(0), width - 30, y + cellHeight / 2 + 5, 14, c.textSecondary))
     })
-    marks.push(text('footer', 'Probability per query · × masked · shared color scale 0–1', 22, height - 22, 13, c.textSecondary, 'start'))
+    if (showFooter) {
+        marks.push(text('footer', 'Probability per query · × masked · shared color scale 0–1', 22, height - 22, 13, c.textSecondary, 'start'))
+    }
     const isLabel = (node: React.ReactNode) => React.isValidElement(node) && node.type === 'div'
-    return React.createElement('div', { role: 'img', 'aria-label': title, style: { position: 'relative', display: 'flex', width, height, backgroundColor: c.bg, flexShrink: 0 } },
+    return React.createElement('div', { role: 'img', 'aria-label': title, style: { position: 'relative', display: 'flex', width, height, backgroundColor: background, flexShrink: 0 } },
         React.createElement('svg', { width, height, viewBox: `0 0 ${width} ${height}` }, ...marks.filter(node => !isLabel(node))),
         ...marks.filter(isLabel))
 }

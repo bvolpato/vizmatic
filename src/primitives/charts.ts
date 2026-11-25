@@ -1239,6 +1239,18 @@ export interface LineChartSeries {
     points: number[]
     color?: ColorName | string
     area?: boolean
+    /** Render the series as a dashed line (useful for baselines, ceilings, or validation splits). */
+    dashed?: boolean
+    strokeWidth?: number
+}
+
+export interface LineChartReferenceLine {
+    axis: 'x' | 'y'
+    /** Data value on the y-axis, or 0-based point index on the x-axis. */
+    value: number
+    label?: string
+    color?: ColorName | string
+    dashed?: boolean
 }
 
 interface LineChartProps extends ChartAccessibilityProps {
@@ -1254,10 +1266,70 @@ interface LineChartProps extends ChartAccessibilityProps {
     format?: ChartValueFormat
     showGrid?: boolean
     showPoints?: boolean
+    /** Use monotone cubic Hermite splines instead of straight polyline segments. */
+    smooth?: boolean
+    /** Optional horizontal or vertical threshold / ceiling / crossover reference lines. */
+    referenceLines?: LineChartReferenceLine[]
     /** Name each line at its end instead of in a legend. On when there are several series. */
     directLabels?: boolean
     yAxisLabel?: string
     footer?: string
+}
+
+function monotoneSplinePath(points: readonly { x: number; y: number }[]): string {
+    const n = points.length
+    if (n === 0) return ''
+    if (n === 1) return `M ${points[0]!.x.toFixed(1)} ${points[0]!.y.toFixed(1)}`
+    if (n === 2) {
+        return `M ${points[0]!.x.toFixed(1)} ${points[0]!.y.toFixed(1)} L ${points[1]!.x.toFixed(1)} ${points[1]!.y.toFixed(1)}`
+    }
+    const h: number[] = []
+    const delta: number[] = []
+    for (let i = 0; i < n - 1; i += 1) {
+        const dx = points[i + 1]!.x - points[i]!.x || 1e-6
+        h.push(dx)
+        delta.push((points[i + 1]!.y - points[i]!.y) / dx)
+    }
+    const m: number[] = new Array(n).fill(0)
+    m[0] = delta[0]!
+    m[n - 1] = delta[n - 2]!
+    for (let i = 1; i < n - 1; i += 1) {
+        const d0 = delta[i - 1]!
+        const d1 = delta[i]!
+        if (d0 * d1 <= 0) {
+            m[i] = 0
+        } else {
+            const w1 = 2 * h[i]! + h[i - 1]!
+            const w2 = h[i]! + 2 * h[i - 1]!
+            m[i] = (w1 + w2) / (w1 / d0 + w2 / d1)
+        }
+    }
+    for (let i = 0; i < n - 1; i += 1) {
+        const d = delta[i]!
+        if (Math.abs(d) < 1e-9) {
+            m[i] = 0
+            m[i + 1] = 0
+        } else {
+            const alpha = m[i]! / d
+            const beta = m[i + 1]! / d
+            const mag = Math.hypot(alpha, beta)
+            if (mag > 3) {
+                const tau = 3 / mag
+                m[i] = tau * alpha * d
+                m[i + 1] = tau * beta * d
+            }
+        }
+    }
+    const parts: string[] = [`M ${points[0]!.x.toFixed(1)} ${points[0]!.y.toFixed(1)}`]
+    for (let i = 0; i < n - 1; i += 1) {
+        const dx = h[i]! / 3
+        const c1x = points[i]!.x + dx
+        const c1y = points[i]!.y + m[i]! * dx
+        const c2x = points[i + 1]!.x - dx
+        const c2y = points[i + 1]!.y - m[i + 1]! * dx
+        parts.push(`C ${c1x.toFixed(1)} ${c1y.toFixed(1)} ${c2x.toFixed(1)} ${c2y.toFixed(1)} ${points[i + 1]!.x.toFixed(1)} ${points[i + 1]!.y.toFixed(1)}`)
+    }
+    return parts.join(' ')
 }
 
 export function LineChart({
@@ -1273,6 +1345,8 @@ export function LineChart({
     format = 'decimal',
     showGrid = true,
     showPoints = true,
+    smooth = false,
+    referenceLines,
     directLabels,
     yAxisLabel,
     footer,
@@ -1285,7 +1359,10 @@ export function LineChart({
         : d.f(12)
     const margin: ChartMargins = { top: d.f(12), right: labelRoom, bottom: d.f(labels ? 24 : 12), left: d.f(yAxisLabel ? 62 : 34) }
     const plot = createPlotArea(width, height, margin)
-    const allValues = series.flatMap((item) => item.points)
+    const allValues = [
+        ...series.flatMap((item) => item.points),
+        ...(referenceLines?.filter((line) => line.axis === 'y').map((line) => line.value) ?? []),
+    ]
     const { domain, ticks } = niceChartScale(allValues, min, max)
     const maxPoints = Math.max(labels?.length ?? 0, ...series.map((item) => item.points.length), 1)
     const xInset = maxPoints <= 1 ? 0 : d.g(8)
@@ -1300,12 +1377,24 @@ export function LineChart({
         return { x, y }
     }
 
-    const pathFor = (points: number[]) => points
-        .map((value, index) => {
-            const point = pointFor(value, index)
-            return `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`
-        })
-        .join(' ')
+    const pathFor = (points: number[]) => {
+        const mapped = points.map((value, index) => pointFor(value, index))
+        if (smooth) return monotoneSplinePath(mapped)
+        return mapped
+            .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`)
+            .join(' ')
+    }
+
+    const resolvedRefs = (referenceLines ?? []).map((ref, refIndex) => {
+        const refColor = ref.color ? chartColor(ref.color, c, refIndex) : c.textMuted
+        const dash = ref.dashed === false ? undefined : `${d.g(4)} ${d.g(4)}`
+        if (ref.axis === 'y') {
+            const y = clamp(yInPlot(ref.value, domain, plot), plot.y, plot.bottom)
+            return { ref, refIndex, refColor, dash, x1: plot.x, y1: y, x2: plot.right, y2: y }
+        }
+        const x = clamp(xStart + ref.value * xStep, plot.x, plot.right)
+        return { ref, refIndex, refColor, dash, x1: x, y1: plot.y, x2: x, y2: plot.bottom }
+    })
 
     return ChartFrame({
         ...accessibility,
@@ -1336,6 +1425,16 @@ export function LineChart({
                     })
                 ),
                 React.createElement('line', { x1: plot.x, y1: plot.bottom, x2: plot.right, y2: plot.bottom, stroke: c.borderLight, strokeWidth: d.stroke.hair }),
+                ...resolvedRefs.map(({ refIndex, refColor, dash, x1, y1, x2, y2 }) => React.createElement('line', {
+                    key: `line-ref-${refIndex}`,
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    stroke: refColor,
+                    strokeWidth: Math.max(1, d.w(1.25)),
+                    ...(dash ? { strokeDasharray: dash } : {}),
+                })),
                 ...series.flatMap((item, seriesIndex) => {
                     if (item.points.length === 0) return []
                     const color = chartColor(item.color, c, seriesIndex)
@@ -1355,7 +1454,8 @@ export function LineChart({
                         d: linePath,
                         fill: 'none',
                         stroke: color,
-                        strokeWidth: d.w(2.5),
+                        strokeWidth: item.strokeWidth ?? d.w(2.5),
+                        ...(item.dashed ? { strokeDasharray: `${d.g(6)} ${d.g(4)}` } : {}),
                         strokeLinecap: 'round',
                         strokeLinejoin: 'round',
                     }))
@@ -1377,6 +1477,24 @@ export function LineChart({
             ...ticks.map((tick) => {
                 const y = yInPlot(tick, domain, plot)
                 return chartLabel(`line-tick-label-${tick}`, formatChartValue(tick, format), plot.x - d.s(8), y, c, { align: 'right', width: d.f(36) })
+            }),
+            ...resolvedRefs.flatMap(({ ref, refIndex, refColor, x1, y1, x2 }) => {
+                if (!ref.label) return []
+                const labelWidth = Math.min(plot.innerWidth * 0.55, Math.max(d.f(48), estimateTextWidth(ref.label, d.type.micro) + d.s(8)))
+                if (ref.axis === 'y') {
+                    const above = y1 - d.s(10) >= plot.y + d.type.micro * 0.6
+                    return [chartLabel(`line-ref-label-${refIndex}`, ref.label, x2 - d.s(2), above ? y1 - d.s(10) : y1 + d.s(10), c, {
+                        align: 'right',
+                        width: labelWidth,
+                        color: refColor,
+                    })]
+                }
+                const nearRight = x1 > plot.x + plot.innerWidth * 0.65
+                return [chartLabel(`line-ref-label-${refIndex}`, ref.label, nearRight ? x1 - d.s(5) : x1 + d.s(5), plot.y + d.s(10), c, {
+                    align: nearRight ? 'right' : 'left',
+                    width: labelWidth,
+                    color: refColor,
+                })]
             }),
             yAxisLabel && chartLabel('line-y-axis-label', yAxisLabel, d.f(9), plot.y + plot.innerHeight / 2, c, {
                 width: plot.innerHeight,
