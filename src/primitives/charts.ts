@@ -1359,9 +1359,10 @@ export function LineChart({
         : d.f(12)
     const margin: ChartMargins = { top: d.f(12), right: labelRoom, bottom: d.f(labels ? 24 : 12), left: d.f(yAxisLabel ? 62 : 34) }
     const plot = createPlotArea(width, height, margin)
+    const validRefs = (referenceLines ?? []).filter((line) => Number.isFinite(line.value))
     const allValues = [
         ...series.flatMap((item) => item.points),
-        ...(referenceLines?.filter((line) => line.axis === 'y').map((line) => line.value) ?? []),
+        ...validRefs.filter((line) => line.axis === 'y').map((line) => line.value),
     ]
     const { domain, ticks } = niceChartScale(allValues, min, max)
     const maxPoints = Math.max(labels?.length ?? 0, ...series.map((item) => item.points.length), 1)
@@ -1385,7 +1386,7 @@ export function LineChart({
             .join(' ')
     }
 
-    const resolvedRefs = (referenceLines ?? []).map((ref, refIndex) => {
+    const resolvedRefs = validRefs.map((ref, refIndex) => {
         const refColor = ref.color ? chartColor(ref.color, c, refIndex) : c.textMuted
         const dash = ref.dashed === false ? undefined : `${d.g(4)} ${d.g(4)}`
         if (ref.axis === 'y') {
@@ -1481,12 +1482,14 @@ export function LineChart({
             ...resolvedRefs.flatMap(({ ref, refIndex, refColor, x1, y1, x2 }) => {
                 if (!ref.label) return []
                 const labelWidth = Math.min(plot.innerWidth * 0.55, Math.max(d.f(48), estimateTextWidth(ref.label, d.type.micro) + d.s(8)))
+                const refBounds = { x: plot.x, y: plot.y, width: plot.innerWidth, height: plot.innerHeight, padding: d.s(2) }
                 if (ref.axis === 'y') {
                     const above = y1 - d.s(10) >= plot.y + d.type.micro * 0.6
                     return [chartLabel(`line-ref-label-${refIndex}`, ref.label, x2 - d.s(2), above ? y1 - d.s(10) : y1 + d.s(10), c, {
                         align: 'right',
                         width: labelWidth,
                         color: refColor,
+                        bounds: refBounds,
                     })]
                 }
                 const nearRight = x1 > plot.x + plot.innerWidth * 0.65
@@ -1494,6 +1497,7 @@ export function LineChart({
                     align: nearRight ? 'right' : 'left',
                     width: labelWidth,
                     color: refColor,
+                    bounds: refBounds,
                 })]
             }),
             yAxisLabel && chartLabel('line-y-axis-label', yAxisLabel, d.f(9), plot.y + plot.innerHeight / 2, c, {

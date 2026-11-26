@@ -123,7 +123,7 @@ export function AttentionMatrix({
     const top = showHeader ? 106 : 36
     const right = 76
     const bottom = showFooter ? 64 : 18
-    const backdrop = background === 'transparent' ? c.bg : background
+    const backdrop = compositeColor(background, c.bg)
     const cellWidth = (width - left - right) / columns
     const cellHeight = (height - top - bottom) / rows
     if (cellWidth < 24 || cellHeight < 20 || keyNames.some(value => value.length * 7 > cellWidth - 6)) {

@@ -10,6 +10,7 @@ import {
     Panel,
     Scene,
     TextLabel,
+    checkFrame,
     divergingColor,
     getThemeColors,
     heatColor,
@@ -33,7 +34,13 @@ describe('editorial craft primitives', () => {
             const svg = await renderToSvg(compact, 760, 320, { background: 'transparent', theme })
             expect(svg).toMatch(/^<svg\b/)
             expect(svg).not.toMatch(/NaN|Infinity/)
-            expect(analyzeContrast(compact, theme)).not.toContainEqual(
+            expect(analyzeContrast(compact, theme, new Set(), c.bg)).not.toContainEqual(
+                expect.objectContaining({ code: 'accessibility.low_contrast' }),
+            )
+
+            const translucentBg = theme === 'light' ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.08)'
+            const washed = AttentionMatrix({ ...options, c, background: translucentBg, showHeader: false, showFooter: false })
+            expect(analyzeContrast(washed, theme, new Set(), c.bg)).not.toContainEqual(
                 expect.objectContaining({ code: 'accessibility.low_contrast' }),
             )
         }
@@ -77,27 +84,35 @@ describe('editorial craft primitives', () => {
     })
 
     it('supports smooth monotone splines, dashed series, and referenceLines on LineChart', async () => {
-        const c = getThemeColors('light')
-        const chart = LineChart({
-            c,
+        const makeChart = (theme: 'dark' | 'light') => LineChart({
+            c: getThemeColors(theme),
             width: 520,
             height: 260,
             smooth: true,
             labels: ['0', '1', '2', '3', '4'],
             series: [
                 { name: 'Train', points: [2.2, 1.4, 0.9, 0.6, 0.45], color: 'primary', area: true },
-                { name: 'Val', points: [2.3, 1.6, 1.2, 1.1, 1.15], color: 'warning', dashed: true },
+                { name: 'Val', points: [2.3, 1.6, 1.2, 1.1, 1.15], color: 'warning', dashed: true, strokeWidth: 2 },
             ],
             referenceLines: [
                 { axis: 'y', value: 1.0, label: 'Target', color: 'positive' },
                 { axis: 'x', value: 3, label: 'Best', color: 'critical' },
+                { axis: 'y', value: Number.NaN, label: 'Ignored' },
             ],
         })
-        const svg = await renderToSvg(chart, 560, 300, { background: 'transparent', theme: 'light' })
+        const svg = await renderToSvg(makeChart('light'), 560, 300, { background: 'transparent', theme: 'light' })
         expect(svg).toMatch(/^<svg\b/)
         expect(svg).toContain('stroke-dasharray')
         expect(svg).toMatch(/C[\d.\s,-]+/)
         expect(svg).not.toMatch(/NaN|Infinity/)
+
+        const report = await checkFrame(
+            { width: 560, height: 300, create: makeChart },
+            { themes: ['dark', 'light'], background: 'theme', failOn: 'warning' },
+        )
+        expect(report.themes.flatMap((t) => t.diagnostics)).not.toContainEqual(
+            expect.objectContaining({ code: 'layout.text_overlap' }),
+        )
     })
 
     it('supports card, ghost, and tinted surface variants on Panel and Card', async () => {

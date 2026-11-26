@@ -1,6 +1,4 @@
-import React from 'react'
 import parseCssColor from 'parse-css-color'
-import { densityOf, type ThemeColors } from './theme'
 import { liteAdaptor } from 'mathjax-full/js/adaptors/liteAdaptor.js'
 import { RegisterHTMLHandler } from 'mathjax-full/js/handlers/html.js'
 import { TeX } from 'mathjax-full/js/input/tex.js'
@@ -174,41 +172,4 @@ function renderSvg(tex: string, options: RenderMathSvgOptions, context?: string)
         renderCache.delete(renderCache.keys().next().value!)
     }
     return { ...result }
-}
-
-export interface MathSvgProps {
-    tex: string
-    c?: ThemeColors
-    fontSize?: number
-    color?: string
-    display?: boolean
-    style?: React.CSSProperties
-}
-
-/** Satori-safe LaTeX equation primitive backed by MathJax SVG (Node/TSX renderer). */
-export function MathSvg({
-    tex,
-    c,
-    fontSize: fontSizeProp,
-    color,
-    display = false,
-    style,
-}: MathSvgProps): React.ReactElement {
-    const fontSize = fontSizeProp ?? densityOf(c).f(15)
-    const resolvedColor = color ?? c?.textPrimary ?? '#f2efe6'
-    const rendered = renderMathSvg(tex, {
-        fontSize,
-        color: resolvedColor,
-        display,
-    })
-    const width = Math.ceil(rendered.width)
-    const height = Math.ceil(rendered.height)
-    const src = `data:image/svg+xml;utf8,${encodeURIComponent(rendered.svg)}`
-    return React.createElement('img', {
-        src,
-        alt: tex,
-        width,
-        height,
-        style: { display: 'flex', flexShrink: 0, ...style },
-    })
 }
