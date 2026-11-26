@@ -16,7 +16,7 @@ export {
     TextLabel,
     SvgMathText,
 } from './primitives/layout'
-export type { IllustrationBuilder, ToneName, IconName, IconProps } from './primitives/layout'
+export type { IllustrationBuilder, ToneName, IconName, IconProps, SurfaceVariant } from './primitives/layout'
 export * from './primitives/svg'
 export {
     Stack,
@@ -59,6 +59,7 @@ export type {
     StackedBarSegment,
     ParetoBarChartProps,
     LineChartSeries,
+    LineChartReferenceLine,
 } from './primitives/charts'
 export * from './primitives/plots'
 export * from './primitives/board'

@@ -1,5 +1,6 @@
 import React from 'react'
 import {
+    divergingColor,
     heatColor,
     type ThemeColors,
     type ToneName,
@@ -33,7 +34,7 @@ interface MatrixProps extends ChartAccessibilityProps {
     rowLabelWidth?: number
     format?: 'decimal' | 'percent' | 'integer'
     colorize?: boolean
-    colorScale?: 'heat' | 'strength'
+    colorScale?: 'heat' | 'strength' | 'diverging'
     fontSize?: number
     highlightRow?: number
     highlightCol?: number
@@ -116,7 +117,8 @@ export function Matrix({
         const colorValue = colorDomain
             ? Math.max(0, Math.min(1, (value - colorDomain[0]) / (colorDomain[1] - colorDomain[0])))
             : value
-        if (colorScale === 'heat') return heatColor(colorValue)
+        if (colorScale === 'heat') return heatColor(colorValue, c)
+        if (colorScale === 'diverging') return divergingColor(colorValue, c)
         if (colorValue < 0.34) return c.bgHover
         if (colorValue < 0.67) return c.infoDark
         return c.positiveDark
@@ -243,7 +245,7 @@ interface HeatmapProps extends ChartAccessibilityProps {
     cellWidth?: number
     cellHeight?: number
     rowLabelWidth?: number
-    colorScale?: 'heat' | 'strength'
+    colorScale?: 'heat' | 'strength' | 'diverging'
     fontSize?: number
     highlightRow?: number
     highlightCol?: number

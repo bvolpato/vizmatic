@@ -21,6 +21,7 @@ import {
     formatMathText,
     textFitStyle,
     ToneStrip,
+    type SurfaceVariant,
 } from './layout'
 
 // ─── Stack — Vertical/horizontal group ──────────────────────────────────────
@@ -80,6 +81,8 @@ interface CardProps {
     align?: FlexAlign
     justify?: FlexJustify
     shadow?: boolean
+    /** Surface framing: 'card' (default boxed), 'ghost' (transparent editorial rule), 'tinted' (soft wash). */
+    variant?: SurfaceVariant
     background?: string
     borderColor?: string
     bodyStyle?: React.CSSProperties
@@ -102,14 +105,33 @@ export function Card({
     align = 'stretch',
     justify = 'start',
     shadow = false,
+    variant = 'card',
     background,
     borderColor,
     bodyStyle,
 }: CardProps): React.ReactElement {
-    const padding = paddingProp ?? densityOf(c).s(20)
+    const padding = paddingProp ?? (variant === 'ghost' ? `${densityOf(c).s(10)}px 0 0 0` : densityOf(c).s(20))
     const radius = radiusProp ?? densityOf(c).r(8)
     const hasHeader = title || subtitle || tone
     const engineering = c.preset === 'engineering'
+    const accent = tone ? getToneColor(tone, c) : undefined
+    const surfaceStyle: React.CSSProperties = variant === 'ghost'
+        ? {
+            backgroundColor: background ?? 'transparent',
+            borderTop: `1px solid ${borderColor ?? (accent ? withColorAlpha(accent, 0.45) : c.borderSubtle)}`,
+        }
+        : variant === 'tinted'
+            ? {
+                borderRadius: engineering ? Math.min(radius, 5) : radius,
+                border: `1px solid ${borderColor ?? (accent ? withColorAlpha(accent, 0.3) : c.borderSubtle)}`,
+                backgroundColor: background ?? (accent ? withColorAlpha(accent, 0.08) : withColorAlpha(c.textPrimary, 0.04)),
+            }
+            : {
+                backgroundColor: background ?? c.bgCard,
+                borderRadius: engineering ? Math.min(radius, 5) : radius,
+                border: `1px solid ${borderColor ?? c.borderSubtle}`,
+                ...(shadow && !engineering && hasShadow(c) ? { boxShadow: `0 9px 24px ${c.shadow}` } : {}),
+            }
 
     return React.createElement('div', {
         style: {
@@ -118,15 +140,12 @@ export function Card({
             alignItems: flexAlign(align),
             justifyContent: flexJustify(justify),
             gap: gap ?? (hasHeader || footer ? 10 : 0),
-            backgroundColor: background ?? c.bgCard,
-            borderRadius: engineering ? Math.min(radius, 5) : radius,
-            border: `1px solid ${borderColor ?? c.borderSubtle}`,
             padding,
+            ...surfaceStyle,
             ...(width !== undefined ? { width } : {}),
             ...(minWidth !== undefined ? { minWidth } : {}),
             ...(height !== undefined ? { height } : {}),
             ...(minHeight !== undefined ? { minHeight } : {}),
-            ...(shadow && !engineering && hasShadow(c) ? { boxShadow: `0 9px 24px ${c.shadow}` } : {}),
         }
     },
         ...compactChildren([

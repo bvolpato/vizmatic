@@ -193,6 +193,7 @@ const BARE_FRAME_EXTRA_EXPORTS = new Set([
     'colors',
     'defineIllustration',
     'defineAnimation',
+    'divergingColor',
     'getColor',
     'getGradient',
     'getReadableTextColor',
