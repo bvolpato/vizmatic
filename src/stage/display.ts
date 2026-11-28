@@ -347,6 +347,35 @@ function escapeAttr(value: string): string {
     return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
 }
 
+/** Can anything inside these bounds, with this much room around them, put a pixel in the frame? */
+function reaches(b: { x: number; y: number; width: number; height: number } | null, pad: number, frame: Frame): boolean {
+    return b !== null && b.x - pad <= frame.width && b.y - pad <= frame.height && b.x + b.width + pad >= 0 && b.y + b.height + pad >= 0
+}
+
+/**
+ * The parts of a mark that can put a pixel in the frame. The SVG leaves out the others. They cost a path that
+ * nobody sees, and resvg stops with an error on a blended or clipped part that is far outside the frame. Each
+ * part has its own place: a stroke that is drawn in part is not where its path is, and a glow reaches into the
+ * frame from a fill that does not. A miter join reaches four half widths from its corner, and a square cap
+ * reaches past a half width.
+ */
+function visibleParts(op: PathOp, frame: Frame): { fill: boolean; stroke: boolean; glow: { color: Rgba; path: Path; profile: ReturnType<typeof glowProfile>; bounds: NonNullable<ReturnType<typeof glowBounds>> } | null } {
+    const fills = op.fill !== null && op.fillAlpha > 0, strokes = op.stroke !== null && op.strokeAlpha > 0 && op.strokePath.length > 0
+    const whole = fills || (strokes && op.strokePath === op.path) ? pathBounds(op.path) : null
+    const pad = op.strokeWidth * (op.join === 'miter' ? 2 : 0.5) * (op.cap === 'square' ? 1.5 : 1)
+    const parts: ReturnType<typeof visibleParts> = {
+        fill: fills && reaches(whole, 0, frame),
+        stroke: strokes && reaches(op.strokePath === op.path ? whole : pathBounds(op.strokePath), pad, frame),
+        glow: null,
+    }
+    const color = op.glow > 0 ? glowOf(op) : null
+    if (color) {
+        const path = op.strokePath.length ? op.strokePath : op.path, profile = glowProfile(op), bounds = glowBounds(path, profile.width, profile.sigma, frame)
+        if (bounds) parts.glow = { color, path, profile, bounds }
+    }
+    return parts
+}
+
 /** Serialize a frame to standalone SVG. Text is already outlines, so no fonts are needed. */
 export function frameToSvg(frame: Frame, options: { scale?: number; transparent?: boolean } = {}): string {
     const scale = options.scale ?? 1
@@ -370,6 +399,9 @@ export function frameToSvg(frame: Frame, options: { scale?: number; transparent?
     for (const op of frame.ops) {
         if (closeClips) body.push(closeClips)
         closeClips = ''
+        if (op.kind === 'image' && !reaches(imageOpBounds(op), 0, frame)) continue
+        const parts = op.kind === 'path' ? visibleParts(op, frame) : null
+        if (parts && !parts.fill && !parts.stroke && !parts.glow) continue
         for (const clip of op.clips ?? []) {
             let id = clipIds.get(clip)
             if (!id) {
@@ -401,27 +433,21 @@ export function frameToSvg(frame: Frame, options: { scale?: number; transparent?
             continue
         }
         const style = op.blend !== 'normal' ? ` style="mix-blend-mode:${op.blend}"` : ''
-        if (op.glow > 0) {
-            const color = glowOf(op)
-            const path = op.strokePath.length ? op.strokePath : op.path
-            const profile = glowProfile(op)
-            const bounds = glowBounds(path, profile.width, profile.sigma, frame)
-            if (color && bounds) {
-                const base = Math.max(op.fillAlpha, op.strokeAlpha) * color[3] * (frame.dark ? 1 : 0.22)
-                const mode = frame.dark ? ' style="mix-blend-mode:screen"' : ''
-                const id = `h${glowCount++}`
-                defs.push(`<filter id="${id}" filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse" x="${fmt(bounds.x)}" y="${fmt(bounds.y)}" width="${fmt(bounds.width)}" height="${fmt(bounds.height)}" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="${fmt(profile.sigma)}"/></filter>`)
-                body.push(`<path d="${pathData(path)}" fill="none" stroke="${css([color[0], color[1], color[2], 1])}" stroke-opacity="${fmt(profile.alpha * base)}" stroke-width="${fmt(profile.width)}" stroke-linecap="round" stroke-linejoin="round" filter="url(#${id})"${mode}/>`)
-            }
+        const { fill, stroke, glow } = parts!
+        if (glow) {
+            const { color, path, profile, bounds } = glow
+            const base = Math.max(op.fillAlpha, op.strokeAlpha) * color[3] * (frame.dark ? 1 : 0.22)
+            const mode = frame.dark ? ' style="mix-blend-mode:screen"' : ''
+            const id = `h${glowCount++}`
+            defs.push(`<filter id="${id}" filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse" x="${fmt(bounds.x)}" y="${fmt(bounds.y)}" width="${fmt(bounds.width)}" height="${fmt(bounds.height)}" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="${fmt(profile.sigma)}"/></filter>`)
+            body.push(`<path d="${pathData(path)}" fill="none" stroke="${css([color[0], color[1], color[2], 1])}" stroke-opacity="${fmt(profile.alpha * base)}" stroke-width="${fmt(profile.width)}" stroke-linecap="round" stroke-linejoin="round" filter="url(#${id})"${mode}/>`)
         }
-        if (op.fill && op.fillAlpha > 0 && op.stroke && op.strokeAlpha > 0 && op.strokePath === op.path) {
-            body.push(`<path d="${pathData(op.path)}" ${paintAttr(op.fill, 'fill', op.fillAlpha)} ${paintAttr(op.stroke, 'stroke', op.strokeAlpha)} stroke-width="${fmt(op.strokeWidth)}"${strokeAttrs(op)}${style}/>`)
+        if (fill && stroke && op.strokePath === op.path) {
+            body.push(`<path d="${pathData(op.path)}" ${paintAttr(op.fill!, 'fill', op.fillAlpha)} ${paintAttr(op.stroke!, 'stroke', op.strokeAlpha)} stroke-width="${fmt(op.strokeWidth)}"${strokeAttrs(op)}${style}/>`)
             continue
         }
-        if (op.fill && op.fillAlpha > 0) body.push(`<path d="${pathData(op.path)}" ${paintAttr(op.fill, 'fill', op.fillAlpha)}${style}/>`)
-        if (op.stroke && op.strokeAlpha > 0 && op.strokePath.length) {
-            body.push(`<path d="${pathData(op.strokePath)}" fill="none" ${paintAttr(op.stroke, 'stroke', op.strokeAlpha)} stroke-width="${fmt(op.strokeWidth)}"${strokeAttrs(op)}${style}/>`)
-        }
+        if (fill) body.push(`<path d="${pathData(op.path)}" ${paintAttr(op.fill!, 'fill', op.fillAlpha)}${style}/>`)
+        if (stroke) body.push(`<path d="${pathData(op.strokePath)}" fill="none" ${paintAttr(op.stroke!, 'stroke', op.strokeAlpha)} stroke-width="${fmt(op.strokeWidth)}"${strokeAttrs(op)}${style}/>`)
     }
     if (closeClips) body.push(closeClips)
     const defsBlock = defs.length ? `<defs>${defs.join('')}</defs>` : ''
