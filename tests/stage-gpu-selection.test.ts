@@ -67,7 +67,7 @@ describe('GPU probe selection', () => {
         expect(GpuRasterizer.create).not.toHaveBeenCalled()
     })
 
-    it('paints a dithered export in half floats after the picture in bytes matches the CPU, and in bytes when that fails', async () => {
+    it('paints a dithered export in half floats when the picture matches the CPU, and in bytes when that fails', async () => {
         const painter = (pixels: Uint8Array | Error) => {
             const close = vi.fn(async () => {})
             const run = pixels instanceof Error ? vi.fn<GpuRasterizer['run']>().mockRejectedValue(pixels) : vi.fn<GpuRasterizer['run']>().mockResolvedValue(pixels)
@@ -87,7 +87,6 @@ describe('GPU probe selection', () => {
         const good = painter(pixels), chosen = await choose(good)
         expect(chosen.result.gpu).toBe(good)
         expect(chosen.result.reason).toContain('half floats')
-        expect(chosen.bytes.close).toHaveBeenCalledTimes(1)
         expect(good.close).not.toHaveBeenCalled()
         for (const [half, why] of [
             [new GpuUnavailableError('this browser has no canvas in half floats'), 'no canvas in half floats'],

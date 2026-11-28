@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { decodeGpuJob, encodeGpuJob, type GpuFrameJob } from '../src/stage/gpu-wire'
-import { matchingGpuPixels } from '../src/stage/gpu-selection'
+import { matchingBloom, matchingGpuPixels, matchingHalfFloats } from '../src/stage/gpu-selection'
 import { Node } from '../src/stage/node'
 import type { Frame, ImageOp, PathOp } from '../src/stage/display'
 
@@ -162,16 +162,26 @@ describe('GPU pixel parity safeguard', () => {
         expect(matchingGpuPixels(cpu, cpu)).toBe(true)
     })
 
-    it('gives a half-float picture room for the rounding error of a picture in bytes, and for no more', () => {
-        const cpu = new Uint8Array(128 * 128 * 4).fill(60), shifted = (by: number) => { const out = Uint8Array.from(cpu); for (let i = 0; i < out.length; i++) if (i % 4 !== 3) out[i] = 60 - by; return out }
-        expect(matchingGpuPixels(cpu, shifted(2), 128)).toBe(true)
-        expect(matchingGpuPixels(cpu, shifted(4), 128)).toBe(false)
-        expect(matchingGpuPixels(cpu, shifted(4), 128, 12, 5)).toBe(true)
-        expect(matchingGpuPixels(cpu, shifted(6), 128, 12, 5)).toBe(false)
-        // One tile that is far off is another picture, also when the rest is equal.
-        const tile = Uint8Array.from(cpu)
-        for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) tile[(y * 128 + x) * 4] = 40
-        expect(matchingGpuPixels(cpu, tile, 128, 12, 5)).toBe(false)
+    it('lets a picture in half floats have a smooth offset, and no other picture', () => {
+        const size = 128, cpu = new Uint8Array(size * size * 4)
+        for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) { const i = (y * size + x) * 4, on = x > 30 && x < 90 && y > 20 && y < 100; cpu.set(on ? [180, 150, 90, 255] : [40, 44, 60, 255], i) }
+        const shifted = (by: (x: number, y: number) => number) => { const out = Uint8Array.from(cpu); for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) for (let k = 0; k < 3; k++) out[(y * size + x) * 4 + k] = cpu[(y * size + x) * 4 + k]! + by(x, y); return out }
+        expect(matchingHalfFloats(cpu, cpu, size)).toBe(true)
+        expect(matchingHalfFloats(cpu, shifted(() => 9), size)).toBe(true)
+        expect(matchingGpuPixels(cpu, shifted(() => 9), size)).toBe(false)
+        expect(matchingHalfFloats(cpu, shifted(() => 20), size)).toBe(false)
+        // A shape that is not there, or a part of the picture that is noise, is another picture.
+        const lost = Uint8Array.from(cpu)
+        for (let y = 40; y < 70; y++) for (let x = 40; x < 70; x++) lost.set([40, 44, 60, 255], (y * size + x) * 4)
+        expect(matchingHalfFloats(cpu, lost, size)).toBe(false)
+        expect(matchingHalfFloats(cpu, shifted((x, y) => ((x + y) % 2 ? 6 : -6)), size)).toBe(false)
+        expect(matchingHalfFloats(new Uint8Array(), new Uint8Array(), 1)).toBe(false)
+        // The bloom is the difference of two frames, so an offset of the picture is not in it.
+        const glow = (x: number, y: number) => Math.round(14 * Math.exp(-((x - 64) ** 2 + (y - 64) ** 2) / 1800))
+        const lit = shifted(glow), offset = shifted(() => 5), offsetLit = shifted((x, y) => 5 + glow(x, y))
+        expect(matchingBloom(lit, cpu, offsetLit, offset, size)).toBe(true)
+        expect(matchingBloom(lit, cpu, offset, offset, size)).toBe(false)
+        expect(matchingBloom(lit, cpu, shifted((x, y) => 5 + 2 * glow(x, y)), offset, size)).toBe(false)
     })
 
     it('rejects empty, truncated and mismatched RGBA buffers or invalid row widths', () => {
