@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'fs/promises'
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'fs/promises'
 import { request } from 'http'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -96,6 +96,38 @@ describe('vizmatic preview', () => {
         })
         expect(failure.message).toContain('intro.ts')
     }, 60_000)
+
+    it('serves the fonts beside the film, and no other file', async () => {
+        const directory = await mkdtemp(join(tmpdir(), 'vizmatic-preview-'))
+        tempDirs.push(directory)
+        await mkdir(join(directory, 'film', 'fonts'), { recursive: true })
+        await copyFile(join(__dirname, 'fixtures', 'fonts', 'square.ttf'), join(directory, 'film', 'fonts', 'square.ttf'))
+        await copyFile(join(__dirname, 'fixtures', 'fonts', 'square.ttf'), join(directory, 'outside.ttf'))
+        await writeFile(join(directory, 'film', 'secret.txt'), 'secret')
+        const file = join(directory, 'film', 'intro.ts')
+        await writeFile(file, `import { film, registerFont, text } from 'vizmatic/stage'
+registerFont('square', new URL('./fonts/square.ttf', import.meta.url))
+export default film((s) => { s.add(text('A', { font: 'square' })); s.wait(1) })
+`)
+        const preview = await startPreview({ file, port: 0 })
+        handles.push(preview)
+        const film = await (await fetch(`${preview.url}film.js`)).text()
+        // The page makes the address of the font from this expression.
+        const address = /new URL\("\.\/fonts\/square\.ttf", (location\.origin \+ "([^"]+)")\)/.exec(film)![2]!
+        const base = new URL(address, preview.url)
+        const get = async (path: string) => fetch(new URL(path, base))
+        const font = await get('./fonts/square.ttf')
+        expect(font.status).toBe(200)
+        expect(font.headers.get('content-type')).toBe('font/ttf')
+        expect(new Uint8Array(await font.arrayBuffer())).toEqual(new Uint8Array(await readFile(join(directory, 'film', 'fonts', 'square.ttf'))))
+        for (const path of ['./secret.txt', './intro.ts', '../outside.ttf', './fonts/none.ttf', './fonts/%2e%2e/%2e%2e/outside.ttf', './fonts/..%2f..%2foutside.ttf']) expect((await get(path)).status, path).toBe(404)
+        // An edit of the font builds the film again, at an address that the page has not read.
+        const next = nextEvent(preview.url, 'build')
+        const first = await next
+        first.close()
+        await copyFile(join(__dirname, 'fixtures', 'fonts', 'square.ttf'), join(directory, 'film', 'fonts', 'square.ttf'))
+        await expect.poll(async () => (await (await fetch(`${preview.url}film.js`)).text()).includes(address), { timeout: 10_000 }).toBe(false)
+    }, 30_000)
 
     it('rejects requests that do not address this machine', async () => {
         const directory = await mkdtemp(join(tmpdir(), 'vizmatic-preview-'))
