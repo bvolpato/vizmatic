@@ -557,11 +557,11 @@ A film can bring its own music in place of the pad. Save a mono or stereo WAV wi
 { "mix": { "polish": true, "music": { "wav": "assets/score.wav", "level": -11, "carve": 10 } } }
 ```
 
-- The score starts with the film. It plays from its first sample, so compose it to the times in `timing.json`. A score that is longer than the film fades out over its last 2 seconds, and a shorter one leaves silence.
-- The score keeps its `level`, in decibels below the voice. While the voice speaks, the score makes room in the band of the voice, in the middle of the image: `carve` says how many decibels. Its bass, its air and its sides stay, so the music does not go up and down with each sentence.
+- The score starts with the film. It plays from its first sample, so compose it to the times in `timing.json`. Only the steps that mix need the WAV, so the voice can come first. A score that is longer than the film fades out over its last 2 seconds, and a shorter one leaves silence.
+- The score keeps its `level`, in decibels below the voice. While the voice speaks, the score makes room in the band of the voice, in the middle of the image: `carve` says how many decibels. Its bass, its air and its sides stay. In a pause that is shorter than `hold` (1.5 seconds), the room stays open, so the music does not come up between two sentences. In a longer pause it closes over `release` (1.2 seconds), and it opens again over `attack` (0.4 seconds) before the next word.
 - `duck` lowers the whole score while the voice speaks, by 1.5 dB as a default. Raise it for a score that is busy from bass to air.
 - Make the large moments in the score. Where the picture speaks and the voice does not, raise the score before you save it, and bring it back before the next words.
-- `"polish": true` gives the voice the chain of a studio, with a small room. `"loudness": -14` is for a copy that goes to a video site.
+- `"polish": true` gives the voice the chain of a studio, with a small room. `"loudness": -14` is for a copy that goes to a video site. The mix says so when its peaks keep it more than 0.5 LU from the loudness.
 - `effects` and `chimes` add their sounds to the score. Without them, a film with a score has no bell. `seed`, `levels` and `swells` shape the pad, so they stop the build beside `music`.
 - An edit of the WAV makes the mix again on the next build.
 

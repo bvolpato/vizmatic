@@ -57,9 +57,10 @@ class Film:
             "swells": mix.get("swells"),
             "chimes": mix.get("chimes"),
             "effects": mix.get("effects"),
-            "music": {**checks.MUSIC, **mix["music"]} if "music" in mix else None,
+            # -13 and -13.0 are one level, and a mix does not go stale when one is written as the other.
+            "music": {key: value if key == "wav" else float(value) for key, value in {**checks.MUSIC, **mix["music"]}.items()} if "music" in mix else None,
             "polish": mix.get("polish", False),
-            "loudness": mix.get("loudness", checks.LOUDNESS),
+            "loudness": float(mix.get("loudness", checks.LOUDNESS)),
         }
 
     def movie(self, words, options, writes=False):
@@ -262,6 +263,9 @@ def mix_state(found):
         return False, "no record says what narration.wav was made from"
     if inputs != mix_inputs(found):
         return False, "the timing or the mix of film.json changed after the last mix"
+    missing = [name for name in record.get("wavs", {}) if not (found.root / name).is_file()]
+    if missing:
+        return False, f"{missing[0]} is missing"
     if record.get("wavs", {}) != authored_wavs(found, file_hash):
         return False, "an authored WAV changed after the last mix"
     if written != file_hash(sound):

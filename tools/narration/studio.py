@@ -8,7 +8,7 @@ import soundbed
 
 # Where a voice is made of: its first overtones, its vowels and most of its consonants.
 VOICE_BAND = (220.0, 5200.0)
-HOLD = 0.6  # A pause that is shorter than this is a part of the phrase, so the score does not move in it.
+WIDEN = 0.09  # A word starts before its first loud sample and ends after its last one, by about this much.
 
 
 def spoken(voice, rate):
@@ -16,16 +16,17 @@ def spoken(voice, rate):
     hop = rate // 100
     frames = len(voice) // hop
     energy = np.sqrt(np.mean(voice[: frames * hop].reshape(frames, hop).astype(np.float64) ** 2, axis=1))
-    return np.convolve(energy > 0.012, np.ones(19), mode="same") > 1.5
+    return np.convolve(energy > 0.012, np.ones(2 * round(WIDEN * 100) + 1), mode="same") > 1.5
 
 
-def room(speaking, attack, release):
+def room(speaking, attack, release, hold):
     """How much room the voice needs, from 0 to 1, for each hundredth of a second. It is there by the first word,
-    because it starts to open `attack` before. It stays open in a short pause, and closes over `release`."""
+    because it starts to open `attack` before. It stays open in a pause that is shorter than `hold`, so a score does
+    not come up between two sentences. After a longer one it closes over `release`."""
     held = speaking.copy()
     ends = np.flatnonzero(np.diff(np.concatenate(([0], speaking.astype(np.int8), [0]))))
     for end, start in zip(ends[1::2], ends[2::2]):
-        if (start - end) / 100 < HOLD:
+        if (start - end) / 100 + 2 * WIDEN < hold:
             held[end:start] = True
     down, up, last = np.empty(len(held)), np.empty(len(held)), 0.0
     for i in range(len(held)):

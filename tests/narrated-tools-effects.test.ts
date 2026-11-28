@@ -83,7 +83,7 @@ describe.skipIf(!ready)("narration tools: effects", () => {
         // A bass, a tone in the band of the voice, and air: in the middle, and one more tone in the sides.
         const tones = (middle: string, seconds = 12) => ffmpeg('-f', 'lavfi', '-i', `aevalsrc=${middle}+0.1*sin(2*PI*1200*t)|${middle}-0.1*sin(2*PI*1200*t):s=44100:d=${seconds}`, score)
         tones('0.1*sin(2*PI*70*t)+0.1*sin(2*PI*800*t)+0.1*sin(2*PI*11000*t)')
-        await twoTakes(folder, { mix: { music: { wav: 'assets/score.wav', level: -12, carve: 10, duck: 2, attack: 0.1, release: 0.3 }, effects: [] } })
+        await twoTakes(folder, { mix: { music: { wav: 'assets/score.wav', level: -12, carve: 10, duck: 2, attack: 0.1, release: 0.3, hold: 0.6 }, effects: [] } })
         const current = () => JSON.parse(plain('verify', folder, '--step', 'build', '--json').stdout).mix.current
         const first = narratedMix(folder)
         expect(first.status, first.stderr).toBe(0)
@@ -91,10 +91,10 @@ describe.skipIf(!ready)("narration tools: effects", () => {
         expect(current()).toBe(true)
         // The level of one tone in the middle or in the sides, in decibels, in a part of the bed.
         const samples = audioSamples(bed)
-        const level = (frequency: number, from: number, to: number, side = false) => {
+        const level = (frequency: number, from: number, to: number, side = false, of = samples) => {
             let c = 0, s = 0
             const a = Math.round(from * 48000), n = Math.round((to - from) * 48000)
-            for (let i = a; i < a + n; i++) { const value = (samples[2 * i]! + (side ? -1 : 1) * samples[2 * i + 1]!) / 2, angle = 2 * Math.PI * frequency * i / 48000; c += value * Math.cos(angle); s += value * Math.sin(angle) }
+            for (let i = a; i < a + n; i++) { const value = (of[2 * i]! + (side ? -1 : 1) * of[2 * i + 1]!) / 2, angle = 2 * Math.PI * frequency * i / 48000; c += value * Math.cos(angle); s += value * Math.sin(angle) }
             return 20 * Math.log10(2 * Math.hypot(c, s) / n)
         }
         // The hook speaks from 1.5 to 2.5, and the next words come at 4.
@@ -104,6 +104,11 @@ describe.skipIf(!ready)("narration tools: effects", () => {
         expect(moved(1200, true)).toBeCloseTo(2, 1)
         // The room is there by the first word.
         expect(level(800, 1.46, 1.5) - level(800, 1.7, 2.1)).toBeLessThan(1.2)
+        // In a pause that is shorter than `hold`, the score does not come up.
+        await twoTakes(folder, { mix: { music: { wav: 'assets/score.wav', level: -12, carve: 10, duck: 2, attack: 0.1, release: 0.3, hold: 2 }, effects: [] } })
+        expect(narratedMix(folder).status).toBe(0)
+        const held = audioSamples(bed)
+        expect(Math.abs(level(800, 3.2, 3.6, false, held) - level(800, 1.7, 2.1, false, held))).toBeLessThan(0.1)
         // The film is 8.5 seconds long. A longer score ends with it, at no level.
         expect(samples.length).toBe(8.5 * 48000 * 2)
         expect(Math.abs(samples.at(-1)!)).toBeLessThan(0.001)
@@ -182,6 +187,19 @@ describe.skipIf(!ready)("narration tools: effects", () => {
         expect(right.said).toContain('the music covers the voice')
     }, 240_000)
 
+    it('lets the voice come before the score, and stops for takes with no sound', async () => {
+        const folder = await filmFolder()
+        await twoTakes(folder, { mix: { music: { wav: 'assets/score.wav' } } })
+        const state = plain('verify', folder, '--step', 'build', '--json')
+        expect(state.status, state.stderr).toBe(0)
+        await mkdir(join(folder, 'assets'), { recursive: true })
+        ffmpeg('-f', 'lavfi', '-i', 'sine=frequency=800:duration=8.5:sample_rate=48000', join(folder, 'assets', 'score.wav'))
+        for (const take of ['a', 'b']) ffmpeg('-f', 'lavfi', '-i', 'anullsrc=r=24000:cl=mono', '-t', '1', join(folder, 'audio', `${take}.wav`))
+        const silent = tool('mix', folder)
+        expect(silent.status).not.toBe(0)
+        expect(silent.said.join('\n') + silent.stderr).toContain('no take has a sound')
+    }, 180_000)
+
     it('rejects a score that it cannot play, and the settings of the pad beside it', async () => {
         const folder = await filmFolder()
         await twoTakes(folder)
@@ -190,13 +208,14 @@ describe.skipIf(!ready)("narration tools: effects", () => {
         ffmpeg('-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=5.1', '-t', '2', join(folder, 'assets', 'surround.wav'))
         const invalid: [Record<string, unknown>, string][] = [
             [{ music: { level: -20 } }, 'mix.music.wav: is missing'],
-            [{ music: { wav: 'assets/none.wav' } }, 'mix.music.wav: assets/none.wav is missing'],
+            [{ music: { wav: 'assets/none.wav' } }, 'cannot read mix WAV assets/none.wav'],
             [{ music: { wav: 'assets/quiet.wav' } }, 'the WAV is silent'],
             [{ music: { wav: 'assets/surround.wav' } }, 'give a nonempty mono or stereo WAV'],
             [{ music: { wav: 'assets/quiet.wav', level: 3 } }, 'mix.music.level'],
             [{ music: { wav: 'assets/quiet.wav', carve: -2 } }, 'mix.music.carve'],
             [{ music: { wav: 'assets/quiet.wav', duck: 40 } }, 'mix.music.duck'],
             [{ music: { wav: 'assets/quiet.wav', attack: 0 } }, 'mix.music.attack'],
+            [{ music: { wav: 'assets/quiet.wav', hold: -1 } }, 'mix.music.hold'],
             [{ music: { wav: 'assets/quiet.wav', loop: true } }, 'mix.music.loop'],
             [{ music: { wav: 'assets/quiet.wav' }, seed: 3 }, 'mix.seed: shapes the pad'],
             [{ music: { wav: 'assets/quiet.wav' }, swells: [] }, 'mix.swells: shapes the pad'],

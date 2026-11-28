@@ -97,16 +97,17 @@ A chime also takes `gain` (0.11 by default), `notes` (three frequencies in hertz
 | `level` | The level of the score, in decibels below the voice. | -13 |
 | `carve` | Decibels that the score gives up in the band of the voice, in the middle of the image, while the voice speaks. | 9 |
 | `duck` | Decibels that the whole score gives up while the voice speaks. | 1.5 |
-| `attack` | Seconds before a word at which the score starts to make room. | 0.15 |
-| `release` | Seconds after a phrase in which the score comes back. | 0.9 |
+| `attack` | Seconds before a word at which the score starts to make room. | 0.4 |
+| `release` | Seconds after a phrase in which the score comes back. | 1.2 |
+| `hold` | Seconds. In a pause that is shorter than this, the score does not come back. | 1.5 |
 
-`studio.py` does this work. The band of the voice is from 220 to 5200 hertz. The bass, the air and the sides of the score keep their level, so a listener does not hear a fader that moves. In a pause that is shorter than 0.6 seconds, the score does not move. The levels are averages over the parts of the score that sound. `mix.py` prints the levels in the band of the voice, and its last line says so when the score is less than 18 dB below the voice there. The loudness pass uses one gain and a limiter, so it does not change the difference between two scenes.
+`studio.py` does this work. The band of the voice is from 220 to 5200 hertz. The bass, the air and the sides of the score keep their level, so a listener does not hear a fader that moves. In a pause that is shorter than `hold`, the score does not move. No step needs the WAV before the mix, so a score can be composed to `timing.json`. The levels are averages over the parts of the score that sound. `mix.py` prints the levels in the band of the voice, and its last line says so when the score is less than 18 dB below the voice there. The loudness pass uses one gain and a limiter, so it does not change the difference between two scenes.
 
 ### The voice and the loudness
 
 `"polish": true` gives the voice the chain of a studio: less rumble and mud, more presence and air, a tamed "s", an even level, and a small room. The level and the time of the voice stay. It works with the pad and with a score.
 
-`"loudness"` is the loudness of the mix in LUFS. The default is -16. Use -14 for a copy that goes to a video site.
+`"loudness"` is the loudness of the mix in LUFS. The default is -16. Use -14 for a copy that goes to a video site. With a score, the mix is measured after the limiter and corrected one time. When it is more than 0.5 LU from the loudness, the step says so.
 
 ### Sound effects
 

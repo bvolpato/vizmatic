@@ -21,7 +21,7 @@ VOICE = {"name": "af_heart", "speed": 1.12}
 LEVELS = {"under": -22.0, "pause": -15.0, "card": -10.0}
 # A score of the film's own, in place of the pad. It keeps its level, and makes room for the voice in the band of
 # the voice only: `level` and `duck` and `carve` are in decibels.
-MUSIC = {"level": -13.0, "carve": 9.0, "duck": 1.5, "attack": 0.15, "release": 0.9}
+MUSIC = {"level": -13.0, "carve": 9.0, "duck": 1.5, "attack": 0.4, "release": 1.2, "hold": 1.5}
 LOUDNESS = -16.0
 TIMELINE = {"intro": 0.0, "pause": 0.6, "gap": 0.4, "tail": 0.5}
 RENDER = {"workers": 6, "draftWorkers": 3}
@@ -191,7 +191,7 @@ def check_film(given, root, looks, report):
     check_mix(given.get("mix", {}), root, file, report)
 
 
-def check_effect_wav(value, root, file, field, report, hint='Give a mono WAV in the film folder, such as "assets/clock.wav"'):
+def check_effect_wav(value, root, file, field, report, hint='Give a mono WAV in the film folder, such as "assets/clock.wav"', made=True):
     path = Path(value) if isinstance(value, str) else None
     if not path or path.is_absolute() or ".." in path.parts or path.suffix.lower() != ".wav":
         return report.add(file, field, f"{shown(value)} is not a relative WAV path", hint)
@@ -201,12 +201,12 @@ def check_effect_wav(value, root, file, field, report, hint='Give a mono WAV in 
         generated = {"audio", "dist", "stills", "node_modules", "narration.wav"}
         if path.parts[0].lower() in generated or (target.parts and target.parts[0].lower() in generated):
             return report.add(file, field, f"{value} is in generated output or dependencies", hint)
-        if not source.is_file():
+        if not source.is_file() and (made or source.exists()):
             return report.add(file, field, f"{value} is missing or is not a file", hint)
         # An existing mix output can also point back to the source through a link.
         for output in ("narration.wav", "stills/mix-raw.wav", "stills/bed-only.wav", "stills/voice-only.wav"):
             destination = root / output
-            if destination.is_file() and destination.samefile(source):
+            if source.exists() and destination.is_file() and destination.samefile(source):
                 return report.add(file, field, f"{value} is also the mix output {output}", hint)
     except (OSError, RuntimeError, ValueError):
         report.add(file, field, f"{value} does not resolve to a file inside the film folder", hint)
@@ -219,7 +219,8 @@ def check_music(music, mix, root, file, report):
     keys(music, {"wav", *MUSIC}, file, "mix.music.", report)
     hint = 'Give a mono or stereo WAV in the film folder, such as "assets/score.wav"'
     if "wav" in music:
-        check_effect_wav(music["wav"], root, file, "mix.music.wav", report, hint)
+        # A score is composed to the times of the voice, so it does not have to be there before the voice is.
+        check_effect_wav(music["wav"], root, file, "mix.music.wav", report, hint, made=False)
     else:
         report.add(file, "mix.music.wav", "is missing", hint)
     if "level" in music and not (number(music["level"]) and music["level"] <= 0):
@@ -230,6 +231,8 @@ def check_music(music, mix, root, file, report):
     for key in ("attack", "release"):
         if key in music and not (number(music[key]) and 0.02 <= music[key] <= 5):
             report.add(file, f"mix.music.{key}", f"{shown(music[key])} is not a time", f"Give seconds from 0.02 to 5, such as {MUSIC[key]:g}")
+    if "hold" in music and not (number(music["hold"]) and 0 <= music["hold"] <= 30):
+        report.add(file, "mix.music.hold", f"{shown(music['hold'])} is not a time", f"Give seconds from 0 to 30, such as {MUSIC['hold']:g}")
     # These shape the pad, and a film with music has none. A setting that does nothing would look like one that works.
     for key in ("seed", "levels", "swells"):
         if key in mix:

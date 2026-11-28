@@ -16,7 +16,7 @@ writes the voice alone, the pad alone, and the mix before the loudness pass unde
 Usage: mix.py <folder>"""
 import hashlib
 import io
-import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -243,15 +243,19 @@ def effects(samples, line, entries, wavs):
     return track, placed
 
 
-def steady_gain(raw, samples, wanted):
-    """A filter that brings a mix to a loudness with one gain for all of it, and catches the peaks. `loudnorm` in one
+def loudness_of(sound):
+    """The loudness of a WAV over all of it, in LUFS (BS.1770). A silent one has the floor of the meter, which is -70."""
+    heard = subprocess.run(["ffmpeg", "-nostdin", "-hide_banner", "-nostats", "-i", str(sound), "-af", "ebur128", "-f", "null", "-"], check=True, capture_output=True, text=True).stderr
+    return float(re.search(r"I:\s+(-?[\d.]+) LUFS", heard[heard.rindex("Summary"):])[1])
+
+
+def steady_gain(gain, samples):
+    """A filter that gives a mix one gain for all of it, and catches the peaks. `loudnorm` in one
     pass moves the gain all the time, and takes the difference between a quiet scene and a loud one out of a score."""
-    heard = subprocess.run(["ffmpeg", "-nostdin", "-hide_banner", "-i", str(raw), "-af", "loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json", "-f", "null", "-"], check=True, capture_output=True, text=True).stderr
-    loudness = float(json.loads(heard[heard.rindex("{"):heard.rindex("}") + 1])["input_i"])
     # The limiter works at four times the rate, so that it sees the peaks between two samples. It looks 4 ms
     # ahead and gives each sample 4 ms late, so the chain takes the 4 ms from the start and keeps the end.
     late = RATE * 4 // 1000
-    return (f"volume={wanted - loudness:.3f}dB,apad=pad_len={RATE // 10},aresample={RATE * 4},"
+    return (f"volume={gain:.3f}dB,apad=pad_len={RATE // 10},aresample={RATE * 4},"
             f"alimiter=limit={10 ** (-1.6 / 20):.4f}:attack=4:release=80:level=false,"
             f"aresample={RATE},atrim=start_sample={late}:end_sample={late + samples},asetpts=PTS-STARTPTS")
 
@@ -262,8 +266,20 @@ def write_sound(root, mix, voice, bed, loudness=checks.LOUDNESS, steady=False):
     stills.mkdir(exist_ok=True)
     raw = stills / "mix-raw.wav"
     sf.write(raw, mix, RATE, subtype="PCM_24")
-    level = steady_gain(raw, len(mix), loudness) if steady else f"loudnorm=I={loudness:g}:TP=-1.5:LRA=11"
-    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(raw), "-af", level, "-ar", str(RATE), "-c:a", "pcm_s24le", str(root / "narration.wav")], check=True)
+    done = root / "narration.wav"
+    write = lambda level: subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(raw), "-af", level, "-ar", str(RATE), "-c:a", "pcm_s24le", str(done)], check=True)
+    if steady:
+        # The limiter takes a part of a large gain, so what it took is given one more time.
+        gain = loudness - max(loudness_of(raw), -69.0)
+        write(steady_gain(gain, len(mix)))
+        short = loudness - loudness_of(done)
+        if 0.2 < short < 6:
+            write(steady_gain(gain + short, len(mix)))
+    else:
+        write(f"loudnorm=I={loudness:g}:TP=-1.5:LRA=11")
+    reached = loudness_of(done)
+    if reached > -69 and abs(reached - loudness) > 0.5:
+        print(f"the mix is at {reached:.1f} LUFS, and mix.loudness asks for {loudness:g}: its peaks leave no room for more" if reached < loudness else f"the mix is at {reached:.1f} LUFS, and mix.loudness asks for {loudness:g}")
     sf.write(stills / "voice-only.wav", voice, RATE, subtype="PCM_16")
     sf.write(stills / "bed-only.wav", bed, RATE, subtype="PCM_24")
 
@@ -322,8 +338,10 @@ def main(found, _words, _options):
         parts, swell_times = [], []
         pad = read_music(wavs[music["wav"]], f'film.json: mix.music.wav ({music["wav"]})', samples)
         speaking = studio.spoken(voice, RATE)
+        if not speaking.any():
+            film.fail("audio: no take has a sound, so there is no voice to set the level of the music against. Make the voice again")
         spoke = np.interp(np.arange(samples) * 100 / RATE, np.arange(len(speaking)) + 0.5, speaking.astype(np.float64)) > 0.5
-        pad = studio.carve(pad, studio.room(speaking, music["attack"], music["release"]), RATE, music["carve"], music["duck"])
+        pad = studio.carve(pad, studio.room(speaking, music["attack"], music["release"], music["hold"]), RATE, music["carve"], music["duck"])
         level = np.full(samples, 10 ** (music["level"] / 20), dtype=np.float32)
     bed = pad * (level * 10 ** (soundbed.decibels(voice[spoke]) / 20))[:, None]
 
