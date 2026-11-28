@@ -76,14 +76,15 @@ export class GpuRasterizer {
     private readyReject!: (error: Error) => void
     private readonly ready = new Promise<void>((resolve, reject) => { this.readyResolve = resolve; this.readyReject = reject })
 
-    private constructor(private readonly signal?: AbortSignal, private readonly filmSource?: GpuFilmSource) {
+    private constructor(private readonly signal?: AbortSignal, private readonly filmSource?: GpuFilmSource, private readonly float = false) {
         this.ready.catch(() => {})
         this.server.on('error', error => this.fail(error))
         signal?.addEventListener('abort', this.abort, { once: true })
     }
 
-    static async create(signal?: AbortSignal, source?: GpuFilmSource): Promise<GpuRasterizer> {
-        const renderer = new GpuRasterizer(signal, source)
+    /** `float` paints in half floats, so that soft light has no steps. The dithered write at the end is the only one that rounds. */
+    static async create(signal?: AbortSignal, source?: GpuFilmSource, float = false): Promise<GpuRasterizer> {
+        const renderer = new GpuRasterizer(signal, source, float)
         try {
             await renderer.start()
             if (renderer.failure) throw renderer.failure
@@ -154,7 +155,7 @@ export class GpuRasterizer {
         } else if (request.method === 'GET' && route === 'runtime.js') {
             response.writeHead(200, { 'Content-Type': 'text/javascript' }).end(this.source)
         } else if (request.method === 'GET' && route === 'config') {
-            response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ source: this.files.has('film.js') && this.filmSource && { overrides: this.filmSource.overrides, expected: this.filmSource.expected } }))
+            response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ float: this.float, source: this.files.has('film.js') && this.filmSource && { overrides: this.filmSource.overrides, expected: this.filmSource.expected } }))
         } else if (request.method === 'GET' && this.files.has(route)) {
             response.writeHead(200, { 'Content-Type': route.endsWith('.js') ? 'text/javascript' : 'font/ttf' }).end(this.files.get(route))
         } else if (request.method === 'POST' && route === 'ready') {

@@ -266,7 +266,9 @@ export async function renderFilmVideo(
     const plan = planRender(size.width, size.height, motionBlur, options)
     const count = Math.max(1, Math.round((to - from) * fps))
     const dither = options.dither ?? quality.dither
-    const grain = dither && compiled.bloom > 0 && compiled.look?.dark === true
+    const request = options.backend ?? 'auto'
+    // A picture in half floats is dithered everywhere, also in a light look and with no bloom.
+    const grain = dither && (request === 'gpu' || (compiled.bloom > 0 && compiled.look?.dark === true))
     const ci = !!(process.env.CI || process.env.GITHUB_ACTIONS)
     const isHardware = (value: H264EncoderRequest | undefined): value is HardwareH264Encoder =>
         value !== undefined && value !== 'auto' && value !== 'libx264' && HARDWARE_H264_ENCODERS.includes(value)
@@ -287,7 +289,6 @@ export async function renderFilmVideo(
         })
     }
     const hardware = isHardware(encoder)
-    const request = options.backend ?? 'auto'
     if (!['auto', 'cpu', 'gpu'].includes(request)) throw new Error('backend must be auto, cpu or gpu')
     if (ci && request === 'gpu') throw new Error('GPU rendering is disabled in CI. Use backend: cpu or auto.')
     let gpu: GpuRasterizer | undefined
