@@ -143,6 +143,28 @@ export default film({ fps: 30 }, (s) => {
 })
 ```
 
+## Handwriting
+
+`handwriting(text, options)` is a text that a pen writes. The engine finds the way of a pen through the middle of each letter of the font, so the ink appears where the pen is. Use a script font, which a film brings with `registerFont`.
+
+```typescript
+const note = handwriting('I am an enthusiast,\nbut not a crank', { font: 'script', size: 80, anchor: 'left' }).at(-700, 0)
+note.hold(dipPen())
+s.play(note.write())
+```
+
+| Call | What it does |
+|---|---|
+| `note.write()` | Writes the rest of the text. The default length is `note.seconds`, the time that an unhurried hand needs. |
+| `note.progress` | The part that is written, from 0 to 1, as a value: `s.play(note.progress.to(0.5))`. |
+| `note.part('a crank')` | The part of the writing at which the pen starts some words, and at which it has written them. Use it to follow a voice. |
+| `note.hold(pen)` | Puts a pen at the point of the writing while the text is written. The origin of the pen is the point of its nib. |
+| `note.ink(0.4)`, `note.tip(0.4)` | The ink as a path, and the place of the pen, at a part of the writing. |
+
+`dipPen({ length, angle, color, nib })` is a pen with a steel nib and a wooden holder. The option `written` gives the part that is written when the text comes to the stage.
+
+The order of the strokes is a guess from the shape of each letter: from left to right, with dots and bars after the body. The pen lifts when the next stroke does not start where the last one ended, so it lifts between most letters, also in a font whose letters touch. `vizmatic check` does not read handwriting as a text: check its size and its place by eye. A character that no font has stops the build.
+
 ## Readouts
 
 `decimal(read, options)` draws a number that follows a function of the timeline. Use the `mono` font so digits do not jump.

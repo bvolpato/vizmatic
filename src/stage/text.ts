@@ -69,6 +69,13 @@ export class TextNode extends Node {
 }
 
 /** Glyphs center on their own origin, so each one scales and rotates about itself. */
+/** Where the outline of a letter of a text comes from, and how far its middle is from the origin of the glyph. */
+export interface GlyphSource { font: LoadedFont; glyph: number; x: number; y: number }
+const glyphs = new WeakMap<Node, GlyphSource>()
+
+/** The glyph of one letter of a text. */
+export const glyphOf = (leaf: Node): GlyphSource | undefined => glyphs.get(leaf)
+
 function centered(path: Path): { path: Path; x: number; y: number } {
     const b = pathBounds(path)
     if (!b) return { path, x: 0, y: 0 }
@@ -199,6 +206,7 @@ export function text(content: string, options: TextOptions = {}): TextNode {
             leaf.base.fill = paint
             leaf.base.trimEach = true
             leaf.data['key'] = placed.char
+            glyphs.set(leaf, { font: placed.font, glyph: placed.glyph, x: shape.x, y: shape.y })
             // The outline has its middle at the origin. The film check reads where the base line is.
             leaf.data['base'] = -shape.y
             // Glyph 0 draws the font's empty box. The film check reports it.
