@@ -3,7 +3,8 @@ import { Value, appear, par, type Anim, type AnimOptions } from '../anim'
 import { penStrokes, type PenStroke } from '../centerline'
 import { circlePath, polyPath, reverseRing, signedArea, transformPath, type Path, type Ring } from '../geometry'
 import { linearGradient, toPaint, type ColorInput } from '../color'
-import { text, type TextOptions } from '../text'
+import { glyphOf, text, type TextOptions } from '../text'
+import { glyphPath, type LoadedFont } from '../font'
 import { linear } from '../ease'
 
 export interface HandwritingOptions {
@@ -50,15 +51,18 @@ const STROKE_START = 0.16, AIR_START = 0.1, AIR_SPEED = 0.4, WORD_REST = 0.25, L
 /** Seconds for a line as long as the size of the text, at an unhurried pace. */
 const PACE = 0.17
 
-const strokeCache = new Map<string, readonly PenStroke[]>()
+/** The size at which the strokes of a letter are found. They are then the same for each size of a text. */
+const STROKE_SIZE = 200
+const strokeCache = new WeakMap<LoadedFont, Map<number, readonly PenStroke[]>>()
 
-/** The strokes of one letter. A letter has the same strokes at each place and size, so they are found once. */
-function strokesOf(key: string, path: Path, size: number): readonly PenStroke[] {
-    const name = `${key}|${path.length}|${path.map(({ p }) => `${p.length}:${Math.round(p[0]! / size * 2000)},${Math.round(p[1]! / size * 2000)}`).join(';')}`
-    let found = strokeCache.get(name)
+/** The strokes of one glyph, for a size of 1, from the origin of the glyph. */
+function strokesOf(font: LoadedFont, glyph: number): readonly PenStroke[] {
+    let own = strokeCache.get(font)
+    if (!own) strokeCache.set(font, own = new Map())
+    let found = own.get(glyph)
     if (!found) {
-        found = penStrokes(path, size).map((stroke) => stroke.map(([x, y, r]) => [x / size, y / size, r / size] as const))
-        strokeCache.set(name, found)
+        found = penStrokes(glyphPath(font, glyph, STROKE_SIZE), STROKE_SIZE).map((stroke) => stroke.map(([x, y, r]) => [x / STROKE_SIZE, y / STROKE_SIZE, r / STROKE_SIZE] as const))
+        own.set(glyph, found)
     }
     return found
 }
@@ -80,7 +84,6 @@ export class Handwriting extends Node {
     /** How many rings are done when each glyph is done. */
     private readonly ringEnds: number[] = []
     private readonly words: { glyphs: number[]; text: string }[] = []
-    private readonly forward: boolean
 
     constructor(readonly content: string, options: HandwritingOptions = {}) {
         super()
@@ -89,7 +92,9 @@ export class Handwriting extends Node {
         if (!(written >= 0 && written <= 1)) throw new Error(`handwriting: written is ${JSON.stringify(options.written)}, and it is a part from 0 to 1`)
         const { color, written: _written, ...look } = options
         void _written
-        const node = text(content, { font: 'serif', italic: options.font === undefined, leading: 1.5, ...look })
+        const node = text(content, { ...look, font: options.font ?? 'serif', italic: options.italic ?? options.font === undefined, leading: options.leading ?? 1.5 })
+        const lost = node.chars.find((leaf) => leaf.data['missingGlyph'])
+        if (lost) throw new Error(`handwriting: no font has a letter for ${JSON.stringify(String(lost.data['key']))}. Give the words in letters that the font ${JSON.stringify(node.font)} has`)
         this.size = node.size
         this.progress = new Value(written)
         const paint = toPaint(color ?? 'ink')
@@ -97,19 +102,16 @@ export class Handwriting extends Node {
         const [left, top] = [node.base.px, node.base.py]
         const placed = node.chars.map((leaf) => {
             const m = leaf.localMatrix()
-            return { key: String(leaf.data['key']), path: leaf.base.path!, dx: m[4], dy: m[5], leaf }
+            return { key: String(leaf.data['key']), path: leaf.base.path!, dx: m[4], dy: m[5], source: glyphOf(leaf)! }
         })
-        let largest = 0
         placed.forEach(({ path, dx, dy }) => {
-            for (const ring of transformPath(path, [1, 0, 0, 1, dx - left, dy - top])) {
-                this.rings.push(ring)
-                const area = signedArea(ring)
-                if (Math.abs(area) > Math.abs(largest)) largest = area
-            }
+            const rings = transformPath(path, [1, 0, 0, 1, dx - left, dy - top])
+            const largest = rings.reduce((most, ring) => { const area = signedArea(ring); return Math.abs(area) > Math.abs(most) ? area : most }, 0)
+            // Rings of two directions cancel where they overlap. Some letters of a font can run against the others,
+            // so each letter is turned to run forward, and so is the ink of the pen.
+            this.rings.push(...(largest < 0 ? rings.map(reverseRing) : rings))
             this.ringEnds.push(this.rings.length)
         })
-        // Overlapping rings of two directions would cancel, so the ink runs in the direction of the letters.
-        this.forward = largest >= 0
 
         // The words, with the glyphs of each. A character that draws nothing has no glyph.
         let cursor = 0
@@ -121,24 +123,25 @@ export class Handwriting extends Node {
         const firstOf = new Set(this.words.map((word) => word.glyphs[0]))
 
         let now = 0, pen: readonly [number, number] | null = null, line = 0
-        placed.forEach(({ key, path, dx, dy }, glyph) => {
-            const family = `${node.font}|${options.weight ?? 400}|${options.italic ?? (options.font === undefined)}|${key}`
-            strokesOf(family, path, this.size).forEach((unit, index) => {
-                const points = unit.map(([x, y]) => [x * this.size + dx - left, y * this.size + dy - top] as const)
+        placed.forEach(({ source, dx, dy }, glyph) => {
+            const ox = dx - left - source.x, oy = dy - top - source.y
+            strokesOf(source.font, source.glyph).forEach((unit, index) => {
+                const points = unit.map(([x, y]) => [x * this.size + ox, y * this.size + oy] as const)
                 const start = points[0]!
                 if (pen) {
-                    const rest = index > 0 || !firstOf.has(glyph) ? 0 : Math.abs(dy - line) > this.size * 0.7 ? LINE_REST : WORD_REST
+                    const rest = index > 0 || !firstOf.has(glyph) ? 0 : Math.abs(oy - line) > this.size * 0.7 ? LINE_REST : WORD_REST
                     const far = Math.hypot(start[0] - pen[0], start[1] - pen[1]) / this.size
-                    // Letters of a script that meet are one line, and the pen stays down.
+                    // The pen stays down when the next stroke starts where the last one ended.
                     if (far > 0.05 || rest > 0) now = this.step(glyph, null, [pen, start], now, AIR_START + far * AIR_SPEED + rest)
                 }
-                const stroke = unit.map(([x, y, r]) => [x * this.size + dx - left, y * this.size + dy - top, r * this.size] as const)
+                const stroke = unit.map(([x, y, r]) => [x * this.size + ox, y * this.size + oy, r * this.size] as const)
                 const length = points.reduce((sum, p, i) => (i === 0 ? 0 : sum + Math.hypot(p[0] - points[i - 1]![0], p[1] - points[i - 1]![1])), 0)
                 now = this.step(glyph, stroke, points, now, STROKE_START + length / this.size)
                 pen = points[points.length - 1]!
             })
-            line = dy
+            line = oy
         })
+        if (this.steps.length === 0) throw new Error(`handwriting: give the words to write. ${JSON.stringify(content)} has no letter that draws something`)
         this.seconds = now * PACE
         for (const step of this.steps) { step.from /= now; step.to /= now }
 
@@ -184,7 +187,7 @@ export class Handwriting extends Node {
     /** The ink of one stroke: a disc at each point, and the room between two discs. */
     private drawStroke(out: Ring[], step: Step, share: number): void {
         const stroke = step.stroke!, end = step.reach[step.reach.length - 1]! * share
-        const turn = (ring: Ring) => ((signedArea(ring) >= 0) === this.forward ? ring : reverseRing(ring))
+        const turn = (ring: Ring) => (signedArea(ring) >= 0 ? ring : reverseRing(ring))
         let before: readonly [number, number, number] | null = null
         for (let i = 0; i < stroke.length; i++) {
             let point = stroke[i]!, last = false
@@ -228,12 +231,13 @@ export class Handwriting extends Node {
         if (want.length === 0 || found.length !== 1) throw new Error(`handwriting: the text ${found.length === 0 ? 'does not have' : `has ${found.length} times`} the words ${JSON.stringify(words)}. Give words of the text as they are written, which it has one time`)
         const glyphs = this.words.slice(found[0]!, found[0]! + want.length).flatMap((word) => word.glyphs)
         const own = this.steps.filter((step) => step.stroke && glyphs.includes(step.glyph))
+        if (own.length === 0) throw new Error(`handwriting: the words ${JSON.stringify(words)} have no letter that draws something`)
         return { from: own[0]!.from, to: own[own.length - 1]!.to }
     }
 
     /** Write the rest of the text. The default length is the seconds that an unhurried hand needs for it. */
     write(options: AnimOptions = {}): Anim {
-        return par(appear(this), this.progress.to(1, { ease: linear, ...options, duration: options.duration ?? Math.max(0.1, this.seconds) }))
+        return par(appear(this), this.progress.to(1, { ease: linear, ...options, duration: options.duration ?? Math.max(0.1, this.seconds * (1 - this.progress.value)) }))
     }
 
     /** Put a pen at the point of the writing. Its origin is the point of its nib, as in `dipPen()`. */

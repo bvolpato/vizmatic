@@ -163,7 +163,7 @@ s.play(note.write())
 
 `dipPen({ length, angle, color, nib })` is a pen with a steel nib and a wooden holder. The option `written` gives the part that is written when the text comes to the stage.
 
-The order of the strokes is a guess from the shape of each letter: from left to right, with dots and bars after the body. A font with letters that are not connected gives a lift of the pen between two letters.
+The order of the strokes is a guess from the shape of each letter: from left to right, with dots and bars after the body. The pen lifts when the next stroke does not start where the last one ended, so it lifts between most letters, also in a font whose letters touch. `vizmatic check` does not read handwriting as a text: check its size and its place by eye. A character that no font has stops the build.
 
 ## Readouts
 

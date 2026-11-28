@@ -193,12 +193,18 @@ export function penStrokes(path: Path, size: number, resolution = 150): PenStrok
     keepParts(line, grid, room, width)
     const { edges, nodes, lone } = chains(line, width)
     const at = (i: number): [number, number] => [i % width, Math.floor(i / width)]
-    const degree = (node: number) => nodes.get(node)?.filter((edge) => !edge.used).length ?? 0
-    // A short branch that is no longer than the letter is wide there is a corner of the outline, not a stroke.
+    // A loop comes back to its node, so it meets the node two times.
+    const degree = (node: number) => (nodes.get(node) ?? []).reduce((sum, edge) => sum + (edge.used ? 0 : edge.a === edge.b ? 2 : 1), 0)
+    // A short branch that does not leave the width of the letter at its joint is a corner of the outline, not a stroke.
+    const degrees = new Map([...nodes.keys()].map((node) => [node, degree(node)]))
     for (const edge of edges) {
         if (edge.a === edge.b) continue
-        const free = [edge.a, edge.b].find((node) => nodes.get(node)!.length === 1), joint = free === edge.a ? edge.b : edge.a
-        if (free !== undefined && nodes.get(joint)!.length > 2 && edge.pixels.length < room[joint]! * 1.6 + 2) edge.used = true
+        const free = [edge.a, edge.b].find((node) => degrees.get(node) === 1), joint = free === edge.a ? edge.b : edge.a
+        if (free === undefined || degrees.get(joint)! <= 2) continue
+        const [fx, fy] = at(free), [jx, jy] = at(joint)
+        // A branch to a corner gets thin at an even rate. A stroke that leaves a crossing keeps its width.
+        const middle = room[edge.pixels[edge.pixels.length >> 1]!]!
+        if (edge.pixels.length < room[joint]! * 0.6 + 2 || (Math.hypot(fx - jx, fy - jy) < room[joint]! * 1.6 + 2 && middle < room[joint]! * 0.62)) edge.used = true
     }
 
     const strokes: { pixels: number[] }[] = []
@@ -234,7 +240,14 @@ export function penStrokes(path: Path, size: number, resolution = 150): PenStrok
         const open = [...nodes.keys()].filter((node) => degree(node) > 0)
         if (open.length === 0) break
         // A stroke starts at a free end when there is one, the one that is most to the left.
-        const ends = open.filter((node) => degree(node) % 2 === 1), from = (ends.length > 0 ? ends : open).reduce((a, b) => (left(b) < left(a) ? b : a))
+        const ends = open.filter((node) => degree(node) % 2 === 1)
+        let from = (ends.length > 0 ? ends : open).reduce((a, b) => (left(b) < left(a) ? b : a))
+        // A letter with a loop and a tail that stands over it, such as a 6, starts at the top of the tail. One whose
+        // tail goes out to the right or down, such as an "e" or a 9, starts at the loop.
+        if (nodes.get(from)!.some((edge) => edge.a === edge.b && !edge.used)) {
+            const [jx, jy] = at(from), over = ends.filter((node) => { const [x, y] = at(node); return degree(node) === 1 && jy - y > height * 0.3 && jy - y > Math.abs(x - jx) * 0.6 })
+            if (over.length > 0) from = over.reduce((a, b) => (at(b)[1] < at(a)[1] ? b : a))
+        }
         const choices = nodes.get(from)!.filter((edge) => !edge.used)
         grow(choices.reduce((a, b) => (b.pixels.length > a.pixels.length ? b : a)), from)
     }

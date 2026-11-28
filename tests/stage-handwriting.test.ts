@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compileFilm, dipPen, film, handwriting, pathBounds, rectPath, ring, text, type Handwriting, type Path } from '../src/stage'
+import { compileFilm, dipPen, film, glyphPath, handwriting, parseFont, pathBounds, rectPath, ring, text, type Handwriting, type Path } from '../src/stage'
 import { penStrokes } from '../src/stage/centerline'
 
 /** The area of the union of the rings, from a grid: the rings of ink overlap. */
@@ -45,6 +45,20 @@ describe('the way of a pen through a shape', () => {
         expect(letter).toHaveLength(2)
         expect(letter[0]!.length).toBeGreaterThan(letter[1]!.length)
         expect(Math.abs(letter[1]![0]![1] - 10)).toBeLessThan(3)
+    })
+
+    it('writes a letter with a loop from the side from which a hand does, and keeps the bars of a heavy sign', async () => {
+        const { readFile } = await import('node:fs/promises')
+        const bytes = await readFile('assets/fonts/InstrumentSerif-Italic.ttf'), font = parseFont(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer)
+        const ends = (char: string) => { const [stroke] = penStrokes(glyphPath(font, font.glyphFor(char.codePointAt(0)!), 200), 200); return [stroke![0]!, stroke!.at(-1)!] as const }
+        const e = ends('e'), six = ends('6')
+        expect(e[0][0]).toBeLessThan(e[1][0])
+        expect(six[0][1]).toBeLessThan(six[1][1] - 30)
+        // Two bars across two bars, with short arms.
+        const bar = (x: number, y: number, w: number, h: number) => rectPath(x, y, w, h)
+        const sign = penStrokes([...bar(0, 30, 130, 24), ...bar(0, 76, 130, 24), ...bar(30, 0, 24, 130), ...bar(76, 0, 24, 130)], 130)
+        expect(sign).toHaveLength(4)
+        for (const stroke of sign) expect(Math.hypot(stroke.at(-1)![0] - stroke[0]![0], stroke.at(-1)![1] - stroke[0]![1])).toBeGreaterThan(95)
     })
 })
 
@@ -109,5 +123,9 @@ describe('handwriting', () => {
     it('says what is wrong', async () => {
         await expect(make(() => handwriting('  '))).rejects.toThrow('give the words to write')
         await expect(make(() => handwriting('a', { written: 2 }))).rejects.toThrow('written is 2')
+        await expect(make(() => handwriting('\u200b'))).rejects.toThrow('has no letter that draws something')
+        await expect(make(() => handwriting('a \u{10FFFD}'))).rejects.toThrow('no font has a letter for')
+        const same = await make(() => handwriting('a', { size: 100, font: undefined })), usual = await make(() => handwriting('a', { size: 100 }))
+        expect(same.ink(1)).toEqual(usual.ink(1))
     })
 })

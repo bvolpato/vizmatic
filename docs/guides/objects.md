@@ -2857,7 +2857,7 @@ export default film({ fps: 30, font: 'text-serif' }, (s) => {
 })
 ```
 
-The font is one of the families of `text()`: `'sans'`, `'serif'`, `'text-serif'`, `'mono'`, or `'noto'`. A film with no `font` looks as it did before: a text with no font is sans.
+The font is one of the families of `text()`: `'sans'`, `'serif'`, `'text-serif'`, `'mono'`, or `'noto'`, or a font that the film brings with `registerFont`. A film with no `font` looks as it did before: a text with no font is sans.
 
 | Text | Font |
 |---|---|
