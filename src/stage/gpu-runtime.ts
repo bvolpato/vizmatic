@@ -10,9 +10,11 @@ import { isSuspend, type CompiledFilm, type CompileOverrides } from './stage'
 import type * as Engine from './browser'
 
 const canvas = document.createElement('canvas')
-const context = canvas.getContext('2d', { willReadFrequently: false })!
+let context: CanvasRenderingContext2D
 const accumulated = document.createElement('canvas')
-const average = accumulated.getContext('2d', { willReadFrequently: false })!
+let average: CanvasRenderingContext2D
+/** The picture is painted in half floats, and the dithered write at the end is the only one that rounds. */
+let float = false
 const bloomCanvas = document.createElement('canvas')
 let bloomPresenter: WebGLBloomPresenter | null | undefined
 let bloomBgKey: string | null | undefined
@@ -118,6 +120,13 @@ function sameJobFrames(job: GpuFrameJob): boolean {
     return true
 }
 
+/** A 2D context, in half floats when the export asks for them and the browser has them. */
+function context2d(target: HTMLCanvasElement, wanted: boolean): CanvasRenderingContext2D | null {
+    const made = target.getContext('2d', { willReadFrequently: false, ...(wanted ? { colorType: 'float16' } : {}) } as CanvasRenderingContext2DSettings)
+    if (made && wanted && (made.getContextAttributes() as { colorType?: string }).colorType !== 'float16') throw new Error('This browser has no canvas in half floats. Update Chrome, or export without --dither')
+    return made
+}
+
 interface FilmSource { overrides: CompileOverrides; expected: Record<string, unknown> }
 
 async function prepareFilm(source: FilmSource): Promise<CompiledFilm> {
@@ -177,7 +186,7 @@ async function paint(job: GpuFrameJob): Promise<{ repeat?: boolean; pixels: Prom
     const started = performance.now()
     let directSource: HTMLCanvasElement | null = null
     if (frames.length > 1) {
-        if (!floatAccum && typeof WebGLSubframeAccumulator === 'function') floatAccum = new WebGLSubframeAccumulator()
+        if (!floatAccum && typeof WebGLSubframeAccumulator === 'function') floatAccum = new WebGLSubframeAccumulator(float)
         if (floatAccum?.begin(canvas)) {
             let ok = true
             for (let i = 0; i < frames.length; i++) {
@@ -223,15 +232,18 @@ async function paint(job: GpuFrameJob): Promise<{ repeat?: boolean; pixels: Prom
     const bloomStart = performance.now()
     const last = frames[frames.length - 1]
     let outputCanvas: HTMLCanvasElement = target
-    if (last.dark && last.bloom > 0) {
+    if (float || (last.dark && last.bloom > 0)) {
         if (bloomBgKey !== last.background) {
             bloomBgKey = last.background
             bloomBgRgb = parseColor(last.background ?? '#000000')
         }
-        if (bloomPresenter === undefined) bloomPresenter = createWebGLBloomPresenter(bloomCanvas)
-        if (bloomPresenter && bloomPresenter.paint(target, last.bloom, bloomBgRgb, dither)) {
+        if (bloomPresenter === undefined) bloomPresenter = createWebGLBloomPresenter(bloomCanvas, undefined, float)
+        // In half floats, the frame of a light look and a frame with no bloom need the dithered write too.
+        if (bloomPresenter && bloomPresenter.paint(target, last.dark ? last.bloom : 0, bloomBgRgb, dither)) {
             // Direct WebGL2 bloom skips the WebGL2-to-Canvas2D drawImage roundtrip before VideoFrame capture.
             outputCanvas = bloomCanvas
+        } else if (float) {
+            throw new Error('The half-float write of the frame failed')
         } else {
             if (!targetCtx) {
                 average.resetTransform()
@@ -260,8 +272,12 @@ async function paint(job: GpuFrameJob): Promise<{ repeat?: boolean; pixels: Prom
 }
 
 async function run(): Promise<void> {
-    if (!context || !average || !supportsWebGLBloom(canvas)) throw new Error('Hardware Canvas/WebGL bloom is unavailable')
-    const { source } = await (await fetch('./config')).json() as { source?: FilmSource }
+    const { source, float: wanted } = await (await fetch('./config')).json() as { source?: FilmSource; float?: boolean }
+    float = wanted === true
+    const main = context2d(canvas, float), sums = context2d(accumulated, float)
+    if (!main || !sums || !supportsWebGLBloom(canvas)) throw new Error('Hardware Canvas/WebGL bloom is unavailable')
+    context = main
+    average = sums
     // Node can prepare display frames when the browser cannot load the film or its local assets.
     if (source) film = await prepareFilm(source).catch(() => undefined)
     await fetch('./ready', { method: 'POST', headers: { 'x-film-source': film ? 'ready' : 'frames' } })

@@ -64,8 +64,12 @@ export async function sampleGpuFrames(film: CompiledFilm, times: readonly number
     return frames
 }
 
-/** Approximate parity safeguard: tolerate antialiasing differences while checking local color bias. */
-export function matchingGpuPixels(cpu: Uint8Array, gpu: Uint8Array, width = cpu.length / 4): boolean {
+/**
+ * Approximate parity safeguard: tolerate antialiasing differences while checking local color bias. Each layer of
+ * soft light on the CPU is rounded to a byte, and the error of many layers adds up. A picture in half floats does
+ * not have that error, so it may be further from the CPU picture: `tile` levels in a tile and `mean` in the frame.
+ */
+export function matchingGpuPixels(cpu: Uint8Array, gpu: Uint8Array, width = cpu.length / 4, tile = 2.5, mean = 2.5): boolean {
     if (!cpu.length || cpu.length !== gpu.length || cpu.length % 4
         || !Number.isSafeInteger(width) || width < 1 || (cpu.length / 4) % width) return false
     const pixels = cpu.length / 4, height = pixels / width
@@ -86,9 +90,9 @@ export function matchingGpuPixels(cpu: Uint8Array, gpu: Uint8Array, width = cpu.
             if (Math.abs(cpu[i + 3] - gpu[i + 3]) > 8) alpha++
         }
         const tilePixels = (right - left) * (bottom - top)
-        if (signed.some(sum => Math.abs(sum) > tilePixels * 2.5)) return false
+        if (signed.some(sum => Math.abs(sum) > tilePixels * tile)) return false
     }
-    return total <= pixels * 3 * 2.5 && different <= pixels * 0.004 && alpha <= pixels * 0.001
+    return total <= pixels * 3 * mean && different <= pixels * 0.004 && alpha <= pixels * 0.001
 }
 
 export async function selectGpuRenderer(film: CompiledFilm, options: GpuExportOptions): Promise<GpuSelection> {
@@ -106,7 +110,9 @@ export async function selectGpuRenderer(film: CompiledFilm, options: GpuExportOp
     let keep = false
     const started = performance.now()
     try {
-        gpu = await GpuRasterizer.create(options.signal, gpuSourceOf(film))
+        // An export that chooses its backend by speed compares the two pictures, so it paints in bytes as the CPU does.
+        const float = options.request === 'gpu' && options.dither
+        gpu = await GpuRasterizer.create(options.signal, gpuSourceOf(film), float)
         const source = gpu.usesFilmSource
         // Explicit GPU mode only needs up to 3 CPU workers for pixel parity verification, not the entire CPU pool.
         const probeWorkers = options.request === 'gpu' ? Math.min(options.workers, count) : options.workers
@@ -153,7 +159,7 @@ export async function selectGpuRenderer(film: CompiledFilm, options: GpuExportOp
                 ? { times: timesAt(moment), width, height, dither }
                 : { frames: frames[index], width, height, dither })))
             const gpuMs = performance.now() - gpuStart + (source ? 0 : buildMs)
-            if (!cpu.every((pixels, i) => matchingGpuPixels(pixels, gpuFrames[i], width))) {
+            if (!cpu.every((pixels, i) => matchingGpuPixels(pixels, gpuFrames[i], width, float ? 12 : 2.5, float ? 5 : 2.5))) {
                 throw new GpuUnavailableError('GPU sample pixels differ materially from the CPU renderer')
             }
             let reuse = 0

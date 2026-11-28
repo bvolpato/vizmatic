@@ -14,9 +14,15 @@ uniform sampler2D source;
 out vec4 color;
 // Keep the upload premultiplied and control nearest-byte rounding here, instead
 // of relying on the browser's unpremultiplication during texture upload.
+// A half-float source keeps the part of a level that a byte cannot hold.
 vec4 pixel(ivec2 p) {
+#ifdef FLOAT_SOURCE
+    vec4 stored = clamp(texelFetch(source, p, 0), 0.0, 1.0);
+    return vec4(stored.a == 0.0 ? vec3(0.0) : min(vec3(255.0), stored.rgb * 255.0 / stored.a), stored.a * 255.0);
+#else
     vec4 stored = floor(texelFetch(source, p, 0) * 255.0 + 0.5);
     return vec4(stored.a == 0.0 ? vec3(0.0) : floor(stored.rgb * 255.0 / stored.a + 0.5), stored.a);
+#endif
 }
 `
 
@@ -114,7 +120,14 @@ void main() {
                + light(farLight, vec2(p), factors.z) * 0.15) * gain;
     float noise = fract(52.9829189 * fract(dot(vec2(p), vec2(0.06711056, 0.00583715))));
     float threshold = !dither || original.a == 0.0 ? 0.0 : (floor(noise * 256.0) + 0.5) / 256.0;
-    vec3 rgb = floor(original.rgb + min(vec3(255.0), glow) * (255.0 - original.rgb) / 255.0 + threshold);
+    vec3 lit = original.rgb + min(vec3(255.0), glow) * (255.0 - original.rgb) / 255.0;
+#ifdef FLOAT_SOURCE
+    // A flat color is a whole level, and a half float holds it with a small error. It must not get grain.
+    vec3 whole = floor(lit + 0.5);
+    lit = mix(lit, whole, vec3(lessThan(abs(lit - whole), vec3(0.03))));
+    if (!dither) lit = whole;
+#endif
+    vec3 rgb = floor(lit + threshold);
     float alpha = original.a / 255.0;
     color = vec4(rgb / 255.0 * alpha, alpha);
 }`
@@ -151,7 +164,8 @@ class BloomRenderer {
     private readonly sizes = new Map<string, Size>()
     private readonly maxSize: number
 
-    constructor(private readonly canvas: HTMLCanvasElement, private readonly gl: WebGL2RenderingContext) {
+    /** `float`: the source is a canvas in half floats, and the final write is the only one that rounds. */
+    constructor(private readonly canvas: HTMLCanvasElement, private readonly gl: WebGL2RenderingContext, private readonly float = false) {
         this.maxSize = gl.getParameter(gl.MAX_TEXTURE_SIZE)
     }
 
@@ -192,7 +206,7 @@ class BloomRenderer {
                 const shader = gl.createShader(type)
                 if (!shader) throw new Error('Bloom shader allocation failed')
                 shaders.push(shader)
-                gl.shaderSource(shader, source)
+                gl.shaderSource(shader, this.float ? source.replace('#version 300 es\n', '#version 300 es\n#define FLOAT_SOURCE\n') : source)
                 gl.compileShader(shader)
                 if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader) ?? 'Bloom shader failed')
                 gl.attachShader(value, shader)
@@ -208,7 +222,7 @@ class BloomRenderer {
         }
     }
 
-    private texture(width: number, height: number, float: boolean): WebGLTexture {
+    private texture(width: number, height: number, format: number): WebGLTexture {
         const gl = this.gl, texture = gl.createTexture()
         if (!texture) throw new Error('Bloom texture allocation failed')
         this.textures.add(texture)
@@ -217,12 +231,12 @@ class BloomRenderer {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
-        gl.texStorage2D(gl.TEXTURE_2D, 1, float ? gl.RGBA32F : gl.RGBA8, width, height)
+        gl.texStorage2D(gl.TEXTURE_2D, 1, format, width, height)
         return texture
     }
 
     private surface(width: number, height: number): Surface {
-        const gl = this.gl, texture = this.texture(width, height, true), framebuffer = gl.createFramebuffer()
+        const gl = this.gl, texture = this.texture(width, height, gl.RGBA32F), framebuffer = gl.createFramebuffer()
         if (!framebuffer) throw new Error('Bloom framebuffer allocation failed')
         this.framebuffers.add(framebuffer)
         gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer)
@@ -270,7 +284,7 @@ class BloomRenderer {
             }
         }
         const sepBytes = sepWidth > 0 ? sepWidth * height * 16 : 0
-        const bytes = width * height * 4 + sepBytes + layers.reduce((sum, layer) => sum + layer.width * layer.height * 32, 0)
+        const bytes = width * height * (this.float ? 8 : 4) + sepBytes + layers.reduce((sum, layer) => sum + layer.width * layer.height * 32, 0)
         if (bytes > CACHE_BYTES) return null
         const neededTextures = 1 + layers.length * 2 + (sepWidth > 0 ? 1 : 0)
         let held = [...this.sizes.values()].reduce((sum, size) => sum + size.bytes, 0)
@@ -283,7 +297,7 @@ class BloomRenderer {
             held -= old.bytes
         }
         const size: Size = {
-            source: this.texture(width, height, false), bytes, textures: neededTextures,
+            source: this.texture(width, height, this.float ? this.gl.RGBA16F : this.gl.RGBA8), bytes, textures: neededTextures,
             sep: sepWidth > 0 ? this.surface(sepWidth, height) : null,
             // A full-size float intermediate costs more than it saves for tiny
             // previews. Nondivisible scales also keep the direct path.
@@ -317,7 +331,7 @@ class BloomRenderer {
         if (this.canvas.height !== height) this.canvas.height = height
         if (gl.drawingBufferWidth !== width || gl.drawingBufferHeight !== height) return false
         this.bind(size.source)
-        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, target)
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, this.float ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE, target)
         const [downsample, reduce, blur, composite, downsampleH, downsampleV] = this.programs
         gl.useProgram(downsample.value)
         gl.uniform1i(downsample.uniforms.raw, size.pyramid ? 1 : 0)
@@ -442,6 +456,9 @@ export class WebGLSubframeAccumulator {
     private count = 0
     private broken = false
 
+    /** `float`: the sub-frames are canvases in half floats, and so is the average. */
+    constructor(private readonly float = false) {}
+
     private ensure(source: HTMLCanvasElement): boolean {
         if (this.broken) return false
         const { width, height } = source
@@ -502,7 +519,7 @@ export class WebGLSubframeAccumulator {
                 gl.texStorage2D(gl.TEXTURE_2D, 1, internalFormat, width, height)
                 return tex
             }
-            this.srcTex = makeTex(gl.RGBA8)
+            this.srcTex = makeTex(this.float ? gl.RGBA16F : gl.RGBA8)
             this.accumTex = makeTex(gl.RGBA32F)
             this.accumFbo = gl.createFramebuffer()!
             gl.bindFramebuffer(gl.FRAMEBUFFER, this.accumFbo)
@@ -514,6 +531,12 @@ export class WebGLSubframeAccumulator {
             }
             this.canvas!.width = width
             this.canvas!.height = height
+            if (this.float) {
+                // Without half floats in its own canvas, the average would round before the bloom reads it.
+                const storage = gl as WebGL2RenderingContext & { drawingBufferStorage?: (format: number, width: number, height: number) => void }
+                if (!storage.drawingBufferStorage || !gl.getExtension('EXT_color_buffer_half_float')) { this.dispose(); this.broken = true; return false }
+                storage.drawingBufferStorage(gl.RGBA16F, width, height)
+            }
             this.width = width
             this.height = height
         }
@@ -537,7 +560,7 @@ export class WebGLSubframeAccumulator {
         const gl = this.gl
         gl.activeTexture(gl.TEXTURE0)
         gl.bindTexture(gl.TEXTURE_2D, this.srcTex)
-        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, source)
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, this.float ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE, source)
         gl.bindFramebuffer(gl.FRAMEBUFFER, this.accumFbo)
         gl.viewport(0, 0, this.width, this.height)
         gl.useProgram(this.addProgram)
@@ -670,7 +693,7 @@ function touchPresenter(entry: ActivePresenter): void {
  * Present WebGL bloom directly on a visible canvas, skipping the WebGL2-to-2D
  * drawImage copy on every frame (a major bottleneck in Firefox).
  */
-export function createWebGLBloomPresenter(display: HTMLCanvasElement, onLostOrEvicted?: () => void): WebGLBloomPresenter | null {
+export function createWebGLBloomPresenter(display: HTMLCanvasElement, onLostOrEvicted?: () => void, float = false): WebGLBloomPresenter | null {
     if (!supportsWebGLBloom(display)) return null
     while (activePresenters.size >= MAX_DIRECT_PRESENTERS) {
         const oldest = activePresenters.values().next().value
@@ -705,7 +728,7 @@ export function createWebGLBloomPresenter(display: HTMLCanvasElement, onLostOrEv
             preserveDrawingBuffer: true, failIfMajorPerformanceCaveat: true,
         })
         if (!gl) return null
-        instance = new BloomRenderer(display, gl)
+        instance = new BloomRenderer(display, gl, float)
         instance.init()
         display.addEventListener?.('webglcontextlost', onLost)
         activePresenters.add(entry)

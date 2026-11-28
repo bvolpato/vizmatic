@@ -162,6 +162,18 @@ describe('GPU pixel parity safeguard', () => {
         expect(matchingGpuPixels(cpu, cpu)).toBe(true)
     })
 
+    it('gives a half-float picture room for the rounding error of the CPU picture, and for no more', () => {
+        const cpu = new Uint8Array(128 * 128 * 4).fill(60), shifted = (by: number) => { const out = Uint8Array.from(cpu); for (let i = 0; i < out.length; i++) if (i % 4 !== 3) out[i] = 60 - by; return out }
+        expect(matchingGpuPixels(cpu, shifted(2), 128)).toBe(true)
+        expect(matchingGpuPixels(cpu, shifted(4), 128)).toBe(false)
+        expect(matchingGpuPixels(cpu, shifted(4), 128, 12, 5)).toBe(true)
+        expect(matchingGpuPixels(cpu, shifted(6), 128, 12, 5)).toBe(false)
+        // One tile that is far off is another picture, also when the rest is equal.
+        const tile = Uint8Array.from(cpu)
+        for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) tile[(y * 128 + x) * 4] = 40
+        expect(matchingGpuPixels(cpu, tile, 128, 12, 5)).toBe(false)
+    })
+
     it('rejects empty, truncated and mismatched RGBA buffers or invalid row widths', () => {
         expect(matchingGpuPixels(new Uint8Array(), new Uint8Array())).toBe(false)
         expect(matchingGpuPixels(new Uint8Array(3), new Uint8Array(3))).toBe(false)
