@@ -549,6 +549,24 @@ To play your own recording in the pause after a beat, save a mono WAV with the f
 
 The clip starts at the measured end of the first take in `arrivals`. A WAV uses the same word anchors, offsets, and `until` cutoff as a catalog sound. Its `gain` defaults to 1, which keeps its recorded level as it enters the effects track. The mixer resamples it to 48 kHz and applies the usual stereo balance and final loudness adjustment. Save an edit to the WAV and the next build updates the mix.
 
+### A score of your own
+
+A film can bring its own music in place of the pad. Save a mono or stereo WAV with the film source, and name it in `film.json`:
+
+```json
+{ "mix": { "polish": true, "music": { "wav": "assets/score.wav", "level": -11, "carve": 10 } } }
+```
+
+- The score starts with the film. It plays from its first sample, so compose it to the times in `timing.json`. Only the steps that mix need the WAV, so the voice can come first. A score that is longer than the film fades out over its last 2 seconds, and a shorter one leaves silence.
+- The score keeps its `level`, in decibels below the voice. While the voice speaks, the score makes room in the band of the voice, in the middle of the image: `carve` says how many decibels. Its bass, its air and its sides stay. In a pause that is shorter than `hold` (1.5 seconds), the room stays open, so the music does not come up between two sentences. In a longer pause it closes over `release` (1.2 seconds), and it opens again over `attack` (0.4 seconds) before the next word.
+- `duck` lowers the whole score while the voice speaks, by 1.5 dB as a default. Raise it for a score that is busy from bass to air.
+- Make the large moments in the score. Where the picture speaks and the voice does not, raise the score before you save it, and bring it back before the next words.
+- `"polish": true` gives the voice the chain of a studio, with a small room. `"loudness": -14` is for a copy that goes to a video site. The mix says so when its peaks keep it more than 0.5 LU from the loudness.
+- `effects` and `chimes` add their sounds to the score. Without them, a film with a score has no bell. `seed`, `levels` and `swells` shape the pad, so they stop the build beside `music`.
+- An edit of the WAV makes the mix again on the next build.
+
+`npx vizmatic narrated sync .` transcribes the sound of the movie. Read what it finds: a word that the transcript misses is a word that the score covers.
+
 Use `"effects": []` to play only the voice and pad. Films that omit both `effects` and `chimes` use the original title and ending bells. To use the same sound in another mixer, run `vizmatic sounds render latch --out latch.wav`. The WAV file contains just the effect, ready to place on a timeline.
 
 To score an existing recording in another mixer, run `vizmatic sounds bed --voice voice.wav --out bed.wav --palette warm --seed 7`. The output is a stereo 24-bit PCM WAV at the source sample rate with exactly one output frame per input frame. Mix the bed with the original recording at unity gain. It contains only the pad, fades at both ends, and stays about 23 dB below active speech. It rises during longer pauses. Silent recordings produce silence.

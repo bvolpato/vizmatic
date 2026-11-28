@@ -83,6 +83,8 @@ Other `vizmatic narrated <step> <folder>` commands (`--dry-run` previews any ste
 
 Generate subtle sound effects (`tap`, `slide`, `latch`, `resolve`, `bell`) or ambient beds with `npx vizmatic sounds list`, `npx vizmatic sounds render <name> --out cue.wav`, and `npx vizmatic sounds bed --voice narration.wav --out bed.wav --palette warm --timing timing.json`. Read the [narrated films guide](https://github.com/bvolpato/vizmatic/blob/main/docs/guides/narrated-films.md) for the full folder contract.
 
+To bring a score of the film's own, set `"mix": { "music": { "wav": "assets/score.wav" } }` in `film.json`. The mix keeps its level and makes room in the band of the voice (`carve`). Add `"polish": true` for a studio voice chain.
+
 Derive displayed results from the model, label hand-authored inputs and timings as illustrative, and check invariants with `assertEqual`. Keep every visible heading true for its entire lifetime on screen. Report which passages were played with sound and which were reviewed as stills; a person must watch the complete lesson at full speed with sound before publication.
 
 ## Figure workflow
