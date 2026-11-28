@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { captionLines, circle, compileFilm, dynamic, fadeIn, film, image, narrated, narration, point3d, scene3d, surface, trail3d, vector3d, type ImageOp, type NarrationTiming, type PathOp } from '../src/stage/index'
+import { captionLines, circle, compileFilm, dynamic, fadeIn, film, image, narrated, narration, point3d, scene3d, surface, text, trail3d, vector3d, type ImageOp, type NarrationTiming, type PathOp } from '../src/stage/index'
 import { captionsToSrt, chapterMetadata } from '../src/video'
 
 const timing: NarrationTiming = {
@@ -46,6 +46,67 @@ describe('narration', () => {
         }))
     })
 
+    it('brings the words of a text as the voice says them, and stops the build for words that it does not say', async () => {
+        const compiled = await compileFilm(film({ fps: 10 }, (s) => {
+            const scene = narration(s, timing, { lead: 2 }).scene('intro')
+            expect(scene.words('should we page').map((word) => [word.text, Math.round(word.start * 100) / 100])).toEqual([['Should', 3.8], ['we', 4.1], ['page', 4.2]])
+            expect(scene.words(1).map((word) => word.text)).toEqual(['Qwen', 'twenty seven B', 'decides'])
+            const line = text('Should we\nPAGE?', { size: 80 })
+            scene.speak(line)
+            const at = (time: number, read: (glyph: (typeof line.chars)[number]) => boolean) => { let out = ''; s.at(time, () => { out = line.chars.map((glyph) => (read(glyph) ? '#' : '.')).join('') }); return out }
+            const seen = (time: number) => at(time, (glyph) => line.mounted && glyph.get('visible') && glyph.get('opacity') > 0.5)
+            // "Should" at 3.8, "we" at 4.1 and "page" at 4.2, each with a lead of 0.1 and a fade of 0.22.
+            expect(seen(3.95)).toBe('######.......')
+            expect(seen(4.15)).toBe('########.....')
+            expect(seen(4.6)).toBe('#############')
+            // Each word rises to its place, and the first one is there while the last one moves.
+            const home = line.chars.map((glyph) => { let y = 0; s.at(9, () => { y = glyph.get('y') }); return y })
+            expect(at(4.15, (glyph) => Math.abs(glyph.get('y') - home[line.chars.indexOf(glyph)]!) < 0.5)).toBe('######.......')
+            expect(() => scene.speak(text('Should we sleep?'))).toThrow('the voice never says "Should we sleep?"')
+            expect(() => scene.speak(line)).toThrow('A node shows one time')
+            expect(() => scene.speak(circle(10) as never)).toThrow('speak takes a text')
+            expect(() => scene.speak(text('decides'), null as never)).toThrow('the options are null')
+            expect(() => scene.words(1, 0)).toThrow('the second argument has no job')
+            // A hide on a word of the text would leave the words after it unseen.
+            const late = text('Qwen twenty seven B decides.', { size: 40 })
+            scene.speak(late)
+            expect(() => scene.hide('decides', late)).toThrow('A viewer would see it blink')
+        }))
+        // Nothing of the text shows before its first word.
+        expect(compiled.frame(3.6).ops.length).toBe(0)
+    })
+
+    it('reads the words of a text by their place, in beats that touch, in timed words that hold several, and beside declared cues', async () => {
+        const word = (said: string, start: number) => ({ text: said, start, end: start + 0.4 })
+        const touching: NarrationTiming = { scenes: [
+            { id: 'one', beats: [
+                { say: 'One two', duration: 1, words: [word('One', 0), word('two', 0.6)] },
+                { say: "Three, don't four - twenty seven B decides result", duration: 5, hold: 1, cues: [{ id: 'result', phrase: 'four' }], words: [word('Three,', 0), word("don't", 0.6), word('four', 1.2), word('twenty seven B', 2), word('decides', 3), word('result', 4)] },
+            ] },
+            { id: 'two', beats: [{ say: 'One end.', duration: 1, hold: 1, words: [word('One', 0.1), word('end.', 0.6)] }] },
+        ] }
+        await compileFilm(film({ fps: 10 }, (s) => {
+            const voice = narration(s, touching, { lead: 1, gap: 1 }), scene = voice.scene('one')
+            // The second beat starts when the first one ends, with its first word at 0.
+            expect(scene.words("three don't").map((found) => [found.text, found.start])).toEqual([['Three', 2], ["don't", 2.6]])
+            expect(scene.words('B decides').map((found) => found.text)).toEqual(['twenty seven B', 'decides'])
+            expect(scene.words('result').map((found) => found.text)).toEqual(['four'])
+            const starts = (line: ReturnType<typeof text>) => { scene.speak(line, { rise: 0, lead: 0, fade: 0.1 }); return (glyph: number) => [2, 2.6, 3.2, 4, 5, 6].find((time) => { let on = false; s.at(time + 0.09, () => { on = line.mounted && line.chars[glyph]!.get('visible') && line.chars[glyph]!.get('opacity') > 0.5 }); return on }) }
+            const dash = starts(text("Three, don't four - twenty"))
+            // "Three," has 6 glyphs, "don't" 5, "four" 4, and the dash comes with "four".
+            expect([dash(0), dash(6), dash(11), dash(15), dash(16)]).toEqual([2, 2.6, 3.2, 3.2, 4])
+            const inside = starts(text('B decides'))
+            expect([inside(0), inside(1)]).toEqual([4, 5])
+            // The text is the phrase, and not the cue with the same letters.
+            const same = starts(text('result'))
+            expect(same(0)).toBe(6)
+            expect(scene.usedCues.has('result')).toBe(true)
+            const second = voice.scene('two')
+            expect(() => second.speak(text('One end.'), { lead: 30 })).toThrow('The most lead that fits is')
+            expect(() => second.speak(text('One end.'), { beat: 3 })).toThrow('has no beat 3')
+        }))
+    })
+
     it('stops the build when the voice does not say the phrase', async () => {
         await expect(compileFilm(film({ fps: 10 }, (s) => {
             narration(s, timing).scene('intro').on('we roll back', () => {})
@@ -70,7 +131,7 @@ describe('narration', () => {
             const scene = narration(s, said, { lead: 1 }).scene('intro')
             // A longer phrase with more words after it starts at the same word, so the cue keeps its time.
             expect(() => scene.on('we', () => {})).toThrow('narration: scene "intro": the voice says "we" 2 times: in beat 0 at 1.1 s and in beat 0 at 2 s. Use a longer phrase: "we page" for the one at 1.1 s; "we see" for the one at 2 s')
-            expect(() => scene.after('the', () => {})).toThrow('the voice says "the" 2 times: in beat 0 at 2.6 s and in beat 1 at 4.1 s. Use a longer phrase: "the alert" for the one at 2.6 s; "the model" for the one at 4.1 s. Or name the beat: the option `beat` of show, hide and swap, and the last argument of on and after')
+            expect(() => scene.after('the', () => {})).toThrow('the voice says "the" 2 times: in beat 0 at 2.6 s and in beat 1 at 4.1 s. Use a longer phrase: "the alert" for the one at 2.6 s; "the model" for the one at 4.1 s. Or name the beat: the option `beat` of show, hide, swap and speak, and the last argument of on and after')
             expect(() => scene.cue('we', 0)).toThrow('the voice says "we" 2 times: in beat 0 at 1.1 s and in beat 0 at 2 s. Use a longer phrase: "we page" for the one at 1.1 s; "we see" for the one at 2 s')
             expect(scene.cue('we see').start).toBeCloseTo(scene.cue('when we').start + 0.3, 6)
             // Each way that the message names works.

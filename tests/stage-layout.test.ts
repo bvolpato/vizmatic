@@ -883,7 +883,7 @@ describe('the clock of a scene: show, hide and swap', () => {
         await expect(on((c) => { c.show('the page', mark) })).rejects.toThrow(new RegExp(`^${inOneBeat}$`))
         await expect(on((c) => { c.show('the page', mark, { beat: 0 }) })).rejects.toThrow(new RegExp(`^${inOneBeat}$`))
         // In two beats: a longer phrase, or the beat.
-        const inTwoBeats = 'narration: scene "one": the voice says "is" 2 times: in beat 0 at 1.7 s and in beat 1 at 4.7 s. Use a longer phrase: "is slow" for the one at 1.7 s; "is fast" for the one at 4.7 s. Or name the beat: the option `beat` of show, hide and swap, and the last argument of on and after'
+        const inTwoBeats = 'narration: scene "one": the voice says "is" 2 times: in beat 0 at 1.7 s and in beat 1 at 4.7 s. Use a longer phrase: "is slow" for the one at 1.7 s; "is fast" for the one at 4.7 s. Or name the beat: the option `beat` of show, hide, swap and speak, and the last argument of on and after'
         await expect(on((c) => { c.show('is', mark) })).rejects.toThrow(inTwoBeats)
         await expect(on((c) => { c.hide('is', mark) })).rejects.toThrow(inTwoBeats)
         // `on`, `after` and `cue` agree with `show`.
@@ -896,10 +896,10 @@ describe('the clock of a scene: show, hide and swap', () => {
         await on((c) => { expect([c.cue('the page is').start, c.cue('keep the page').start, c.cue('keep the').start]).toEqual([1.1, 2.6, 2.6]) })
         // A phrase that is the whole of two beats has no longer phrase: the beat picks one.
         const same = { ...twice, scenes: [{ id: 'one', beats: [{ say: 'One pass.', duration: 2, words: [word('One', 0.1), word('pass.', 0.4)] }, { say: 'One pass.', duration: 2, words: [word('One', 0.1), word('pass.', 0.4)] }] }] }
-        await expect(onClockOf(same)((c) => { c.show('one pass', mark) })).rejects.toThrow('the voice says "one pass" 2 times: in beat 0 at 1.1 s and in beat 1 at 3.1 s. No longer phrase picks one of them. Name the beat: the option `beat` of show, hide and swap, and the last argument of on and after')
+        await expect(onClockOf(same)((c) => { c.show('one pass', mark) })).rejects.toThrow('the voice says "one pass" 2 times: in beat 0 at 1.1 s and in beat 1 at 3.1 s. No longer phrase picks one of them. Name the beat: the option `beat` of show, hide, swap and speak, and the last argument of on and after')
         // One of two beats has one more word: a longer phrase picks that one, and no longer phrase picks the other.
         const more = { ...twice, scenes: [{ id: 'one', beats: [{ say: 'One pass.', duration: 2, words: [word('One', 0.1), word('pass.', 0.4)] }, { say: 'One pass more.', duration: 2, words: [word('One', 0.1), word('pass', 0.4), word('more.', 0.7)] }] }] }
-        await expect(onClockOf(more)((c) => { c.show('one pass', mark) })).rejects.toThrow('Use a longer phrase: "one pass more" for the one at 3.1 s. No longer phrase picks the one at 1.1 s. Or name the beat: the option `beat` of show, hide and swap, and the last argument of on and after')
+        await expect(onClockOf(more)((c) => { c.show('one pass', mark) })).rejects.toThrow('Use a longer phrase: "one pass more" for the one at 3.1 s. No longer phrase picks the one at 1.1 s. Or name the beat: the option `beat` of show, hide, swap and speak, and the last argument of on and after')
         // The beat picks the phrase of that beat: "is" starts at 4.7 in beat 1, and at 1.7 in beat 0.
         const late = dot('blue'), early = dot('red'), long = dot('green'), built: number[] = []
         const compiled = await on((c, s) => {
