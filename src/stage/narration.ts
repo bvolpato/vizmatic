@@ -8,6 +8,7 @@ import { Value, delay, fade, fadeIn, fadeOut, type Anim } from './anim'
 import { Block, describe } from './layout'
 import { Node } from './node'
 import type { Stage } from './stage'
+import { TextNode } from './text'
 
 /** One spoken word, timed in seconds from the start of its beat. */
 export interface NarrationWord {
@@ -124,6 +125,10 @@ const CLEAR_OVERRUN = 0.02
 const CUE_LEAD = 0.1
 /** Seconds of a fade in and of a fade out. */
 const CUE_FADE = 0.3
+/** The way that a spoken word moves up while it fades in, as a part of the size of its text. */
+const SPEAK_RISE = 0.22
+/** Seconds of the fade of one spoken word. It is shorter than the fade of a node: a voice says two or three words in a second. */
+const SPEAK_FADE = 0.22
 /** Seconds from one item of a staggered list to the next. */
 const CUE_STAGGER = 0.3
 /** The least seconds from one item of a staggered list to the next. Under it, a viewer does not see an order. */
@@ -136,6 +141,7 @@ const SWAP_WAIT = 0.2
 /** The picture of a scene starts to leave this long before the end of the scene: `clear` starts its fade then, and so does the shell of `narrated()`. */
 const LEAVE_LEAD = 0.24
 const CUE_OPTIONS = ['beat', 'lead', 'fade', 'stagger', 'skipShown', 'after']
+const SPEAK_OPTIONS = ['beat', 'lead', 'fade', 'rise']
 /** A node with less opacity than this is not on the screen for a viewer. */
 const SEEN_LEAST = 0.01
 /** Two times that are nearer than this are one time. */
@@ -190,8 +196,44 @@ export interface CueOptions {
     skipShown?: boolean
 }
 
+export interface SpeakOptions {
+    /** Search the words in this beat only. Use it when the voice says them in two beats. */
+    beat?: number
+    /** Seconds before each word. Defaults to 0.1. */
+    lead?: number
+    /** Seconds of the fade of one word. Defaults to 0.22. */
+    fade?: number
+    /** The way that a word moves up to its place, in pixels. Defaults to 0.22 of the size of the text. 0 is a fade with no move. */
+    rise?: number
+}
+
+/** One word of the voice, in film seconds. */
+export interface SpokenWord {
+    text: string
+    start: number
+    end: number
+}
+
 /** What `show`, `hide` and `swap` take: a node, a block of the layout, an animation to play as it is, or a list of these. */
 export type Showable = Node | Block | Anim | readonly Showable[]
+
+/** The words of a text with the glyphs of each, in their order. A letter that draws nothing has no glyph. */
+function wordGlyphs(node: TextNode): { text: string; glyphs: Node[] }[] {
+    let at = 0
+    const words = node.source.split(/\s+/).filter(Boolean).map((text) => {
+        const glyphs: Node[] = []
+        for (const char of text) {
+            const glyph = node.chars[at]
+            // `uppercase` changes the glyphs and not the source.
+            if (!glyph || String(glyph.data['key']).toLowerCase() !== char.toLowerCase()) continue
+            glyphs.push(glyph)
+            at += 1
+        }
+        return { text, glyphs }
+    })
+    if (at !== node.chars.length) throw new Error(`narration: speak: the glyphs of ${JSON.stringify(node.source)} do not follow its letters, so they cannot come word by word. Use show for this text`)
+    return words
+}
 
 const isAnim = (item: unknown): item is Anim => typeof item === 'object' && item !== null && typeof (item as Anim).schedule === 'function'
 /** A time for a message, in seconds. */
@@ -284,16 +326,26 @@ export class SceneClock {
         return this.spoken(phrase, beat)
     }
 
+    /** The spoken words of each beat, as a cue reads them. One timed word can hold several, such as "twenty seven". */
+    private said(): { token: string; start: number; end: number; word: number }[][] {
+        return this.beats.map((placed) => placed.words.flatMap((word, index) => tokens(word.text).map((token) => ({ token, start: placed.start + word.start, end: placed.start + word.end, word: index }))))
+    }
+
     /** When the voice says a phrase, in film seconds. */
     private spoken(phrase: string, beat?: number): { start: number; end: number } {
+        const { start, end } = this.locate(phrase, beat)
+        return { start, end }
+    }
+
+    /** Where the voice says a phrase: its time, its beat, and its spoken words. */
+    private locate(phrase: string, beat?: number): { start: number; end: number; beat: number; words: { token: string; start: number; end: number; word: number }[] } {
         const want = tokens(phrase)
         if (want.length === 0) {
             const ids = this.cues.length > 0 ? ` The cues that the script declares for this scene are: ${this.cues.map((cue) => cue.id).join(', ')}` : ''
             throw new Error(`narration: scene "${this.id}": the cue ${JSON.stringify(phrase)} has no letter and no digit, so it names no word of the voice. A cue is a word or a number that the voice says: write the words that the voice says for a symbol, such as "percent" for "%".${ids}`)
         }
         if (beat !== undefined && !this.beats[beat]) throw new Error(`narration: scene "${this.id}" has no beat ${beat}`)
-        // One timed word can hold several spoken tokens, such as "twenty seven".
-        const spoken = this.beats.map((placed) => placed.words.flatMap((word) => tokens(word.text).map((token) => ({ token, start: word.start, end: word.end }))))
+        const spoken = this.said()
         /** Each place where the voice says a list of words, in the beats that the call searches. */
         const places = (words: readonly string[]): { beat: number; at: number }[] => spoken.flatMap((said, index) => {
             if (beat !== undefined && index !== beat) return []
@@ -308,7 +360,7 @@ export class SceneClock {
             const help = ids.length ? `. Use a spoken phrase or one of the declared ids: ${ids.join(', ')}` : ''
             throw new Error(`narration: scene "${this.id}": the voice never says "${phrase}"${where}${help}`)
         }
-        const time = (one: { beat: number; at: number }) => ({ start: this.beats[one.beat]!.start + spoken[one.beat]![one.at]!.start, end: this.beats[one.beat]!.start + spoken[one.beat]![one.at + want.length - 1]!.end })
+        const time = (one: { beat: number; at: number }) => ({ start: spoken[one.beat]![one.at]!.start, end: spoken[one.beat]![one.at + want.length - 1]!.end })
         if (found.length > 1) {
             const said = found.map((one) => `in beat ${one.beat} at ${stamp(time(one).start)}`)
             // A longer phrase picks one place. With more words after it, the phrase starts at the same word, so the
@@ -323,7 +375,7 @@ export class SceneClock {
                 for (let first = one.at - 1; first >= Math.max(0, one.at - MORE); first--) {
                     const list = words.slice(first, last)
                     if (places(list).length !== 1) continue
-                    const earlier = from - (this.beats[one.beat]!.start + spoken[one.beat]![first]!.start)
+                    const earlier = from - spoken[one.beat]![first]!.start
                     return `"${list.join(' ')}" for the one at ${stamp(from)}, which starts ${hundredths(earlier)} s earlier`
                 }
                 return null
@@ -334,12 +386,72 @@ export class SceneClock {
             const ways = [
                 picks.length > 0 ? `Use a longer phrase: ${picks.join('; ')}` : 'No longer phrase picks one of them',
                 picks.length > 0 && alone.length > 0 ? `No longer phrase picks the one at ${alone.join(' or at ')}` : '',
-                byBeat ? `${picks.length > 0 ? 'Or name' : 'Name'} the beat: the option \`beat\` of show, hide and swap, and the last argument of on and after` : '',
+                byBeat ? `${picks.length > 0 ? 'Or name' : 'Name'} the beat: the option \`beat\` of show, hide, swap and speak, and the last argument of on and after` : '',
                 picks.length === 0 && !byBeat ? 'Use the index of the beat as the cue, with a lead, or change the words of the script' : '',
             ].filter(Boolean)
             throw new Error(`narration: scene "${this.id}": the voice says "${phrase}" ${found.length} times: ${said.slice(0, -1).join(', ')} and ${said[said.length - 1]}. ${ways.join('. ')}`)
         }
-        return time(found[0]!)
+        const one = found[0]!
+        return { ...time(one), beat: one.beat, words: spoken[one.beat]!.slice(one.at, one.at + want.length) }
+    }
+
+    /**
+     * The words of a phrase with the time of each, in film seconds: `c.words('not one of those is physics')`.
+     * A cue is a spoken phrase, the id of a declared cue, or the index of a beat for all of its words. There is
+     * one entry for each timed word of the voice, so "don't" is one entry, and so is a timed "twenty seven".
+     */
+    words(cue: Cue, beat?: number): SpokenWord[] {
+        const entry = (index: number, at: number): SpokenWord => {
+            const placed = this.beats[index]!, word = placed.words[at]!
+            return { text: word.text.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ''), start: placed.start + word.start, end: placed.start + word.end }
+        }
+        if (typeof cue === 'number') {
+            if (beat !== undefined) throw new Error(`narration: scene "${this.id}": words: the cue is the beat ${cue}, so the second argument has no job. It picks the beat of a spoken phrase`)
+            if (!this.beats[cue]) throw new Error(`narration: scene "${this.id}" has no beat ${cue}`)
+            return this.beats[cue]!.words.flatMap((word, at) => (tokens(word.text).length > 0 ? [entry(cue, at)] : []))
+        }
+        const { phrase, beat: declaredBeat } = this.cue(cue, beat) as CueTime
+        const found = this.locate(phrase ?? cue, declaredBeat ?? beat)
+        return [...new Set(found.words.map((word) => word.word))].map((at) => entry(found.beat, at))
+    }
+
+    /**
+     * Bring a text in word by word, each word as the voice says it: `c.speak(text('Be the one they call.'))`.
+     * The words of the text are the phrase, so the voice must say them, in their order. `beat` picks the beat
+     * when the voice says them two times. Each word fades in over 0.22 seconds and rises to its place.
+     */
+    speak(node: TextNode, options: SpeakOptions = {}): this {
+        const where = `narration: scene "${this.id}": speak`
+        if (!(node instanceof TextNode)) throw new Error(`${where} takes a text, such as c.speak(text('Be the one they call.')). For another node, use show`)
+        if (typeof options !== 'object' || options === null || Array.isArray(options)) throw new Error(`${where}: the options are ${JSON.stringify(options)}, and they are an object such as { beat: 2 }`)
+        const unknown = Object.keys(options).filter((name) => !SPEAK_OPTIONS.includes(name))
+        if (unknown.length > 0) throw new Error(`${where} has no option "${unknown[0]}". Its options are: ${SPEAK_OPTIONS.join(', ')}`)
+        const lead = options.lead ?? CUE_LEAD, length = options.fade ?? SPEAK_FADE, rise = options.rise ?? node.size * SPEAK_RISE
+        if (!(Number.isFinite(lead) && Number.isFinite(rise) && Number.isFinite(length) && length > 0)) throw new Error(`${where}: lead, fade and rise are numbers, and the fade is more than 0`)
+        const shown = wordGlyphs(node).map((word) => ({ ...word, said: tokens(word.text).length }))
+        // The text is the phrase, also when it has the same letters as the id of a declared cue.
+        const spoken = this.locate(node.source, options.beat).words
+        const from = this.window.from
+        if (options.lead !== undefined && spoken[0]!.start - lead < from - SAME_TIME) {
+            throw new Error(`${where}: with a lead of ${lead}, the text ${JSON.stringify(node.source)} starts at ${stamp(spoken[0]!.start - lead)}, and the picture of the scene opens at ${stamp(from)}. The most lead that fits is ${Math.floor((spoken[0]!.start - from) * 100 + SAME_TIME) / 100}`)
+        }
+        let at = 0
+        // A mark that the voice does not say, such as a dash between two words, comes with the word before it.
+        const times = shown.map((word) => {
+            const start = spoken[word.said > 0 ? at : Math.max(0, at - 1)]!.start
+            at += word.said
+            return Math.max(from, start - lead)
+        })
+        const name = JSON.stringify(node.source)
+        const first = Math.min(...times), last = Math.max(...times)
+        this.arrivals('speak', name, 1, last, length, undefined)
+        // The text arrives until its last word is there: a hide before that would leave words that never show.
+        this.bring('speak', name, node, first, last + length - first)
+        this.stage.at(first, () => {
+            for (const word of shown) for (const glyph of word.glyphs) glyph.hide()
+            this.stage.play(...shown.map((word, index) => delay(fadeIn(word.glyphs, { duration: length, ...(rise === 0 ? {} : { shift: [0, rise] as const }) }), times[index]! - first)))
+        })
+        return this
     }
 
     /** Build when the voice starts a phrase. `offset` moves it, in seconds. */

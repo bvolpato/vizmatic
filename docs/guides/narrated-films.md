@@ -326,11 +326,13 @@ export function answer(s: Stage, c: SceneClock) {
 | `c.show('a spoken phrase', nodes, { after: true })` | Fades nodes in when the voice has said the phrase: a result. `c.hide` and `c.swap` take the same option. |
 | `c.hide('a spoken phrase', nodes)` | Fades out nodes that are on the screen, with the same lead and the same fade. |
 | `c.swap('a spoken phrase', out, in)` | The old nodes fade out, and the new ones start to fade in 0.2 seconds later. |
+| `c.speak(text('Be the one they call.'))` | Brings a text in word by word, each word as the voice says it. The words of the text are the cue. The options are `beat`, `lead`, `fade` and `rise`. |
 | `c.on('a spoken phrase', build, offset, beat)` | Runs `build` when the voice starts the phrase, for a play of the scene's own. `offset` moves it, in seconds. `beat` searches one beat only. |
 | `c.after('a spoken phrase', build)` | Runs `build` when the voice finishes the phrase. |
 | `c.onBeat(2, build)` | Runs `build` when beat 2 starts. |
 | `c.at(1.5, build)` | Runs `build` at a time from the first word of the scene. |
 | `c.cue('a spoken phrase')` | Returns the start and the end of the phrase, in film seconds. For a cue that the script declares, it also returns its `id`, its `phrase`, its `beat` and its `data`. |
+| `c.words('a spoken phrase')` | Returns each timed word of the phrase with its start and its end, in film seconds. `c.words(2)` returns the words of beat 2. |
 | `c.cues` | The cues that the script declares for the scene, each with its `beat`. |
 | `c.title` | The chapter title from the timing, when the scene has one. |
 | `c.beats` | The beats of the scene, each with `start`, `end` and `until`. |
@@ -344,6 +346,21 @@ export function answer(s: Stage, c: SceneClock) {
 - A node shows one time. `c.show` brings a node that is not on the screen, so a node of `s.add`, of another cue or of a second list stops the build. `{ skipShown: true }` leaves such a node as it is and brings the rest of a block. It sees only what the scene did in the lines above the call. The fade of a node ends before its scene starts to leave, 0.24 seconds before the end of the scene, or the build stops.
 - A cue is in the words that the voice says. When `pronounce` turns "800" into "eight hundred", the cue is `c.on('eight hundred', ...)`. `npx vizmatic narrated beats . --words question` prints the spoken words of a scene with their times.
 - A cue is letters and digits, in any script: `c.cue('café')`, `c.cue('東京')` and `c.cue('3.5 stars')` work. A cue with no letter and no digit, such as `'%'`, stops the build: write the words that the voice says for the symbol, such as `'percent'`.
+
+### A text that comes with the voice
+
+`c.speak` is for the one large line of a moment, such as a title, a question, or the last line of a film. Each word fades in and rises to its place as the voice says it.
+
+```typescript
+c.speak(text('Be the one they call.', { size: 150 }).at(0, -120))
+// The voice says these words in two beats, so the call names one of them. The words do not move up.
+c.speak(text('Who do you call?', { size: 120 }).at(0, 300), { beat: 2, rise: 0 })
+```
+
+- The voice must say the words of the text, in their order. A text with other words stops the build, as a cue does. A number must be in the form that the voice says: for `44%`, use `c.show` with the spoken phrase.
+- Case, punctuation and line breaks do not matter. A sign that the voice does not say, such as a dash between two words, comes with the word before it.
+- A text shows one time, and `c.hide` takes it away. The last word and its fade must end before the scene starts to leave.
+- For another kind of motion on each word, take the times from `c.words`, and play it with `s.at`.
 
 ### A name before its phrase, a result after it
 

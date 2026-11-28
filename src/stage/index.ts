@@ -37,7 +37,7 @@ export { molecule3d, Molecule3D, type Molecule3DAtom, type Molecule3DBond, type 
 export { fromSvg, SvgNode, type FromSvgOptions } from './svg-import'
 export { resolveImageAsset, ImageAssetError, type ImageAsset, type ImageAssetOptions, type ImageFitOptions, type ImageCrop } from './image'
 export { narration, Narration, SceneClock, captionLines } from './narration'
-export type { NarrationTiming, NarrationScene, NarrationBeat, NarrationWord, NarrationCue, DeclaredCue, CueTime, NarrationOptions, PlacedBeat, Cue, CueOptions, Showable } from './narration'
+export type { NarrationTiming, NarrationScene, NarrationBeat, NarrationWord, NarrationCue, DeclaredCue, CueTime, NarrationOptions, PlacedBeat, Cue, CueOptions, Showable, SpeakOptions, SpokenWord } from './narration'
 export { firstSceneTransitions, narrated } from './narrated'
 export type { NarratedOptions, TimingFile, FilmClock, SceneFunction, IntroFunction, TitleCard } from './narrated'
 export { sceneKit, sceneArea } from './scene-kit'
