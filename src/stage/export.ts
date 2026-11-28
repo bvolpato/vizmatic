@@ -343,7 +343,7 @@ export async function renderFilmVideo(
             // An MP4 carries the film's title, chapters, and captions. A range render shifts them to its own start.
             title: compiled.title,
             chapters: options.chapters === false ? [] : shiftedChapters(compiled, from),
-            captions: options.embedCaptions === false ? [] : compiled.captions.map((cue) => ({ t0: cue.t0 - from, t1: cue.t1 - from, text: cue.text })),
+            captions: options.embedCaptions === false ? [] : shiftedCaptions(compiled, from, Math.min(to, from + count / fps)),
             signal: options.signal,
             onProgress: options.onProgress,
         })
@@ -712,8 +712,15 @@ export async function posterTime(film: CompiledFilm): Promise<number> {
     return rich[rich.length - 1]?.time ?? film.duration
 }
 
-/** Captions as WebVTT, for a sidecar track. */
-export function captionsToVtt(film: CompiledFilm): string {
+/** Clip each cue to the selected interval and measure its times from the start of the clip. */
+function shiftedCaptions(film: CompiledFilm, from: number, to: number) {
+    return film.captions
+        .map((cue) => ({ t0: Math.max(0, cue.t0 - from), t1: Math.min(cue.t1, to) - from, text: cue.text }))
+        .filter(({ t0, t1 }) => Math.round(t1 * 1000) > Math.round(t0 * 1000))
+}
+
+/** Captions as WebVTT, for the full film or a clip in seconds. */
+export function captionsToVtt(film: CompiledFilm, range?: Pick<FilmRenderOptions, 'from' | 'to'>): string {
     const stamp = (seconds: number) => {
         const totalMs = Math.max(0, Math.round(seconds * 1000))
         const hours = Math.floor(totalMs / 3_600_000)
@@ -726,7 +733,8 @@ export function captionsToVtt(film: CompiledFilm): string {
         return hours > 0 ? `${String(hours).padStart(2, '0')}:${mm}:${ss}.${mmm}` : `${mm}:${ss}.${mmm}`
     }
     const clean = (value: string) => value.replace(/-->/g, '--&gt;').replace(/\r?\n\s*\r?\n/g, '\n')
-    const cues = film.captions.map((cue) => `${stamp(cue.t0)} --> ${stamp(cue.t1)}\n${clean(cue.text)}`)
+    const { from, to } = timeRange(film, range ?? {})
+    const cues = shiftedCaptions(film, from, to).map((cue) => `${stamp(cue.t0)} --> ${stamp(cue.t1)}\n${clean(cue.text)}`)
     return `WEBVTT\n\n${cues.join('\n\n')}\n`
 }
 

@@ -430,10 +430,14 @@ export async function runFilmCommand(args: FilmArgs, files: readonly string[], s
                 })
                 rememberGpuSource(compiled, file)
                 first ??= compiled
-                outputs.push(...await renderOneLook(compiled, name, args.looks.length > 1 ? look! : '', args, controller.signal, say))
-                if (compiled.captions.length > 0 && !captionsPath && args.formats.some((format) => format === 'mp4' || format === 'webm')) {
+                const rendered = await renderOneLook(compiled, name, args.looks.length > 1 ? look! : '', args, controller.signal, say)
+                outputs.push(...rendered)
+                const movie = rendered.find(({ format }) => format === 'mp4' || format === 'webm')
+                if (compiled.captions.length > 0 && !captionsPath && movie?.duration !== undefined) {
+                    const from = args.from ?? 0
+                    const to = Math.min(args.to ?? compiled.duration, from + movie.duration)
                     captionsPath = join(args.outDir, `${name}.vtt`)
-                    await writeFile(captionsPath, captionsToVtt(compiled))
+                    await writeFile(captionsPath, captionsToVtt(compiled, { from, to }))
                     say(`wrote captions ${relative(process.cwd(), captionsPath)}`)
                 }
             }

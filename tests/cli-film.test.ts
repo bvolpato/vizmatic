@@ -242,10 +242,15 @@ describe('vizmatic film', () => {
         const directory = await tempDirectory()
         await writeFile(join(directory, 'short.ts'), shortFilm)
         const out = join(directory, 'out')
-        const result = cli(['film', 'short.ts', '--out', out, '--range', '0.2:0.6', '--width', '161', '--quality', 'draft', '--workers', '1', '--json'], directory)
+        const result = cli(['film', 'short.ts', '--out', out, '--range', '0.2:0.56', '--width', '161', '--quality', 'draft', '--workers', '1', '--json'], directory)
         expect(result.status, result.stderr).toBe(0)
         const [output] = JSON.parse(result.stdout).films[0].outputs
         expect(output).toMatchObject({ frameCount: 4, width: 162, height: 92 })
+        const sidecar = await readFile(join(out, 'short.vtt'), 'utf8')
+        const embedded = spawnSync('ffmpeg', ['-v', 'error', '-i', join(out, 'short.mp4'), '-map', '0:s:0', '-f', 'webvtt', '-'], { encoding: 'utf8' })
+        expect(embedded.status, embedded.stderr).toBe(0)
+        expect(sidecar.trim()).toBe(embedded.stdout.trim())
+        expect(sidecar).toContain('00:00.200 --> 00:00.360')
     }, 60_000)
 
     it('explains invalid input', async () => {

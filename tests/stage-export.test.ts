@@ -322,6 +322,7 @@ describe('film export', () => {
             { t0: 2, t1: 3, text: 'Second' },
         ])
         expect(captionsToVtt(compiled)).toBe('WEBVTT\n\n00:00.000 --> 00:02.000\nFirst\n\n00:02.000 --> 00:03.000\nSecond\n')
+        expect(captionsToVtt(compiled, { from: 2.5 })).toBe('WEBVTT\n\n00:00.000 --> 00:00.500\nSecond\n')
         expect(compiled.captions.some(cue => cue.t0 <= 4 && 4 < cue.t1)).toBe(false)
     })
 
