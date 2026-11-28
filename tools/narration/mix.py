@@ -6,8 +6,9 @@
 """Lay the voice on the timeline of the film, and add a quiet pad and selected sound effects.
 
 The voice stays on top: the pad from soundbed.py stays well under it, and rises only in a long pause
-and where the film asks for a swell. The film gives its seed, its levels, its swells and its effects
-in film.json, under "mix". The README of this folder describes each key.
+and where the film asks for a swell. A film can bring its own score in place of the pad. The score keeps
+its level, and studio.py makes room for the voice in the band of the voice. The film gives its seed, its levels, its swells, its effects and its
+music in film.json, under "mix". The README of this folder describes each key.
 
 It writes narration.wav for the render. An agent cannot hear the result, so it prints the levels and
 writes the voice alone, the pad alone, and the mix before the loudness pass under stills/.
@@ -15,6 +16,7 @@ writes the voice alone, the pad alone, and the mix before the loudness pass unde
 Usage: mix.py <folder>"""
 import hashlib
 import io
+import json
 import subprocess
 from pathlib import Path
 
@@ -25,6 +27,7 @@ from scipy.signal import resample_poly
 import checks
 import film
 import soundbed
+import studio
 
 RATE = 48000
 BELL = (659.25, 987.77, 1318.51)     # E5, B5, E6.
@@ -164,6 +167,52 @@ def read_effect_wav(data, where):
     return resample_poly(samples, RATE, rate) if rate != RATE else samples
 
 
+def read_music(data, where, samples):
+    """Decode a score to stereo at the mix rate, from the first sample of the film to the last. It has an RMS of 1
+    where it sounds, so its level is one number and its own rises and falls stay."""
+    try:
+        with sf.SoundFile(io.BytesIO(data)) as source:
+            if source.format not in ("WAV", "WAVEX", "RF64") or source.channels not in (1, 2) or not source.frames:
+                film.fail(f"{where}: give a nonempty mono or stereo WAV")
+            rate = source.samplerate
+            score = source.read(dtype="float32", always_2d=True)
+    except (ValueError, RuntimeError) as error:
+        film.fail(f"{where}: cannot read the WAV ({error})")
+    if not np.isfinite(score).all():
+        film.fail(f"{where}: the WAV contains nonfinite samples")
+    if rate != RATE:
+        score = resample_poly(score, RATE, rate, axis=0).astype(np.float32)
+    if score.shape[1] == 1:
+        score = np.repeat(score, 2, axis=1)
+    out = np.zeros((samples, 2), dtype=np.float32)
+    length = min(samples, len(score))
+    out[:length] = score[:length]
+    if len(score) - samples > RATE // 4:
+        # A score that is longer than the film ends with it, and not with a click. One that was made to the
+        # length of the film can be some samples longer, and it keeps its own end.
+        fade = min(samples, 2 * RATE)
+        out[-fade:] *= np.linspace(1, 0, fade, dtype=np.float32)[:, None]
+    level = sounding_level(out)
+    if level <= 0:
+        film.fail(f"{where}: the WAV is silent")
+    return (out / level).astype(np.float32)
+
+
+def sounding_level(score):
+    """The RMS of a score where it sounds. Silence before, inside and after the music does not count: a score
+    with a long silence at its end would come out louder than the same music without it."""
+    hop = RATE // 5
+    frames = max(1, -(-len(score) // hop))
+    power = np.add.reduceat(np.sum(np.square(score, dtype=np.float64), axis=1), np.arange(frames) * hop) / (2 * hop)
+    loud = power > power.max() * 1e-4  # 40 dB under the loudest fifth of a second.
+    return np.sqrt(power[loud].mean()) if loud.any() else 0.0
+
+
+def side_level(bed, where):
+    """The level of the louder side of a stereo track. A score can play on one side only."""
+    return max(soundbed.decibels(bed[where, 0]), soundbed.decibels(bed[where, 1]))
+
+
 def effects(samples, line, entries, wavs):
     """Place each clip with its own gain and cutoff, in the order the author gives."""
     track, placed = np.zeros(samples, dtype=np.float32), []
@@ -194,37 +243,58 @@ def effects(samples, line, entries, wavs):
     return track, placed
 
 
-def write_sound(root, mix, voice, bed):
-    """The mix at -16 LUFS for the render, and the three tracks that a check can read."""
+def steady_gain(raw, samples, wanted):
+    """A filter that brings a mix to a loudness with one gain for all of it, and catches the peaks. `loudnorm` in one
+    pass moves the gain all the time, and takes the difference between a quiet scene and a loud one out of a score."""
+    heard = subprocess.run(["ffmpeg", "-nostdin", "-hide_banner", "-i", str(raw), "-af", "loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json", "-f", "null", "-"], check=True, capture_output=True, text=True).stderr
+    loudness = float(json.loads(heard[heard.rindex("{"):heard.rindex("}") + 1])["input_i"])
+    # The limiter works at four times the rate, so that it sees the peaks between two samples. It looks 4 ms
+    # ahead and gives each sample 4 ms late, so the chain takes the 4 ms from the start and keeps the end.
+    late = RATE * 4 // 1000
+    return (f"volume={wanted - loudness:.3f}dB,apad=pad_len={RATE // 10},aresample={RATE * 4},"
+            f"alimiter=limit={10 ** (-1.6 / 20):.4f}:attack=4:release=80:level=false,"
+            f"aresample={RATE},atrim=start_sample={late}:end_sample={late + samples},asetpts=PTS-STARTPTS")
+
+
+def write_sound(root, mix, voice, bed, loudness=checks.LOUDNESS, steady=False):
+    """The mix at its loudness for the render, and the three tracks that a check can read."""
     stills = root / "stills"
     stills.mkdir(exist_ok=True)
-    sf.write(stills / "mix-raw.wav", mix, RATE, subtype="PCM_24")
-    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(stills / "mix-raw.wav"), "-af", "loudnorm=I=-16:TP=-1.5:LRA=11", "-ar", str(RATE), "-c:a", "pcm_s24le", str(root / "narration.wav")], check=True)
+    raw = stills / "mix-raw.wav"
+    sf.write(raw, mix, RATE, subtype="PCM_24")
+    level = steady_gain(raw, len(mix), loudness) if steady else f"loudnorm=I={loudness:g}:TP=-1.5:LRA=11"
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(raw), "-af", level, "-ar", str(RATE), "-c:a", "pcm_s24le", str(root / "narration.wav")], check=True)
     sf.write(stills / "voice-only.wav", voice, RATE, subtype="PCM_16")
     sf.write(stills / "bed-only.wav", bed, RATE, subtype="PCM_24")
 
 
-def report(line, levels, mix, voice, bed, level, spoke, track, parts, swells, chimes, named=False):
+def report(line, levels, mix, voice, bed, level, spoke, track, parts, swells, chimes, named=False, music=None):
     """Print the levels, because nobody hears the mix before the film is rendered."""
     rms = soundbed.decibels
-    quiet = ~spoke & (level >= 10 ** (levels["pause"] / 20) * 0.98)
+    quiet = ~spoke if music is not None else ~spoke & (level >= 10 ** (levels["pause"] / 20) * 0.98)
     print(f"film {line.total:.2f}s  beats {len(line.beats)}  peak {np.abs(mix).max():.3f}")
-    print(f"voice RMS while speaking {rms(voice[spoke]):.1f} dB; bed RMS under voice {rms(bed[spoke, 0]):.1f} dB; gap {rms(voice[spoke]) - rms(bed[spoke, 0]):.1f} dB")
+    bed_name = "bed" if music is None else "music"
+    print(f"voice RMS while speaking {rms(voice[spoke]):.1f} dB; {bed_name} RMS under voice {side_level(bed, spoke):.1f} dB; gap {rms(voice[spoke]) - side_level(bed, spoke):.1f} dB")
+    if music is not None:
+        print(f"in the band of the voice: voice {studio.band_level(voice, spoke, RATE):.1f} dB, music {studio.band_level(bed, spoke, RATE):.1f} dB")
     if line.intro > 0:
         intro = int(line.intro * RATE)
-        print(f"intro: bed RMS {rms(bed[:intro, 0]):.1f} dB, {'effect' if named else 'chime'} peak {np.abs(track[:intro]).max():.3f}")
-    long_pauses = f"{rms(bed[quiet, 0]):.1f} dB" if quiet.any() else "none"
-    print(f"bed RMS in long pauses {long_pauses}; {'effects' if named else 'chimes'} at {', '.join(f'{at:.2f}s' for at, _ in chimes)}; swells at {', '.join(f'{at:.2f}s' for at in swells)}")
+        print(f"intro: {bed_name} RMS {side_level(bed, slice(0, intro)):.1f} dB, {'effect' if named else 'chime'} peak {np.abs(track[:intro]).max():.3f}")
+    long_pauses = f"{side_level(bed, quiet):.1f} dB" if quiet.any() else "none"
+    moved = f"swells at {', '.join(f'{at:.2f}s' for at in swells)}" if music is None else f"music peak {np.abs(bed).max():.3f}"
+    print(f"{bed_name} RMS in {'long ' if music is None else ''}pauses {long_pauses}; {'effects' if named else 'chimes'} at {', '.join(f'{at:.2f}s' for at, _ in chimes)}; {moved}")
     for at, until in chimes:
         if until is not None and named:
             print(f"the effect of {at:.2f}s is silent from {until:.2f}s")
         elif until is not None:
-            # What sounds under the words that follow the bell: the voice, the pad at its usual level, and no bell.
+            # What sounds under the words that follow the bell: the voice, the bed at its usual level, and no bell.
             a, b = int((until + 0.5) * RATE), min(len(track), int((until + 1.0) * RATE))
             if b > a:
-                print(f"the bell of {at:.2f}s is silent from {until:.2f}s; from {until + 0.5:.2f}s to {until + 1.0:.2f}s, voice RMS {rms(voice[a:b]):.1f} dB, bed RMS {rms(bed[a:b, 0]):.1f} dB, bell peak {np.abs(track[a:b]).max():.4f}")
+                print(f"the bell of {at:.2f}s is silent from {until:.2f}s; from {until + 0.5:.2f}s to {until + 1.0:.2f}s, voice RMS {rms(voice[a:b]):.1f} dB, {bed_name} RMS {side_level(bed, slice(a, b)):.1f} dB, bell peak {np.abs(track[a:b]).max():.4f}")
             else:
                 print(f"the bell of {at:.2f}s is silent from {until:.2f}s")
+    if music is not None:
+        return
     lengths = [end - start for start, end, _, _ in parts]
     print(f"pad: {len(parts)} chords, {min(lengths):.1f} to {max(lengths):.1f} s each; " + " ".join(chord for _, _, chord, _ in parts))
 
@@ -237,36 +307,50 @@ def main(found, _words, _options):
     samples = int(line.total * RATE)
     voice = lay_voice(root, line, samples)
 
-    # The pad has no loop: the chord changes where a beat starts, a seeded random walk picks each chord,
-    # and each scene has its own texture.
-    parts = soundbed.plan(line.total, [beat.start for beat in line.beats], list(line.scenes.values()), seed=settings["seed"])
-    pad = soundbed.pad(line.total, RATE, parts)
-    seconds = np.arange(samples, dtype=np.float32) / RATE
-    swells = settings["swells"] if settings["swells"] is not None else default_swells(line, levels["card"])
-    level, spoke, swell_times = pad_level(voice, seconds, line, levels, swells)
+    # Decode and fingerprint the same bytes even if the author edits a WAV during the mix.
+    wavs = film.authored_wavs(found, Path.read_bytes)
+    music = settings["music"]
+    if music is None:
+        # The pad has no loop: the chord changes where a beat of the narration starts, a seeded random walk picks
+        # each chord, and each scene has its own texture.
+        parts = soundbed.plan(line.total, [beat.start for beat in line.beats], list(line.scenes.values()), seed=settings["seed"])
+        pad = soundbed.pad(line.total, RATE, parts)
+        seconds = np.arange(samples, dtype=np.float32) / RATE
+        swells = settings["swells"] if settings["swells"] is not None else default_swells(line, levels["card"])
+        level, spoke, swell_times = pad_level(voice, seconds, line, levels, swells)
+    else:
+        parts, swell_times = [], []
+        pad = read_music(wavs[music["wav"]], f'film.json: mix.music.wav ({music["wav"]})', samples)
+        speaking = studio.spoken(voice, RATE)
+        spoke = np.interp(np.arange(samples) * 100 / RATE, np.arange(len(speaking)) + 0.5, speaking.astype(np.float64)) > 0.5
+        pad = studio.carve(pad, studio.room(speaking, music["attack"], music["release"]), RATE, music["carve"], music["duck"])
+        level = np.full(samples, 10 ** (music["level"] / 20), dtype=np.float32)
     bed = pad * (level * 10 ** (soundbed.decibels(voice[spoke]) / 20))[:, None]
 
     named = settings["effects"] is not None
-    # Decode and fingerprint the same bytes even if the author edits a WAV during the mix.
-    wavs = film.effect_wavs(found, Path.read_bytes)
     if named:
         track, chime_times = effects(samples, line, settings["effects"], wavs)
     else:
-        chimes = settings["chimes"] if settings["chimes"] is not None else default_chimes(line)
+        # A score has its own sounds for the title and the end, so a film with one has no bell that it did not ask for.
+        chimes = settings["chimes"] if settings["chimes"] is not None else default_chimes(line) if music is None else []
         track, chime_times = bells(samples, line, chimes)
-    # The voice is the same in both channels. The pad differs between them, and the bells are a little quieter at the right.
-    mix = np.stack([voice + bed[:, 0] + track, voice + bed[:, 1] + track * 0.92], axis=1)
+    # A voice with no polish is the same in both channels. The bed differs between them, and the bells are a little quieter at the right.
+    lead = studio.polish(voice, RATE) if settings["polish"] else np.repeat(voice[:, None], 2, axis=1)
+    mix = lead + bed + np.stack([track, track * 0.92], axis=1)
     peak = np.abs(mix).max()
     if peak > 0.97:
         mix = mix / peak * 0.97
-    write_sound(root, mix, voice, bed)
+    write_sound(root, mix, lead if settings["polish"] else voice, bed, settings["loudness"], steady=music is not None)
     # A build reads this record, and leaves a mix that is made from the timing and the film.json of now.
     film.write_mix_record(found, {name: hashlib.sha256(data).hexdigest() for name, data in wavs.items()})
-    report(line, levels, mix, voice, bed, level, spoke, track, parts, swell_times, chime_times, named)
-    under = soundbed.decibels(voice[spoke]) - soundbed.decibels(bed[spoke, 0])
-    summary = f"narration.wav is written: {line.total:.2f} s, {len(line.beats)} takes, the pad {under:.1f} dB under the voice."
+    report(line, levels, mix, voice, bed, level, spoke, track, parts, swell_times, chime_times, named, music)
+    # A score can be loud in its bass and in its air. What covers a voice is what it has in the band of the voice.
+    under = soundbed.decibels(voice[spoke]) - side_level(bed, spoke) if music is None else studio.band_level(voice, spoke, RATE) - studio.band_level(bed, spoke, RATE)
+    bed_name, where = ("pad", "under the voice") if music is None else ("music", "under the voice in the band of the voice")
+    summary = f"narration.wav is written: {line.total:.2f} s, {len(line.beats)} takes, the {bed_name} {under:.1f} dB {where}."
     if under < CLEAR_VOICE:
-        film.verdict(f"{summary} That is too near: under {CLEAR_VOICE} dB the pad covers the voice. Lower mix.levels.under, or move a swell away from the voice, and mix again.")
+        fix = "Lower mix.levels.under, or move a swell away from the voice" if music is None else "Raise mix.music.carve, or lower mix.music.level"
+        film.verdict(f"{summary} That is too near: under {CLEAR_VOICE} dB the {bed_name} covers the voice. {fix}, and mix again.")
     else:
         film.verdict(f"{summary} Next: {found.next('check', '--motion')}")
 

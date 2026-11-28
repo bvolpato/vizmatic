@@ -184,7 +184,7 @@ describe.skipIf(!ready)("narration tools: draft, probe, and record", () => {
         // Change only the metadata in an isolated tool copy, as a new package version could do.
         const copiedTools = join(folder, 'tools')
         await mkdir(copiedTools)
-        for (const name of ['verify.py', 'film.py', 'checks.py', 'mix.py', 'soundbed.py']) await writeFile(join(copiedTools, name), await readFile(join(TOOLS, name)))
+        for (const name of ['verify.py', 'film.py', 'checks.py', 'mix.py', 'soundbed.py', 'studio.py']) await writeFile(join(copiedTools, name), await readFile(join(TOOLS, name)))
         const copiedState = () => JSON.parse(bare([join(copiedTools, 'verify.py'), folder, '--step', 'build', '--json']).stdout).mix.current
         expect(copiedState()).toBe(true)
         const metadata = await readFile(join(copiedTools, 'checks.py'), 'utf8')

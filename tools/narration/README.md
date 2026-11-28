@@ -7,7 +7,7 @@ These tools make the sound of a narrated film and check the result. `vizmatic na
 | `verify.py` | before every step | Checks `film.json`, `script.json`, and the timing against the script. Prints one line for each problem: the file, the field, what is wrong, and what to do. For a build, it also says if the voice and the mix are current, and why. |
 | `voice.py` | `voice` | Speaks `script.json` with Kokoro on this machine. Writes one WAV for each beat under `audio/`, and `timing.json` with the time of each word and a fingerprint of what the voice was made from. A take that a run left empty is made again. |
 | `draft.py` | `draft` | Writes a timing with estimated times and no sound, for a look at the scenes without the voice model. Beside a measured timing, it writes `timing.draft.json` and leaves `timing.json`. |
-| `mix.py` | `mix` | Lays the takes on the timeline, adds the pad of `soundbed.py` and the selected effects or legacy chimes, and writes `narration.wav`. It writes `audio/mix.json`, which says what the mix was made from. |
+| `mix.py` | `mix` | Lays the takes on the timeline, adds the pad of `soundbed.py` or the score of the film, and the selected effects or legacy chimes, and writes `narration.wav`. It writes `audio/mix.json`, which says what the mix was made from. |
 | `beats.py` | `beats` | Prints where each beat starts and ends, or the spoken words of a scene with their times. |
 | `transcribe.py` | `transcribe` | Transcribes each take with `faster-whisper` and shows the words that differ from the script. |
 | `record.py` | a step of `build` | Writes `<name>.timing.json` beside a rendered movie: the timing that its picture was rendered with, and the hash of the picture. |
@@ -16,7 +16,7 @@ These tools make the sound of a narrated film and check the result. `vizmatic na
 | `probe.py` | `probe` | Prints the streams, the chapters, the caption count and the hash of a movie, and if its picture was rendered with the timing of the folder. |
 | `resound.py` | `resound` | Puts a new `narration.wav` into a rendered movie without a new render of the picture. |
 
-`checks.py` holds the checks of the files, in one place. Its `SOUND_EFFECTS` metadata shares the names, descriptions, durations, and default gains without audio dependencies. `film.py` holds what the tools share: the checked film, the place of each beat on the timeline, the records of a mix and of a picture, and how a tool reads its options. `soundbed.py` makes the pad and the named effects.
+`checks.py` holds the checks of the files, in one place. Its `SOUND_EFFECTS` metadata shares the names, descriptions, durations, and default gains without audio dependencies. `film.py` holds what the tools share: the checked film, the place of each beat on the timeline, the records of a mix and of a picture, and how a tool reads its options. `soundbed.py` makes the pad and the named effects. `studio.py` makes room for a voice in a score, and polishes a voice.
 
 - Every tool checks the files of the film before it does anything, so a mistake in a file is one line and never a stack. This holds for a `timing.json` that was changed by hand too.
 - A tool refuses an option that it does not have.
@@ -86,6 +86,27 @@ A swell, a chime, and an effect each name a time in one of three ways:
 A swell also takes `width` (seconds, 2.0 by default), `db` (the level at its top, below the voice, `card` by default), and `after` (a time: the swell is silent before it, so that it does not start under the last words).
 
 A chime also takes `gain` (0.11 by default), `notes` (three frequencies in hertz), `full` (a second, lower bell, for the last card), and `until` (a time: the bell fades over half a second and is silent from then on). A legacy chime needs at least one second between its start and `until`. Use `until` when a name follows a chime: a transcript of one film heard a name wrong with a bell under it.
+
+### Music
+
+`mix.music` plays a score of the film in place of the pad. With it, the mix has no `seed`, `levels` or `swells`, and no bell that `chimes` or `effects` does not name.
+
+| Key | What it is | Default |
+|---|---|---|
+| `wav` | A mono or stereo WAV, as a path relative to `film.json`. It starts with the film. | none |
+| `level` | The level of the score, in decibels below the voice. | -13 |
+| `carve` | Decibels that the score gives up in the band of the voice, in the middle of the image, while the voice speaks. | 9 |
+| `duck` | Decibels that the whole score gives up while the voice speaks. | 1.5 |
+| `attack` | Seconds before a word at which the score starts to make room. | 0.15 |
+| `release` | Seconds after a phrase in which the score comes back. | 0.9 |
+
+`studio.py` does this work. The band of the voice is from 220 to 5200 hertz. The bass, the air and the sides of the score keep their level, so a listener does not hear a fader that moves. In a pause that is shorter than 0.6 seconds, the score does not move. The levels are averages over the parts of the score that sound. `mix.py` prints the levels in the band of the voice, and its last line says so when the score is less than 18 dB below the voice there. The loudness pass uses one gain and a limiter, so it does not change the difference between two scenes.
+
+### The voice and the loudness
+
+`"polish": true` gives the voice the chain of a studio: less rumble and mud, more presence and air, a tamed "s", an even level, and a small room. The level and the time of the voice stay. It works with the pad and with a score.
+
+`"loudness"` is the loudness of the mix in LUFS. The default is -16. Use -14 for a copy that goes to a video site.
 
 ### Sound effects
 

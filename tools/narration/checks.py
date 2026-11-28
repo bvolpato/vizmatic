@@ -19,6 +19,10 @@ VOICE_NAME = re.compile(r"a[fm]_[a-z]+\Z")
 
 VOICE = {"name": "af_heart", "speed": 1.12}
 LEVELS = {"under": -22.0, "pause": -15.0, "card": -10.0}
+# A score of the film's own, in place of the pad. It keeps its level, and makes room for the voice in the band of
+# the voice only: `level` and `duck` and `carve` are in decibels.
+MUSIC = {"level": -13.0, "carve": 9.0, "duck": 1.5, "attack": 0.15, "release": 0.9}
+LOUDNESS = -16.0
 TIMELINE = {"intro": 0.0, "pause": 0.6, "gap": 0.4, "tail": 0.5}
 RENDER = {"workers": 6, "draftWorkers": 3}
 HOLD = 0.25
@@ -187,8 +191,7 @@ def check_film(given, root, looks, report):
     check_mix(given.get("mix", {}), root, file, report)
 
 
-def check_effect_wav(value, root, file, field, report):
-    hint = 'Give a mono WAV in the film folder, such as "assets/clock.wav"'
+def check_effect_wav(value, root, file, field, report, hint='Give a mono WAV in the film folder, such as "assets/clock.wav"'):
     path = Path(value) if isinstance(value, str) else None
     if not path or path.is_absolute() or ".." in path.parts or path.suffix.lower() != ".wav":
         return report.add(file, field, f"{shown(value)} is not a relative WAV path", hint)
@@ -209,10 +212,40 @@ def check_effect_wav(value, root, file, field, report):
         report.add(file, field, f"{value} does not resolve to a file inside the film folder", hint)
 
 
+def check_music(music, mix, root, file, report):
+    """A score that the film brings, in place of the pad."""
+    if not isinstance(music, dict):
+        return report.add(file, "mix.music", f"{shown(music)} is not an object", 'Give { "wav": "assets/score.wav" }')
+    keys(music, {"wav", *MUSIC}, file, "mix.music.", report)
+    hint = 'Give a mono or stereo WAV in the film folder, such as "assets/score.wav"'
+    if "wav" in music:
+        check_effect_wav(music["wav"], root, file, "mix.music.wav", report, hint)
+    else:
+        report.add(file, "mix.music.wav", "is missing", hint)
+    if "level" in music and not (number(music["level"]) and music["level"] <= 0):
+        report.add(file, "mix.music.level", f"{shown(music['level'])} is not a level", f"Give decibels under the voice, 0 or less, such as {MUSIC['level']:g}")
+    for key, most in (("carve", 24), ("duck", 24)):
+        if key in music and not (number(music[key]) and 0 <= music[key] <= most):
+            report.add(file, f"mix.music.{key}", f"{shown(music[key])} is not a depth", f"Give decibels from 0 to {most}, such as {MUSIC[key]:g}")
+    for key in ("attack", "release"):
+        if key in music and not (number(music[key]) and 0.02 <= music[key] <= 5):
+            report.add(file, f"mix.music.{key}", f"{shown(music[key])} is not a time", f"Give seconds from 0.02 to 5, such as {MUSIC[key]:g}")
+    # These shape the pad, and a film with music has none. A setting that does nothing would look like one that works.
+    for key in ("seed", "levels", "swells"):
+        if key in mix:
+            report.add(file, f"mix.{key}", 'shapes the pad, and "music" takes its place', f'Remove "{key}", or remove "music"')
+
+
 def check_mix(mix, root, file, report):
     if not isinstance(mix, dict):
         return report.add(file, "mix", f"{shown(mix)} is not an object", 'Give { "seed": 7 }')
-    keys(mix, {"seed", "levels", "swells", "chimes", "effects"}, file, "mix.", report)
+    keys(mix, {"seed", "levels", "swells", "chimes", "effects", "music", "polish", "loudness"}, file, "mix.", report)
+    if "polish" in mix and not isinstance(mix["polish"], bool):
+        report.add(file, "mix.polish", f"{shown(mix['polish'])} is not true or false", "Give true for a voice with the chain of a studio")
+    if "loudness" in mix and not (number(mix["loudness"]) and -30 <= mix["loudness"] <= -9):
+        report.add(file, "mix.loudness", f"{shown(mix['loudness'])} is not a loudness", f"Give LUFS from -30 to -9, such as {LOUDNESS:g}")
+    if "music" in mix:
+        check_music(mix["music"], mix, root, file, report)
     if "chimes" in mix and "effects" in mix:
         report.add(file, "mix", 'has both "chimes" and "effects"', "Give only one of these lists")
     if "seed" in mix and not (whole(mix["seed"]) and mix["seed"] >= 0):

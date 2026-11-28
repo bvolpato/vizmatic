@@ -57,6 +57,9 @@ class Film:
             "swells": mix.get("swells"),
             "chimes": mix.get("chimes"),
             "effects": mix.get("effects"),
+            "music": {**checks.MUSIC, **mix["music"]} if "music" in mix else None,
+            "polish": mix.get("polish", False),
+            "loudness": mix.get("loudness", checks.LOUDNESS),
         }
 
     def movie(self, words, options, writes=False):
@@ -224,20 +227,20 @@ def mix_record(root):
 
 def mix_inputs(found):
     """A short name for all that a mix is made from: the timing, the mix of film.json, and the tools that mix."""
-    tools = hashlib.sha256(b"".join((Path(__file__).parent / name).read_bytes() for name in ("mix.py", "soundbed.py", "checks.py", "film.py"))).hexdigest()
+    tools = hashlib.sha256(b"".join((Path(__file__).parent / name).read_bytes() for name in ("mix.py", "soundbed.py", "studio.py", "checks.py", "film.py"))).hexdigest()
     return hashlib.sha256(json.dumps([found.timing, found.mix, tools], sort_keys=True).encode()).hexdigest()[:16]
 
 
-def effect_wavs(found, read):
-    """Read each distinct authored WAV once, for the mixer or its cache check."""
+def authored_wavs(found, read):
+    """Read each distinct authored WAV once, for the mixer or its cache check: the effects, and the music."""
     wavs = {}
-    for spec in found.mix["effects"] or []:
+    for spec in [*(found.mix["effects"] or []), *([found.mix["music"]] if found.mix["music"] else [])]:
         if "wav" in spec and spec["wav"] not in wavs:
             name = spec["wav"]
             try:
                 wavs[name] = read(found.root / name)
             except OSError as error:
-                fail(f"film.json: cannot read mix effect WAV {name}: {error.strerror}")
+                fail(f"film.json: cannot read mix WAV {name}: {error.strerror}")
     return wavs
 
 
@@ -259,7 +262,7 @@ def mix_state(found):
         return False, "no record says what narration.wav was made from"
     if inputs != mix_inputs(found):
         return False, "the timing or the mix of film.json changed after the last mix"
-    if record.get("wavs", {}) != effect_wavs(found, file_hash):
+    if record.get("wavs", {}) != authored_wavs(found, file_hash):
         return False, "an authored WAV changed after the last mix"
     if written != file_hash(sound):
         return False, "narration.wav is not the file that the last mix wrote"
