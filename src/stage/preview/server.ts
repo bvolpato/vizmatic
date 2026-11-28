@@ -2,9 +2,9 @@ import { existsSync, statSync, watch, type FSWatcher } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
-import { basename, dirname, extname, join, relative, resolve } from 'node:path'
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { spawn } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { previewPage } from './page'
 
 export interface PreviewOptions {
@@ -87,7 +87,7 @@ function findUp(start: string, target: string): string | null {
     return null
 }
 
-const TYPES: Record<string, string> = { '.js': 'text/javascript; charset=utf-8', '.ttf': 'font/ttf', '.map': 'application/json' }
+const TYPES: Record<string, string> = { '.js': 'text/javascript; charset=utf-8', '.ttf': 'font/ttf', '.otf': 'font/otf', '.map': 'application/json' }
 
 /** The browser engine: prebuilt in a package, or built on demand when running from source. */
 async function loadEngine(esbuild: EsbuildApi): Promise<Map<string, Uint8Array>> {
@@ -108,6 +108,15 @@ async function loadEngine(esbuild: EsbuildApi): Promise<Map<string, Uint8Array>>
         if (extname(name) === '.js') files.set(name, await readFile(join(dirname(built), name)))
     }
     return files
+}
+
+/** Where the page finds the files beside the film. The version in it makes the page read a file again after a build. */
+const FILM_FILES = '/film-files/'
+
+/** Is a file in a folder, or in a folder of it? */
+function inside(folder: string, file: string): boolean {
+    const way = relative(folder, file)
+    return way !== '' && !way.startsWith('..') && !isAbsolute(way)
 }
 
 function formatBuildError(file: string, errors: readonly EsbuildMessage[]): string {
@@ -187,7 +196,18 @@ export async function startPreview(options: PreviewOptions): Promise<PreviewHand
         jsx: 'automatic',
         plugins: [{
             name: 'vizmatic-preview',
-            setup(build: { onResolve: (options: { filter: RegExp }, callback: (args: { path: string }) => unknown) => void }) {
+            setup(build: {
+                onResolve: (options: { filter: RegExp }, callback: (args: { path: string }) => unknown) => void
+                onLoad: (options: { filter: RegExp }, callback: (args: { path: string }) => Promise<unknown>) => void
+            }) {
+                // `new URL('./fonts/Anton.ttf', import.meta.url)` is a file beside the module, and the page has one module.
+                build.onLoad({ filter: /\.[mc]?[jt]sx?$/ }, async (args) => {
+                    if (args.path.includes('node_modules')) return undefined
+                    const source = await readFile(args.path, 'utf8')
+                    if (!source.includes('import.meta.url')) return undefined
+                    const address = JSON.stringify(`${FILM_FILES}${version + 1}${pathToFileURL(args.path).pathname}`)
+                    return { contents: source.replaceAll('import.meta.url', `(location.origin + ${address})`), loader: /\.[mc]?tsx?$/.test(args.path) ? (args.path.endsWith('x') ? 'tsx' : 'ts') : args.path.endsWith('x') ? 'jsx' : 'js' }
+                })
                 // Films share the page's engine, because the engine's clock is module state.
                 build.onResolve({ filter: /^vizmatic\/stage$/ }, () => ({ path: '/stage/stage.js', external: true }))
                 build.onResolve({ filter: /^vizmatic(\/stage\/export)?$/ }, (args) => ({
@@ -199,13 +219,16 @@ export async function startPreview(options: PreviewOptions): Promise<PreviewHand
 
     const directories = new Map<string, FSWatcher>()
     let inputs = new Set<string>([file])
+    // The fonts that the page has read. An edit of one builds the film again.
+    const read = new Set<string>()
     const syncWatchers = () => {
-        for (const input of inputs) {
+        for (const input of [...inputs, ...read]) {
             const directory = dirname(input)
             if (directories.has(directory)) continue
             const watcher = watch(directory, (_event, name) => {
                 // Editors often save by replacing the file, so watch folders and match by name.
-                if (name && inputs.has(join(directory, name.toString()))) schedule()
+                const changed = name && join(directory, name.toString())
+                if (changed && (inputs.has(changed) || read.has(changed))) schedule()
             })
             watcher.on('error', (error) => log(`Watch error for ${directory}: ${error.message}`))
             directories.set(directory, watcher)
@@ -287,6 +310,19 @@ export async function startPreview(options: PreviewOptions): Promise<PreviewHand
         } else if (path === '/film.js') {
             if (bundle) respond(response, 200, TYPES['.js']!, bundle)
             else respond(response, 503, 'text/plain; charset=utf-8', lastError ?? 'The film has not been built yet.')
+        } else if (path.startsWith(FILM_FILES)) {
+            // Only a font, and only one in a folder of the film or of a module that it imports.
+            const address = /^\/film-files\/\d+(\/.+)$/.exec(path)?.[1]
+            let target: string | null = null
+            try { target = address ? fileURLToPath(new URL(`file://${address}`)) : null } catch { target = null }
+            const type = target && TYPES[extname(target).toLowerCase()]
+            const allowed = target && type?.startsWith('font/') && [...inputs].some((input) => inside(dirname(input), target))
+            const bytes = allowed ? await readFile(target!).catch(() => null) : null
+            if (bytes) {
+                read.add(target!)
+                syncWatchers()
+                respond(response, 200, type!, bytes)
+            } else respond(response, 404, 'text/plain; charset=utf-8', `Font not found in the folder of the film: ${address ?? path}`)
         } else if (path.includes('/assets/fonts/')) {
             const name = basename(path)
             const bytes = await readFile(join(fonts, name)).catch(() => null)

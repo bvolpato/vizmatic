@@ -79,6 +79,7 @@ export function parseFont(bytes: ArrayBuffer): LoadedFont {
     const head = need('head')
     r.seek(head.offset + 18)
     const unitsPerEm = r.u16()
+    if (unitsPerEm < 16 || unitsPerEm > 16384) throw new Error(`The font has ${unitsPerEm} units for one em, and a font has from 16 to 16384. The file is not complete`)
     r.seek(head.offset + 50)
     const longLoca = r.i16() === 1
     const hhea = need('hhea')
@@ -97,7 +98,7 @@ export function parseFont(bytes: ArrayBuffer): LoadedFont {
     const loca = cff ? null : need('loca')
     const glyf = cff ? null : need('glyf')
     const cmap = parseCmap(r, need('cmap').offset)
-    const kerning = tables.has('GPOS') ? parseKerning(r, tables.get('GPOS')!.offset) : () => 0
+    const kerning = tables.has('GPOS') ? parseKerning(r, tables.get('GPOS')!.offset) : tables.has('kern') ? parseKernTable(r, tables.get('kern')!.offset) : () => 0
 
     const advance = (glyph: number): number => {
         const index = Math.min(glyph, hMetrics - 1)
@@ -118,7 +119,10 @@ export function parseFont(bytes: ArrayBuffer): LoadedFont {
         r.seek(r.position + 8)
         if (count < 0) return composite(glyph, depth)
         const ends: number[] = []
-        for (let i = 0; i < count; i++) ends.push(r.u16())
+        for (let i = 0; i < count; i++) {
+            ends.push(r.u16())
+            if (i > 0 && ends[i]! <= ends[i - 1]!) throw new Error('a contour of the glyph ends before it starts. The file is not complete')
+        }
         const instructionLength = r.u16()
         r.seek(r.position + instructionLength)
         const total = (ends[ends.length - 1] ?? -1) + 1
@@ -296,6 +300,10 @@ function parseCmap(r: Reader, offset: number): (code: number) => number {
         const platform = r.u16()
         const encoding = r.u16()
         const sub = r.u32()
+        // A table of variation selectors (platform 0, encoding 5) and the old formats have no plain characters.
+        const next = r.position, kind = r.seek(offset + sub).u16()
+        r.seek(next)
+        if (kind !== 4 && kind !== 12) continue
         const score = platform === 3 && encoding === 10 ? 4 : platform === 0 && encoding >= 4 ? 3 : platform === 3 && encoding === 1 ? 2 : platform === 0 ? 1 : 0
         if (score > bestScore) {
             bestScore = score
@@ -536,6 +544,25 @@ function readPairs(r: Reader, sub: number): KernLookup {
     return () => undefined
 }
 
+/** The pairs of the `kern` table, which a font has when it is older than GPOS. */
+function parseKernTable(r: Reader, offset: number): (left: number, right: number) => number {
+    if (r.seek(offset).u16() !== 0) return () => 0
+    const tables = r.u16(), pairs = new Map<number, number>()
+    let at = r.position
+    for (let i = 0; i < tables; i++) {
+        r.seek(at + 2)
+        const length = r.u16(), coverage = r.u16()
+        // Horizontal pairs of format 0. A minimum and a vertical direction are not kerning.
+        if (coverage >> 8 === 0 && (coverage & 1) === 1 && (coverage & 2) === 0) {
+            const count = r.u16()
+            r.seek(r.position + 6)
+            for (let k = 0; k < count; k++) { const left = r.u16(), right = r.u16(); pairs.set(left * 65536 + right, r.i16()) }
+        }
+        at += length
+    }
+    return (left, right) => pairs.get(left * 65536 + right) ?? 0
+}
+
 export type BundledFont = 'sans' | 'serif' | 'text-serif' | 'mono' | 'noto'
 /** A font of the library, or the name of a font that the film brings with `registerFont`. */
 export type FontFamily = BundledFont | (string & {})
@@ -569,18 +596,21 @@ export type FontSource = string | URL | ArrayBuffer | Uint8Array
 /** The files of a font by weight, and its italic. A weight that is not there takes the 400. */
 export type FontSources = FontSource | { 400: FontSource; 600?: FontSource; 700?: FontSource; italic?: FontSource }
 
-const registered = new Map<string, Partial<Record<string, FontSource>>>()
+interface Registered { files: Partial<Record<string, FontSource>>; id: number }
+const registered = new Map<string, Registered>()
+let registrations = 0
 
 /**
  * Bring a font to the film, and name it. Call it at the top of the film file. The name is then a font of every
  * text and of every object: `registerFont('poster', new URL('./fonts/Anton-Regular.ttf', import.meta.url))`,
  * and `text('IMPOSSIBLE', { font: 'poster' })`. A TrueType (.ttf) or an OpenType (.otf) file is read. A variable
  * font gives its default instance. A character that the font does not have comes from the fonts of the library.
+ * A name is one font for all the films of a page, and another file with the same name takes its place.
  * Check that the license of the font lets you use it in a film.
  */
 export function registerFont(name: string, sources: FontSources): void {
     if (typeof name !== 'string' || !/^[\w-]+$/.test(name)) throw new Error(`registerFont: the name is ${JSON.stringify(name)}. Give letters, digits, hyphens and underscores, such as 'poster'`)
-    if (name in FILES) throw new Error(`registerFont: '${name}' is a font of the library. Give your font another name`)
+    if (Object.hasOwn(FILES, name)) throw new Error(`registerFont: '${name}' is a font of the library. Give your font another name`)
     const isSource = (value: unknown): value is FontSource => typeof value === 'string' || value instanceof URL || value instanceof ArrayBuffer || ArrayBuffer.isView(value)
     const files = isSource(sources) ? { 400: sources } : sources
     const keys = ['400', '600', '700', 'italic']
@@ -589,13 +619,16 @@ export function registerFont(name: string, sources: FontSources): void {
         if (!keys.includes(key)) throw new Error(`registerFont: '${name}' has the key ${JSON.stringify(key)}. The keys are: ${keys.join(', ')}`)
         if (source !== undefined && !isSource(source)) throw new Error(`registerFont: the ${key} of '${name}' is not a file, a URL or bytes`)
     }
-    const before = registered.get(name)
-    const same = before && keys.every((key) => String(before[key] ?? '') === String((files as Record<string, FontSource | undefined>)[key] ?? '') && !(before[key] instanceof ArrayBuffer) && !ArrayBuffer.isView(before[key]))
-    if (same) return
-    registered.set(name, files as Partial<Record<string, FontSource>>)
-    // A preview that loads the film again can bring another file with the same name.
-    for (const key of keys) { fonts.delete(`@${name}/${key}`); pending.delete(`@${name}/${key}`) }
+    const before = registered.get(name), next = files as Partial<Record<string, FontSource>>
+    // A film can register its font each time that it compiles. The same address, or the same bytes, is the same font.
+    const same = (a?: FontSource, b?: FontSource) => a === b || ((typeof a === 'string' || a instanceof URL) && (typeof b === 'string' || b instanceof URL) && String(a) === String(b))
+    if (before && keys.every((key) => same(before.files[key], next[key]))) return
+    // A number for each registration keeps a load of the file before it out of the new one.
+    if (before) for (const key of keys) { fonts.delete(fontKey(name, before.id, key)); pending.delete(fontKey(name, before.id, key)) }
+    registered.set(name, { files: next, id: ++registrations })
 }
+
+const fontKey = (name: string, id: number, key: string) => `@${name}#${id}/${key}`
 
 /** The names that a text can give as its font. */
 export const fontNames = (): string[] => [...Object.keys(FILES).filter((name) => name !== 'math'), ...registered.keys()]
@@ -606,23 +639,33 @@ async function fontBytes(source: FontSource): Promise<ArrayBuffer> {
     return loadFile(source)
 }
 
+/** A font whose glyphs say which font they are from when they cannot be read. */
+function namedFont(name: string, font: LoadedFont): LoadedFont {
+    return {
+        ...font,
+        outline: (glyph) => {
+            try { return font.outline(glyph) } catch (error) { throw new Error(`Glyph ${glyph} of the font '${name}' cannot be read: ${(error as Error).message}`) }
+        },
+    }
+}
+
 /** Get a font now, or suspend the current compile until it arrives. */
 export function fontFor(family: FontFamily | 'math', weight: FontWeight = 400, italic = false): LoadedFont {
     const own = registered.get(family)
-    const files: Partial<Record<string, unknown>> | undefined = own ?? (Object.hasOwn(FILES, family) ? FILES[family as BundledFamily] : undefined)
+    const files: Partial<Record<string, unknown>> | undefined = own?.files ?? (Object.hasOwn(FILES, family) ? FILES[family as BundledFamily] : undefined)
     if (!files) throw new Error(`Unknown font ${JSON.stringify(family)}. The fonts are: ${fontNames().join(', ')}. Bring another one with registerFont('${family}', new URL('./fonts/File.ttf', import.meta.url))`)
     const key = italic && files['italic'] ? 'italic' : files[String(weight)] ? String(weight) : '400'
-    const file = own ? `@${family}/${key}` : files[key] as string
+    const file = own ? fontKey(family, own.id, key) : files[key] as string
     const loaded = fonts.get(file)
     if (loaded) return loaded
     let waiting = pending.get(file)
     if (!waiting) {
-        const bytes = own ? fontBytes(own[key]!) : loadBinaryAsset(`fonts/${file}`)
+        const bytes = own ? fontBytes(own.files[key]!) : loadBinaryAsset(`fonts/${file}`)
         waiting = bytes.then((data) => {
-            try { fonts.set(file, parseFont(data)) } catch (error) {
+            pending.delete(file)
+            try { fonts.set(file, own ? namedFont(family, parseFont(data)) : parseFont(data)) } catch (error) {
                 throw own ? new Error(`The font '${family}' cannot be read: ${(error as Error).message}`) : error
             }
-            pending.delete(file)
         }, (error) => {
             pending.delete(file)
             throw own ? new Error(`The font '${family}' cannot be loaded: ${(error as Error).message}`) : error

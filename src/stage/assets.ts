@@ -61,6 +61,8 @@ export async function loadBinaryAsset(relative: string): Promise<ArrayBuffer> {
     return response.arrayBuffer()
 }
 
+const FILE_TIMEOUT_MS = 10_000
+
 /** Read a file of the film: a `URL`, a path, or an address. */
 export async function loadFile(source: string | URL): Promise<ArrayBuffer> {
     const address = source instanceof URL ? source.href : source
@@ -71,7 +73,11 @@ export async function loadFile(source: string | URL): Promise<ArrayBuffer> {
         const bytes: Uint8Array = await fs.readFile(/^file:/i.test(address) ? url.fileURLToPath(address) : address)
         return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
     }
-    const response = await fetch(address)
+    const remote = /^https?:/i.test(address)
+    if (remote && typeof process !== 'undefined' && (process.env?.VIZMATIC_DISABLE_NETWORK === '1' || process.env?.VIZMATIC_OFFLINE === '1')) throw new Error(`${address} is on the network, and the environment is offline. Save the file with the film`)
+    const response = await fetch(address, remote ? { signal: AbortSignal.timeout(FILE_TIMEOUT_MS) } : {}).catch((error: Error) => {
+        throw new Error(error.name === 'TimeoutError' ? `${address} did not answer in ${FILE_TIMEOUT_MS / 1000} seconds` : `${address}: ${error.message}`)
+    })
     const type = response.headers.get('content-type') ?? ''
     if (!response.ok || type.includes('text/html')) throw new Error(`${address} gave HTTP ${response.status}, ${type || 'no content type'}`)
     return response.arrayBuffer()

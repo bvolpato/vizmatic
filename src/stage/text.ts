@@ -1,6 +1,6 @@
 import { fallbackGlyph, fontFor, glyphPath, type FontFamily, type FontWeight, type LoadedFont } from './font'
 import { Node } from './node'
-import { pathBounds, transformPath, type Path } from './geometry'
+import { pathBounds, polyPath, reverseRing, transformPath, type Path } from './geometry'
 import { toPaint, type ColorInput } from './color'
 import { clock, LIBRARY_FONT } from './track'
 
@@ -115,6 +115,13 @@ function linesOf(font: LoadedFont): readonly [over: number, under: number] {
     return lines
 }
 
+/** The empty box of a character that no font has: as wide as the place that it takes, and as high as a capital. */
+function missingBox(advance: number, size: number): Path {
+    const w = Math.max(advance, size * 0.3) * 0.8, h = size * 0.7, t = size * 0.05, x = (Math.max(advance, size * 0.3) - w) / 2
+    const box = (a: number, b: number, c: number, d: number) => polyPath([[a, b], [c, b], [c, d], [a, d]], true)
+    return [...box(x, -h, x + w, 0), ...box(x + t, -h + t, x + w - t, -t).map(reverseRing)]
+}
+
 export function text(content: string, options: TextOptions = {}): TextNode {
     const size = options.size ?? 40
     const family = options.font ?? clock.font ?? LIBRARY_FONT
@@ -183,7 +190,9 @@ export function text(content: string, options: TextOptions = {}): TextNode {
     lines.forEach((line, row) => {
         const start = align === 'left' ? 0 : align === 'center' ? (blockWidth - line.width) / 2 : blockWidth - line.width
         for (const placed of line.glyphs) {
-            const path = glyphPath(placed.font, placed.glyph, size)
+            let path = glyphPath(placed.font, placed.glyph, size)
+            // A font can have no box for the characters that it does not have. A lost character must be seen.
+            if (path.length === 0 && placed.glyph === 0 && /[^\p{Z}\p{C}]/u.test(placed.char)) path = missingBox(placed.font.advance(0) * size / placed.font.unitsPerEm, size)
             if (path.length === 0) continue
             const shape = centered(path)
             const leaf = new Node(shape.path).at(start + placed.x + shape.x, row * leading + shape.y)

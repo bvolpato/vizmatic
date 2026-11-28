@@ -69,7 +69,10 @@ export default film({ font: 'letter' }, (s) => {
 
 - The name works in each place that takes a font: `text()`, an object, `film({ font })`, `narrated({ font })`, `sceneKit({ font })` and `textWidth`.
 - A font is a TrueType (`.ttf`) or an OpenType (`.otf`) file, as a `URL`, a path, or bytes. The engine does not read WOFF, WOFF2 or CFF2. A variable TrueType font gives its default instance, so make a static instance for another weight or width, such as with `fonttools varLib.instancer`.
-- The engine places glyphs by their advance and by their kerning. It does not apply ligatures or contextual forms.
+- The engine places glyphs by their advance and by their kerning, from the GPOS table or from the `kern` table of an older font. It does not apply ligatures or contextual forms.
+- `vizmatic preview` serves a font that is in the folder of the film, or in a folder of it, and builds the film again when the font file changes.
+- A name is one font for all the films of a page. Another file with the same name takes its place.
+- A font at an `http` address needs the network. It stops the build when `VIZMATIC_OFFLINE=1` is set, or when it does not answer in 10 seconds.
 - Keep the font file with the film source. Check that the license of the font lets you use it in a film and put it in the repository.
 
 If a font does not have a character, the engine draws that character with the next bundled font. `'serif'` tries Source Serif 4 first. Then every family tries Noto Sans and Noto Sans Math. If no bundled font has the character, the engine draws an empty box and `vizmatic check` reports `film.missing_glyph`.

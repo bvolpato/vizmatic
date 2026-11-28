@@ -5,6 +5,14 @@
 interface Slice { start: number; end: number }
 
 const MAX_CALLS = 10
+/** A glyph has some hundreds of operators. A program with more than this does not end. */
+const MAX_OPERATORS = 100_000
+
+/** The arithmetic of Type 2 charstrings that fonts use: how many operands, and what comes back. */
+const ARITHMETIC: Record<number, [operands: number, make: (...s: number[]) => number[]]> = {
+    9: [1, (a) => [Math.abs(a!)]], 10: [2, (a, b) => [a! + b!]], 11: [2, (a, b) => [a! - b!]], 12: [2, (a, b) => [a! / b!]],
+    14: [1, (a) => [-a!]], 18: [1, () => []], 24: [2, (a, b) => [a! * b!]], 27: [1, (a) => [a!, a!]], 28: [2, (a, b) => [b!, a!]],
+}
 
 /** Read the glyph programs of a `CFF ` table. The result gives the contours of a glyph, with y pointing up. */
 export function cffOutlines(view: DataView, table: number): (glyph: number) => number[][] {
@@ -84,7 +92,7 @@ export function cffOutlines(view: DataView, table: number): (glyph: number) => n
         const contours: number[][] = []
         const stack: number[] = []
         let ring: number[] | null = null
-        let x = 0, y = 0, stems = 0, widthRead = false, done = false
+        let x = 0, y = 0, stems = 0, widthRead = false, done = false, operators = 0
         const close = () => {
             if (ring && ring.length >= 8) {
                 const sx = ring[0]!, sy = ring[1]!
@@ -112,6 +120,7 @@ export function cffOutlines(view: DataView, table: number): (glyph: number) => n
             let at = start
             while (at < end && !done) {
                 const b = u8(at++)
+                if (++operators > MAX_OPERATORS) throw new Error('the program of the glyph does not end')
                 if (b >= 32 || b === 28) {
                     if (b === 28) { stack.push(view.getInt16(at)); at += 2 }
                     else if (b <= 246) stack.push(b - 139)
@@ -151,9 +160,19 @@ export function cffOutlines(view: DataView, table: number): (glyph: number) => n
                         continue
                     }
                     case 11: return
-                    case 14: dropWidth(s.length === 1 || s.length === 5); close(); done = true; return
+                    case 14:
+                        dropWidth(s.length === 1 || s.length === 5)
+                        if (s.length >= 4) throw new Error('it is made of the parts of two other glyphs, which is an old form of PostScript. Convert the font to TrueType')
+                        close(); done = true; return
                     case 12: {
                         const c = u8(at++)
+                        // Arithmetic leaves its result for the next operator. A drawing operator empties the stack.
+                        if (ARITHMETIC[c]) {
+                            const [operands, make] = ARITHMETIC[c]!
+                            s.push(...make(...s.splice(Math.max(0, s.length - operands), operands)))
+                            continue
+                        }
+                        if (c < 34 || c > 37) throw new Error(`it uses the operator 12 ${c} of PostScript, which Vizmatic does not read. Convert the font to TrueType`)
                         if (c === 34) { const dy = s[2]!; curveBy(s[0]!, 0, s[1]!, dy, s[3]!, 0); curveBy(s[4]!, 0, s[5]!, -dy, s[6]!, 0) }
                         else if (c === 35) { curveBy(s[0]!, s[1]!, s[2]!, s[3]!, s[4]!, s[5]!); curveBy(s[6]!, s[7]!, s[8]!, s[9]!, s[10]!, s[11]!) }
                         else if (c === 36) { const y0 = y; curveBy(s[0]!, s[1]!, s[2]!, s[3]!, s[4]!, 0); curveBy(s[5]!, 0, s[6]!, s[7]!, s[8]!, y0 - (y + s[7]!)) }
