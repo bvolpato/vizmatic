@@ -60,3 +60,19 @@ export async function loadBinaryAsset(relative: string): Promise<ArrayBuffer> {
     }
     return response.arrayBuffer()
 }
+
+/** Read a file of the film: a `URL`, a path, or an address. */
+export async function loadFile(source: string | URL): Promise<ArrayBuffer> {
+    const address = source instanceof URL ? source.href : source
+    const isAddress = /^(https?|data|blob):/i.test(address)
+    if (isNodeRuntime() && !isAddress) {
+        const fsName = 'node:fs/promises', urlName = 'node:url'
+        const [fs, url] = await Promise.all([import(fsName), import(urlName)])
+        const bytes: Uint8Array = await fs.readFile(/^file:/i.test(address) ? url.fileURLToPath(address) : address)
+        return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+    }
+    const response = await fetch(address)
+    const type = response.headers.get('content-type') ?? ''
+    if (!response.ok || type.includes('text/html')) throw new Error(`${address} gave HTTP ${response.status}, ${type || 'no content type'}`)
+    return response.arrayBuffer()
+}

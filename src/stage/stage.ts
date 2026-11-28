@@ -7,7 +7,7 @@ import { isImageAsset, resolveLegacyImage, validateStageImage, ImageAssetError, 
 import { clock } from './track'
 import { fadeOut, stagger, Value, type Anim, type Target } from './anim'
 import { focusOn, resetCamera, type FocusOptions } from './camera'
-import type { FontFamily } from './font'
+import { fontNames, type FontFamily } from './font'
 import type { Vec } from './geometry'
 import { settleLights, type Light, type MorphRecord } from './light'
 import { Block, nodesFor, oneNode, type LayoutItem } from './layout'
@@ -78,9 +78,6 @@ const ASPECTS: Record<Aspect, [number, number]> = {
     '16:9': [1920, 1080], '9:16': [1080, 1920], '1:1': [1080, 1080], '4:3': [1440, 1080], '21:9': [2520, 1080],
 }
 
-// A film is not type-checked when it runs, so any value can arrive as its font. The record makes the compiler ask for each family.
-const FONTS = Object.keys({ sans: true, serif: true, 'text-serif': true, mono: true, noto: true } satisfies Record<FontFamily, true>)
-
 interface Updater {
     node: Node
     fn: (node: Node, time: number) => void
@@ -133,8 +130,9 @@ export class Stage {
         this.height = options.height ?? h
         this.fps = options.fps ?? 60
         this.look = resolveLook(options.look)
-        if (options.font !== undefined && !FONTS.includes(options.font)) {
-            throw new Error(`film: font is ${FONTS.map((name) => `'${name}'`).join(', ').replace(/, ([^,]*)$/, ' or $1')}, not ${JSON.stringify(options.font)}`)
+        // A film is not type-checked when it runs, so any value can arrive as its font.
+        if (options.font !== undefined && !fontNames().includes(options.font)) {
+            throw new Error(`film: font is ${fontNames().map((name) => `'${name}'`).join(', ').replace(/, ([^,]*)$/, ' or $1')}, not ${JSON.stringify(options.font)}`)
         }
         this.font = options.font ?? null
         this.backdrop = backdropOf(options.background ?? this.look.background, this.look)

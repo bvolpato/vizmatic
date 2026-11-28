@@ -48,6 +48,30 @@ Use `'text-serif'` for sentences, labels, and numbers. Its strokes stay visible 
 
 To use one font in a whole film, set it once: `film({ font: 'text-serif' }, (s) => { ... })`. Every `text()` with no `font` then has that font, and so has each label that an object draws. The Objects guide lists the texts that stay in mono.
 
+### A font of your own
+
+`registerFont` brings a font to a film and gives it a name. Call it at the top of the film file:
+
+```typescript
+import { film, registerFont, text } from 'vizmatic/stage'
+
+registerFont('poster', new URL('./fonts/Anton-Regular.ttf', import.meta.url))
+registerFont('letter', {
+    400: new URL('./fonts/Letter-Regular.otf', import.meta.url),
+    700: new URL('./fonts/Letter-Bold.otf', import.meta.url),
+    italic: new URL('./fonts/Letter-Italic.otf', import.meta.url),
+})
+
+export default film({ font: 'letter' }, (s) => {
+    s.add(text('IMPOSSIBLE', { font: 'poster', size: 200 }))
+})
+```
+
+- The name works in each place that takes a font: `text()`, an object, `film({ font })`, `narrated({ font })`, `sceneKit({ font })` and `textWidth`.
+- A font is a TrueType (`.ttf`) or an OpenType (`.otf`) file, as a `URL`, a path, or bytes. The engine does not read WOFF, WOFF2 or CFF2. A variable TrueType font gives its default instance, so make a static instance for another weight or width, such as with `fonttools varLib.instancer`.
+- The engine places glyphs by their advance and by their kerning. It does not apply ligatures or contextual forms.
+- Keep the font file with the film source. Check that the license of the font lets you use it in a film and put it in the repository.
+
 If a font does not have a character, the engine draws that character with the next bundled font. `'serif'` tries Source Serif 4 first. Then every family tries Noto Sans and Noto Sans Math. If no bundled font has the character, the engine draws an empty box and `vizmatic check` reports `film.missing_glyph`.
 
 Glyphs are in `node.chars`. `node.find('word')` returns the glyphs of a fragment, so you can color or animate one word. `node.font` is the family that the text is set in.

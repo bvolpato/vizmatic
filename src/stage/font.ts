@@ -1,6 +1,7 @@
+import { cffOutlines } from './cff'
 import { curveFree, type GlyphOutline, type LoadedFont } from './font-types'
 import { ring, type Path } from './geometry'
-import { loadBinaryAsset } from './assets'
+import { loadBinaryAsset, loadFile } from './assets'
 import { Suspend } from './stage'
 
 export type { LoadedFont, GlyphOutline } from './font-types'
@@ -58,8 +59,9 @@ interface Table {
 export function parseFont(bytes: ArrayBuffer): LoadedFont {
     const r = new Reader(bytes)
     const version = r.u32()
-    if (version !== 0x00010000 && version !== 0x74727565) {
-        throw new Error('Stage text needs a TrueType (.ttf) font with glyf outlines.')
+    if (version !== 0x00010000 && version !== 0x74727565 && version !== 0x4f54544f) {
+        const kind = { 0x774f4646: 'a WOFF file', 0x774f4632: 'a WOFF2 file', 0x74746366: 'a font collection' }[version]
+        throw new Error(`Stage text needs a TrueType (.ttf) or OpenType (.otf) font${kind ? `, and this is ${kind}. Convert it, such as with the fonttools package of Python` : ''}.`)
     }
     const tableCount = r.u16()
     r.seek(12)
@@ -90,8 +92,10 @@ export function parseFont(bytes: ArrayBuffer): LoadedFont {
     const glyphCount = r.u16()
 
     const hmtx = need('hmtx')
-    const loca = need('loca')
-    const glyf = need('glyf')
+    if (tables.has('CFF2')) throw new Error('This font has CFF2 outlines, which belong to a variable font. Make a static instance of it, such as with fonttools varLib.instancer.')
+    const cff = tables.has('CFF ') ? cffOutlines(new DataView(bytes), tables.get('CFF ')!.offset) : null
+    const loca = cff ? null : need('loca')
+    const glyf = cff ? null : need('glyf')
     const cmap = parseCmap(r, need('cmap').offset)
     const kerning = tables.has('GPOS') ? parseKerning(r, tables.get('GPOS')!.offset) : () => 0
 
@@ -104,6 +108,7 @@ export function parseFont(bytes: ArrayBuffer): LoadedFont {
 
     const contours = (glyph: number, depth: number): number[][] => {
         if (glyph >= glyphCount || depth > 6) return []
+        if (!loca || !glyf) return cff!(glyph)
         r.seek(loca.offset + (longLoca ? glyph * 4 : glyph * 2))
         const start = longLoca ? r.u32() : r.u16() * 2
         const end = longLoca ? r.u32() : r.u16() * 2
@@ -531,10 +536,12 @@ function readPairs(r: Reader, sub: number): KernLookup {
     return () => undefined
 }
 
-export type FontFamily = 'sans' | 'serif' | 'text-serif' | 'mono' | 'noto'
+export type BundledFont = 'sans' | 'serif' | 'text-serif' | 'mono' | 'noto'
+/** A font of the library, or the name of a font that the film brings with `registerFont`. */
+export type FontFamily = BundledFont | (string & {})
 export type FontWeight = 400 | 600 | 700
 
-type BundledFamily = FontFamily | 'math'
+type BundledFamily = BundledFont | 'math'
 
 const FILES: Record<BundledFamily, Partial<Record<string, string>>> = {
     sans: { '400': 'Inter-Regular.ttf', '600': 'Inter-SemiBold.ttf', '700': 'Inter-Bold.ttf' },
@@ -546,7 +553,7 @@ const FILES: Record<BundledFamily, Partial<Record<string, string>>> = {
 }
 
 /** The fonts to try, in order, for a character that a family does not have. */
-const FALLBACKS: Record<FontFamily, readonly BundledFamily[]> = {
+const FALLBACKS: Record<BundledFont, readonly BundledFamily[]> = {
     sans: ['noto', 'math'],
     serif: ['text-serif', 'noto', 'math'],
     'text-serif': ['noto', 'math'],
@@ -557,20 +564,68 @@ const FALLBACKS: Record<FontFamily, readonly BundledFamily[]> = {
 const fonts = new Map<string, LoadedFont>()
 const pending = new Map<string, Promise<void>>()
 
+/** Where a font of the film comes from: a file, as a `URL` or a path, or its bytes. */
+export type FontSource = string | URL | ArrayBuffer | Uint8Array
+/** The files of a font by weight, and its italic. A weight that is not there takes the 400. */
+export type FontSources = FontSource | { 400: FontSource; 600?: FontSource; 700?: FontSource; italic?: FontSource }
+
+const registered = new Map<string, Partial<Record<string, FontSource>>>()
+
+/**
+ * Bring a font to the film, and name it. Call it at the top of the film file. The name is then a font of every
+ * text and of every object: `registerFont('poster', new URL('./fonts/Anton-Regular.ttf', import.meta.url))`,
+ * and `text('IMPOSSIBLE', { font: 'poster' })`. A TrueType (.ttf) or an OpenType (.otf) file is read. A variable
+ * font gives its default instance. A character that the font does not have comes from the fonts of the library.
+ * Check that the license of the font lets you use it in a film.
+ */
+export function registerFont(name: string, sources: FontSources): void {
+    if (typeof name !== 'string' || !/^[\w-]+$/.test(name)) throw new Error(`registerFont: the name is ${JSON.stringify(name)}. Give letters, digits, hyphens and underscores, such as 'poster'`)
+    if (name in FILES) throw new Error(`registerFont: '${name}' is a font of the library. Give your font another name`)
+    const isSource = (value: unknown): value is FontSource => typeof value === 'string' || value instanceof URL || value instanceof ArrayBuffer || ArrayBuffer.isView(value)
+    const files = isSource(sources) ? { 400: sources } : sources
+    const keys = ['400', '600', '700', 'italic']
+    if (typeof files !== 'object' || files === null || !isSource(files[400])) throw new Error(`registerFont: '${name}' needs a file, such as new URL('./fonts/Anton-Regular.ttf', import.meta.url), or files by weight with a 400`)
+    for (const [key, source] of Object.entries(files)) {
+        if (!keys.includes(key)) throw new Error(`registerFont: '${name}' has the key ${JSON.stringify(key)}. The keys are: ${keys.join(', ')}`)
+        if (source !== undefined && !isSource(source)) throw new Error(`registerFont: the ${key} of '${name}' is not a file, a URL or bytes`)
+    }
+    const before = registered.get(name)
+    const same = before && keys.every((key) => String(before[key] ?? '') === String((files as Record<string, FontSource | undefined>)[key] ?? '') && !(before[key] instanceof ArrayBuffer) && !ArrayBuffer.isView(before[key]))
+    if (same) return
+    registered.set(name, files as Partial<Record<string, FontSource>>)
+    // A preview that loads the film again can bring another file with the same name.
+    for (const key of keys) { fonts.delete(`@${name}/${key}`); pending.delete(`@${name}/${key}`) }
+}
+
+/** The names that a text can give as its font. */
+export const fontNames = (): string[] => [...Object.keys(FILES).filter((name) => name !== 'math'), ...registered.keys()]
+
+async function fontBytes(source: FontSource): Promise<ArrayBuffer> {
+    if (source instanceof ArrayBuffer) return source
+    if (ArrayBuffer.isView(source)) return source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength) as ArrayBuffer
+    return loadFile(source)
+}
+
 /** Get a font now, or suspend the current compile until it arrives. */
-export function fontFor(family: BundledFamily, weight: FontWeight = 400, italic = false): LoadedFont {
-    const files = FILES[family]
-    const file = (italic ? files['italic'] : undefined) ?? files[String(weight)] ?? files['400']!
+export function fontFor(family: FontFamily | 'math', weight: FontWeight = 400, italic = false): LoadedFont {
+    const own = registered.get(family)
+    const files: Partial<Record<string, unknown>> | undefined = own ?? (Object.hasOwn(FILES, family) ? FILES[family as BundledFamily] : undefined)
+    if (!files) throw new Error(`Unknown font ${JSON.stringify(family)}. The fonts are: ${fontNames().join(', ')}. Bring another one with registerFont('${family}', new URL('./fonts/File.ttf', import.meta.url))`)
+    const key = italic && files['italic'] ? 'italic' : files[String(weight)] ? String(weight) : '400'
+    const file = own ? `@${family}/${key}` : files[key] as string
     const loaded = fonts.get(file)
     if (loaded) return loaded
     let waiting = pending.get(file)
     if (!waiting) {
-        waiting = loadBinaryAsset(`fonts/${file}`).then((bytes) => {
-            fonts.set(file, parseFont(bytes))
+        const bytes = own ? fontBytes(own[key]!) : loadBinaryAsset(`fonts/${file}`)
+        waiting = bytes.then((data) => {
+            try { fonts.set(file, parseFont(data)) } catch (error) {
+                throw own ? new Error(`The font '${family}' cannot be read: ${(error as Error).message}`) : error
+            }
             pending.delete(file)
         }, (error) => {
             pending.delete(file)
-            throw error
+            throw own ? new Error(`The font '${family}' cannot be loaded: ${(error as Error).message}`) : error
         })
         pending.set(file, waiting)
     }
@@ -579,7 +634,7 @@ export function fontFor(family: BundledFamily, weight: FontWeight = 400, italic 
 
 /** Find a character in the fonts behind a family. These load only when a film needs them. */
 export function fallbackGlyph(family: FontFamily, code: number, weight: FontWeight = 400, italic = false): { font: LoadedFont; glyph: number } | null {
-    for (const next of FALLBACKS[family]) {
+    for (const next of Object.hasOwn(FALLBACKS, family) ? FALLBACKS[family as BundledFont] : FALLBACKS.serif) {
         const font = fontFor(next, weight, italic)
         const glyph = font.glyphFor(code)
         if (glyph !== 0) return { font, glyph }
