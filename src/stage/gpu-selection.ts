@@ -65,9 +65,8 @@ export async function sampleGpuFrames(film: CompiledFilm, times: readonly number
 }
 
 /**
- * Approximate parity safeguard: tolerate antialiasing differences while checking local color bias. Each layer of
- * soft light on the CPU is rounded to a byte, and the error of many layers adds up. A picture in half floats does
- * not have that error, so it may be further from the CPU picture: `tile` levels in a tile and `mean` in the frame.
+ * Approximate parity safeguard: tolerate antialiasing differences while checking local color bias, up to `tile` levels
+ * in a tile and `mean` levels in the frame.
  */
 export function matchingGpuPixels(cpu: Uint8Array, gpu: Uint8Array, width = cpu.length / 4, tile = 2.5, mean = 2.5): boolean {
     if (!cpu.length || cpu.length !== gpu.length || cpu.length % 4
@@ -110,10 +109,8 @@ export async function selectGpuRenderer(film: CompiledFilm, options: GpuExportOp
     let keep = false
     const started = performance.now()
     try {
-        // An export that chooses its backend by speed compares the two pictures, so it paints in bytes as the CPU does.
-        const float = options.request === 'gpu' && options.dither
-        gpu = await GpuRasterizer.create(options.signal, gpuSourceOf(film), float)
-        const source = gpu.usesFilmSource
+        gpu = await GpuRasterizer.create(options.signal, gpuSourceOf(film))
+        let source = gpu.usesFilmSource
         // Explicit GPU mode only needs up to 3 CPU workers for pixel parity verification, not the entire CPU pool.
         const probeWorkers = options.request === 'gpu' ? Math.min(options.workers, count) : options.workers
         const pool = new RasterPool(probeWorkers)
@@ -158,9 +155,37 @@ export async function selectGpuRenderer(film: CompiledFilm, options: GpuExportOp
             const gpuFrames = await Promise.all(moments.map((moment, index) => gpu!.run(source
                 ? { times: timesAt(moment), width, height, dither }
                 : { frames: frames[index], width, height, dither })))
-            const gpuMs = performance.now() - gpuStart + (source ? 0 : buildMs)
-            if (!cpu.every((pixels, i) => matchingGpuPixels(pixels, gpuFrames[i], width, float ? 12 : 2.5, float ? 5 : 2.5))) {
+            let gpuMs = performance.now() - gpuStart + (source ? 0 : buildMs)
+            if (!cpu.every((pixels, i) => matchingGpuPixels(pixels, gpuFrames[i], width))) {
                 throw new GpuUnavailableError('GPU sample pixels differ materially from the CPU renderer')
+            }
+            // The picture in bytes is the picture of the CPU, so this browser draws the film well. A dithered export that
+            // asked for the GPU then paints in half floats. A choice by speed compares like with like, so it does not.
+            let paint = ''
+            if (options.request === 'gpu' && dither) {
+                let half: GpuRasterizer | undefined
+                try {
+                    half = await GpuRasterizer.create(options.signal, gpuSourceOf(film), true)
+                    const halfSource = half.usesFilmSource
+                    const halfStart = performance.now()
+                    const halfFrames = await Promise.all(moments.map((moment, index) => half!.run(halfSource
+                        ? { times: timesAt(moment), width, height, dither }
+                        : { frames: frames[index], width, height, dither })))
+                    // Bytes round each layer of soft light, and the errors add up. Half floats do not have that error.
+                    if (!halfFrames.every((pixels, i) => matchingGpuPixels(gpuFrames[i], pixels, width, 12, 5))) {
+                        throw new GpuUnavailableError('the sample pixels in half floats differ materially')
+                    }
+                    gpuMs = performance.now() - halfStart + (halfSource ? 0 : buildMs)
+                    const bytes = gpu
+                    gpu = half
+                    half = undefined
+                    source = halfSource
+                    await bytes.close()
+                    paint = 'half floats; '
+                } catch (error) {
+                    if (options.signal?.aborted || !(error instanceof GpuUnavailableError)) throw error
+                    paint = `bytes, because ${error.message}; `
+                } finally { await half?.close() }
             }
             let reuse = 0
             if (options.request === 'auto') {
@@ -188,7 +213,7 @@ export async function selectGpuRenderer(film: CompiledFilm, options: GpuExportOp
             }
             keep = true
             gpu.rasterMs = gpu.bloomMs = gpu.readbackMs = 0
-            return { gpu, source: !!source, reason: `${options.request === 'gpu' ? 'GPU requested; ' : ''}${measured}` }
+            return { gpu, source: !!source, reason: `${options.request === 'gpu' ? 'GPU requested; ' : ''}${paint}${measured}` }
         } finally { if (!keepPool) await pool.close() }
     } catch (error) {
         if (options.request === 'gpu' || !(error instanceof GpuUnavailableError)) throw error

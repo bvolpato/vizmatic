@@ -122,9 +122,11 @@ void main() {
     float threshold = !dither || original.a == 0.0 ? 0.0 : (floor(noise * 256.0) + 0.5) / 256.0;
     vec3 lit = original.rgb + min(vec3(255.0), glow) * (255.0 - original.rgb) / 255.0;
 #ifdef FLOAT_SOURCE
-    // A flat color is a whole level, and a half float holds it with a small error. It must not get grain.
+    // A flat opaque color is a whole level, and a half float holds it with an error of one of its steps: an eighth
+    // of a level from 128 up. It must not get grain.
     vec3 whole = floor(lit + 0.5);
-    lit = mix(lit, whole, vec3(lessThan(abs(lit - whole), vec3(0.03))));
+    vec3 error = max(vec3(0.03), exp2(floor(log2(max(lit, vec3(1.0)) / 255.0)) - 10.0) * 255.0 * 1.1);
+    lit = mix(lit, whole, vec3(lessThan(abs(lit - whole), error)));
     if (!dither) lit = whole;
 #endif
     vec3 rgb = floor(lit + threshold);
@@ -285,13 +287,15 @@ class BloomRenderer {
         }
         const sepBytes = sepWidth > 0 ? sepWidth * height * 16 : 0
         const bytes = width * height * (this.float ? 8 : 4) + sepBytes + layers.reduce((sum, layer) => sum + layer.width * layer.height * 32, 0)
-        if (bytes > CACHE_BYTES) return null
+        // One export has one size, so its source can be twice as deep. A page keeps the limit.
+        const limit = this.float ? 2 * CACHE_BYTES : CACHE_BYTES
+        if (bytes > limit) return null
         const neededTextures = 1 + layers.length * 2 + (sepWidth > 0 ? 1 : 0)
         let held = [...this.sizes.values()].reduce((sum, size) => sum + size.bytes, 0)
         // Two hot sizes cover a gallery preview and its expanded player. Evict
         // before allocating, so alternating players cannot grow GPU memory.
         for (const [oldKey, old] of this.sizes) {
-            if (this.sizes.size < 2 && held + bytes <= CACHE_BYTES && this.textures.size + neededTextures <= MAX_LIVE_TEXTURES) break
+            if (this.sizes.size < 2 && held + bytes <= limit && this.textures.size + neededTextures <= MAX_LIVE_TEXTURES) break
             this.release(old)
             this.sizes.delete(oldKey)
             held -= old.bytes

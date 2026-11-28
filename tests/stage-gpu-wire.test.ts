@@ -162,7 +162,7 @@ describe('GPU pixel parity safeguard', () => {
         expect(matchingGpuPixels(cpu, cpu)).toBe(true)
     })
 
-    it('gives a half-float picture room for the rounding error of the CPU picture, and for no more', () => {
+    it('gives a half-float picture room for the rounding error of a picture in bytes, and for no more', () => {
         const cpu = new Uint8Array(128 * 128 * 4).fill(60), shifted = (by: number) => { const out = Uint8Array.from(cpu); for (let i = 0; i < out.length; i++) if (i % 4 !== 3) out[i] = 60 - by; return out }
         expect(matchingGpuPixels(cpu, shifted(2), 128)).toBe(true)
         expect(matchingGpuPixels(cpu, shifted(4), 128)).toBe(false)

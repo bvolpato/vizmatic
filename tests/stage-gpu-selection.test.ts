@@ -67,6 +67,44 @@ describe('GPU probe selection', () => {
         expect(GpuRasterizer.create).not.toHaveBeenCalled()
     })
 
+    it('paints a dithered export in half floats after the picture in bytes matches the CPU, and in bytes when that fails', async () => {
+        const painter = (pixels: Uint8Array | Error) => {
+            const close = vi.fn(async () => {})
+            const run = pixels instanceof Error ? vi.fn<GpuRasterizer['run']>().mockRejectedValue(pixels) : vi.fn<GpuRasterizer['run']>().mockResolvedValue(pixels)
+            return { close, run, device: 'Test GPU', rasterMs: 0, bloomMs: 0, readbackMs: 0 } as unknown as GpuRasterizer & { close: typeof close }
+        }
+        const { pixels } = mockGpu(), dark = new Uint8Array(pixels.length)
+        for (let at = 3; at < dark.length; at += 4) dark[at] = 255
+        const choose = async (half: GpuRasterizer | Error, dither = true) => {
+            const bytes = painter(pixels)
+            vi.mocked(GpuRasterizer.create).mockReset().mockImplementation(async (_signal, _source, float) => {
+                if (!float) return bytes
+                if (half instanceof Error) throw half
+                return half
+            })
+            return { bytes, result: await selectGpuRenderer(await fixture(), { ...selection('gpu'), dither }) }
+        }
+        const good = painter(pixels), chosen = await choose(good)
+        expect(chosen.result.gpu).toBe(good)
+        expect(chosen.result.reason).toContain('half floats')
+        expect(chosen.bytes.close).toHaveBeenCalledTimes(1)
+        expect(good.close).not.toHaveBeenCalled()
+        for (const [half, why] of [
+            [new GpuUnavailableError('this browser has no canvas in half floats'), 'no canvas in half floats'],
+            [painter(new GpuUnavailableError('the frame is too large for a write in half floats')), 'too large'],
+            [painter(dark), 'differ materially'],
+        ] as const) {
+            const fallen = await choose(half)
+            expect(fallen.result.gpu).toBe(fallen.bytes)
+            expect(fallen.result.reason).toContain(`bytes, because`)
+            expect(fallen.result.reason).toContain(why)
+            expect(fallen.bytes.close).not.toHaveBeenCalled()
+            if (!(half instanceof Error)) expect((half as { close: unknown }).close).toHaveBeenCalledTimes(1)
+        }
+        const plain = await choose(good, false)
+        expect(plain.result.gpu).toBe(plain.bytes)
+    })
+
     it.each(['auto', 'gpu'] as const)('aborts a never-resolving suspended frame and closes both backends for %s', async request => {
         const controller = new AbortController()
         const gpu = mockGpu()

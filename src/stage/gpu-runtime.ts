@@ -123,7 +123,7 @@ function sameJobFrames(job: GpuFrameJob): boolean {
 /** A 2D context, in half floats when the export asks for them and the browser has them. */
 function context2d(target: HTMLCanvasElement, wanted: boolean): CanvasRenderingContext2D | null {
     const made = target.getContext('2d', { willReadFrequently: false, ...(wanted ? { colorType: 'float16' } : {}) } as CanvasRenderingContext2DSettings)
-    if (made && wanted && (made.getContextAttributes() as { colorType?: string }).colorType !== 'float16') throw new Error('This browser has no canvas in half floats. Update Chrome, or export without --dither')
+    if (made && wanted && (made.getContextAttributes() as { colorType?: string }).colorType !== 'float16') throw new Error('this browser has no canvas in half floats')
     return made
 }
 
@@ -243,7 +243,7 @@ async function paint(job: GpuFrameJob): Promise<{ repeat?: boolean; pixels: Prom
             // Direct WebGL2 bloom skips the WebGL2-to-Canvas2D drawImage roundtrip before VideoFrame capture.
             outputCanvas = bloomCanvas
         } else if (float) {
-            throw new Error('The half-float write of the frame failed')
+            throw new Error('the frame is too large for a write in half floats')
         } else {
             if (!targetCtx) {
                 average.resetTransform()
